@@ -4,7 +4,11 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 ## Unreleased
 
-No library code yet. The repository holds the plan, the documentation, the build and the package tree, and the work is tracked as milestones and issues.
+Nothing since v0.0.1.
+
+## v0.0.1 - 2026-09-02
+
+The repository itself, and the checks everything after this depends on. There is no library code in it yet. What is here is the plan, the documentation, the build, the package tree and the tools, and the work is tracked as milestones and issues.
 
 Added the 137 package manifests under `core/`, each recording the Go package it answers for, its tier, whether it may use unsafe operations, and exactly what it is allowed to import. The tier is derived from the graph rather than chosen, and `pixi run lint` checks that the number in the manifest is one more than the deepest dependency, that the graph has no cycle, and that the directory matches the name.
 
