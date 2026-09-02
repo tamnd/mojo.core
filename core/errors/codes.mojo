@@ -20,3 +20,29 @@ write.
 
 Owned by `core.errors`, answering for Go's `errors.ErrUnsupported`.
 """
+
+comptime EOF = Code(2)
+"""No more input. Go returns this as an error and this library raises it, and in
+both the meaning is an orderly end rather than a failure: a reader that has
+been read to the end reports it every time from then on. A read that moved
+bytes returns the count instead of raising, so this always arrives with a count
+of zero. See `core.io` for why that rule is stricter than Go's.
+
+Owned by `core.io`, answering for Go's `io.EOF`.
+"""
+
+comptime ErrShortWrite = Code(3)
+"""A write accepted fewer bytes than it was given and did not say why. The count
+it did accept is on `errors.partial`.
+
+Owned by `core.io`, answering for Go's `io.ErrShortWrite`.
+"""
+
+comptime ErrNoProgress = Code(4)
+"""A reader returned zero bytes without raising, from a buffer with room in it,
+more than once. Go raises this after a hundred such calls; this raises on the
+first, because a reader that reports no progress and no reason has a bug and
+looping is not going to fix it.
+
+Owned by `core.io`, answering for Go's `io.ErrNoProgress`.
+"""

@@ -34,7 +34,7 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `panic` and `recover` | `abort`, which cannot be caught. See the residue section. | no unwinding |
 | `json.Marshal(v)` for a value of unknown type | Not available. Build a document, or use a type that has a codec. | 8 |
 | `driver.Value` as `any` | A tagged union over the seven types Go's documentation allows | 1 |
-| A type assertion for an optional interface | Capability bits on the erased vtable | 1 |
+| A type assertion for an optional interface | Capability bits, declared on the trait so the static path can read them too | 1 |
 | `init()` | Compile time initialisers and explicit registration | no `init` |
 | Struct embedding with method promotion | Composition with explicit forwarding | no promotion |
 | The `embed` directive | A tool that generates a Mojo source file from a directory | a directive is not a library |
@@ -47,6 +47,7 @@ These are deviations too, because code written against Go's semantics may not po
 
 | Go | This library |
 | --- | --- |
+| `Read` may return bytes and an error together, and every caller is told to handle the count before the error | A read that moved bytes returns them and does not raise, so `EOF` always arrives with a count of zero |
 | A buffer's byte slice is invalidated by the next write, which is a documented hazard | The origin is tracked, so using it afterwards is a compile error |
 | A string builder copied after use panics through a runtime check | Not copyable, so the mistake does not compile |
 | A mutex copied by value is caught by a separate analysis tool | Not copyable, so it does not compile |

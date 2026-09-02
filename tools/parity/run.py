@@ -134,6 +134,34 @@ def waivers() -> dict[str, str]:
     return out
 
 
+REEXPORT = re.compile(r"^from\s+\S+\s+import\s+(.+)$", re.MULTILINE)
+
+
+def reexported(package: Package) -> set[str]:
+    """Public names a package's `__init__.mojo` imports for others to use.
+
+    `mojo doc` reports declarations, and an import is not one, so a name a
+    package deliberately republishes is invisible to it. That is not a corner
+    case: `core.io` exports `EOF` and its siblings, which are declared in
+    `core.errors.codes` because they come out of one generated table, and
+    without this every one of them measures as missing while being importable
+    exactly as Go's `io.EOF` is.
+
+    Only `__init__.mojo`, because that file is the package's public surface and
+    an import anywhere else is a private dependency rather than a promise.
+    """
+    init = package.path / "__init__.mojo"
+    if not init.is_file():
+        return set()
+    names: set[str] = set()
+    for clause in REEXPORT.findall(init.read_text()):
+        for name in clause.split(","):
+            name = name.strip().strip("()").split(" as ")[-1].strip()
+            if name and not PRIVATE.match(name):
+                names.add(name)
+    return names
+
+
 def declared(node: object, owner: str = "") -> set[str]:
     """Every public name in one `mojo doc` node, members qualified by owner.
 
@@ -181,13 +209,22 @@ def exported(package: Package) -> set[str] | None:
             print("parity: mojo is not on PATH, so nothing can be measured", file=sys.stderr)
             TOLD = True
         return None
+    # `-I ROOT` because a package that imports another one cannot be read
+    # without somewhere to find it, and every import in this tree is absolute
+    # from the root. Without it the first package with a dependency reports
+    # zero symbols and looks like a package nobody has started.
     out = subprocess.run(
-        ["mojo", "doc", "-o", "-", str(package.path)], capture_output=True, text=True
+        ["mojo", "doc", "-I", str(ROOT), "-o", "-", str(package.path)],
+        capture_output=True,
+        text=True,
     )
     if out.returncode != 0:
+        # The compiler's own message, because "doc failed" on its own leaves
+        # the reader to reproduce it by hand to find out what went wrong.
         print(f"parity: mojo doc failed for {package.name}", file=sys.stderr)
+        print(out.stderr.strip(), file=sys.stderr)
         return set()
-    return declared(json.loads(out.stdout).get("decl", {}))
+    return declared(json.loads(out.stdout).get("decl", {})) | reexported(package)
 
 
 def measure(go: dict[str, list[tuple[str, str]]]) -> tuple[list[Result], list[str]]:

@@ -233,6 +233,8 @@ Go's manifests are condensed into `tools/parity/goapi.txt` by `tools/gen/goapi.p
 
 `tools/parity/` reads that index, takes the Go package each `PACKAGE.toml` names, applies the naming rules in `tools/parity/rules.py`, and compares the result against the symbols `mojo doc` reports for the package. It prints what is missing, what is extra, and what is present under a name the rules did not predict. `pixi run parity core.strings` does one package symbol by symbol, which is the list somebody porting it is owed.
 
+`mojo doc` reports declarations, and a name a package republishes for its users is an import rather than a declaration, so the tool reads the `from ... import` lines of each package's `__init__.mojo` and counts those too. That is not a nicety: `core.io` exports `EOF`, `ErrShortWrite` and `ErrNoProgress`, which are declared in `core.errors.codes` because they come out of one generated table, and they are importable exactly as Go's `io.EOF` is. Only `__init__.mojo`, because that file is the package's public surface and an import anywhere else is a private dependency.
+
 The naming rules are three lines long. Types, constants and variables keep Go's name. Functions and methods become snake case. Members are written `Owner.member` on both sides, so a method cannot satisfy the contract by existing on the wrong type.
 
 It runs in CI on every commit and its output is the coverage table in the README. A package is not "done" because somebody says so; it is done when `tools/parity` says it is at 100% and its tests pass.

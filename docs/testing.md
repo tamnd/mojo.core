@@ -53,7 +53,7 @@ Corpora are checked in, seeded from Go's, and grown by CI. A crash the fuzzer fi
 
 ## The properties Go's tests cannot check
 
-Four things this library has to guarantee that Go's suites say nothing about, because Go does not have these problems.
+Five things this library has to guarantee that Go's suites say nothing about, because Go does not have these problems.
 
 **The iteration rule.** A `for` loop swallows an error raised out of `__next__`. The linter enforces the explicit `has_next` and `next` split, and there is a test asserting that the linter actually rejects a fallible `__next__`, using a fixture that is expected to fail. A convention defended only by memory is not defended. Separately a probe pins the compiler behaviour, so a Mojo release that fixes it makes a test fail and we revisit the whole rule.
 
@@ -62,6 +62,10 @@ Four things this library has to guarantee that Go's suites say nothing about, be
 **Layering.** The linter checks every import against the package's declared dependencies, in both directions, so an undeclared import fails and an unused declaration also fails. CI builds every package with only its transitive dependencies. A library that only ever builds as a whole has a dependency graph nobody has tested.
 
 **Unsafety.** Seventeen packages declare themselves unsafe and the rest may not name a raw pointer, a foreign call, or anything the standard library prefixes with `unsafe_`. The prefix is matched as a family, so the ones that arrive with the next release are covered without anybody remembering to add them, and so are the ones that hide behind a safe type: `span.unsafe_ptr().as_unsafe_any_origin()` is a raw pointer with its origin erased and does not contain the word `Pointer`. Two fixtures, because the older one names the raw types outright and so cannot prove the family match is still alive. The linter enforces it and reports the count, because that number going up is a thing to notice.
+
+**Fast path selection.** Go's `io` tests check that `Copy` moves the right bytes. They do not check which of the three paths it took, because in Go a wrong choice is still correct and only slower. Here it is not only slower: the capability bits are the whole replacement for the type assertion, and a bit that is read wrong means a reader's `write_to` is never called on any input. So `tests/io` proves the choice with a counter on the test types rather than by reading the code, in all four combinations of a static and an erased side, with the bit set and with it cleared, and it has cases for a type that sets a bit it did not implement and for the ordering when both sides offer a path. A test that only compared the output bytes would pass with the dispatch deleted.
+
+There is one rule left in that design that nothing checks. A borrowed view is an argument and never a field, because it does not keep its target alive, and neither the compiler nor the linter can see that. It is confined to two constructions inside `core.io`, both of which hand the view straight to a call, and it is written at the top of `core/io/erased.mojo`.
 
 ## The compile time checks
 
