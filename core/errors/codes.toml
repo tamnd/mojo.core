@@ -1,0 +1,25 @@
+# Every sentinel error in this library, in one list, because the numbers have
+# to be unique and nobody should be picking them.
+#
+# Go compares against a value: `errors.Is(err, io.EOF)` works because `io.EOF`
+# is an `error` you can hold. There is no comparable error value here, so a
+# sentinel is a number on the record and `errors.matches` is a lookup. Numbers
+# chosen by hand collide, and a collision makes `matches(e, io.EOF)` quietly
+# true for an `os` error, which is a wrong answer rather than a crash.
+#
+# So `tools/gen/codes.py` numbers these in the order they appear here, starting
+# at one because zero means no code, and writes `codes.mojo`. Adding a sentinel
+# is a line here and `pixi run gen`. Never write a number in this file.
+#
+# The renumbering that follows from that is safe **only** because a code never
+# leaves the process. Inserting a line shifts every code below it, and the
+# whole library is rebuilt together, so nothing can hold a stale one. Anything
+# that wrote a code to a file or a socket would break silently on the next
+# release, which is why `Code` says not to.
+#
+# Keyed by the package that owns the sentinel. Each entry names the Go symbol
+# it answers for and says what it means, in the words the documentation for
+# that package will use.
+
+["core.errors"]
+ErrUnsupported = { go = "errors.ErrUnsupported", doc = "The operation is not supported. Go's sentinel for a method that exists so a type satisfies an interface and then declines, such as a read only filesystem's write." }

@@ -1,15 +1,13 @@
-"""Errors, adapted rather than ported.
+"""Errors, and the record that carries what Go would have put in a struct.
 
-Go's errors are values with a type. Mojo's `Error` carries a string and nothing
-else, so the parts of Go's package that depend on a concrete error type are
-rebuilt on a record written into thread local storage at raise time. See
-record.mojo for the mechanism and docs/design.md section 4 for why.
+Go's `errors` package, in the shape design.md section 4 forces: one error type
+carrying a string, with the fields, the count and the wrap chain kept in a
+thread local record and looked up at the catch site.
+
+Start with `Report` to raise, `field` and `matches` to inspect. `record.mojo`
+explains the mechanism and its limits, `chain.mojo` explains wrapping.
 """
 
-from .record import (
-    Report,
-    code,
-    field,
-    has_record,
-    partial,
-)
+from .chain import causes, join, matches, new, unwrap, wrap
+from .codes import ErrUnsupported
+from .record import NO_CODE, Code, Report, code, field, has_record, partial

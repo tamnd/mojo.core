@@ -14,7 +14,7 @@ Each directory is one job and each entry point prints what it checked even when 
 | `mojotest` | `test`, `test-selftest` | Generates one main that calls every test, so build time tracks the size of the library rather than the number of tests. Takes a package to run one package, and `--short` to skip the cases marked slow. |
 | `warnings` | `warnings` | Files that are expected to produce compile time warnings, with the count and the text asserted. |
 | `baseline` | `baseline` | Struct sizes and offsets, open flags, errno values and signal numbers, asked of the platform's own headers and compared to the tables in `core/syscall/baseline`. |
-| `gen` | `gen`, `generated-check` | The code generators. Output is checked in and regenerated in CI, which fails on a diff. |
+| `gen` | `gen`, `generated-check` | The code generators. Output is checked in and regenerated in CI, which fails on a diff. `codes.py` is the one that is not about volume: it numbers the library's sentinel errors so that no two packages can pick the same constant. |
 | `vendor` | `vendor-check` | The vendored corpora against their recorded digests and licences. |
 | `probe` | `probe` | The language assumptions in `docs/design.md`, one Mojo file each under `probes/` with a header naming the section it pins and saying what is supposed to happen to it. |
 | `differ` | `differ` | This library and an oracle against the same input, compared byte for byte. |

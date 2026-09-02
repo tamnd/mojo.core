@@ -31,23 +31,36 @@ def main():
 The slot itself is C, in shim/slot.c, because Mojo has no global mutable state
 to build one out of. See that directory's README.
 
+## The record is a tree
+
+Wrapping and joining both produce a tree of errors, so a record is an arena: a
+list of links, each with its own message, code, count and fields, plus the
+indices of its children. The root is index zero. That is the same technique
+design.md section 5 commits to for every recursive type in this library, and
+`chain.mojo` is what builds the shapes.
+
+A record with no wrapping is a single link, which is the common case and costs
+one list of one element.
+
 ## Telling our errors from everybody else's
 
-A record is matched to an error by the message it was raised with, and nothing
-else. The record stores the message, the lookup compares it against the caught
-error's message, and a mismatch means no fields.
+A link is matched to an error by the message it was raised with, and nothing
+else. The lookup walks the record for a link whose message equals the caught
+error's message, and finding none means no fields.
 
 That is what makes the two failure modes safe. An error raised by `std`, or by
-any library that has never heard of this mechanism, finds a record whose
-message is not its own and is correctly reported as carrying no fields. An
-error held past the next raise on the same thread finds the newer record, sees
-a different message, and reports no fields rather than the newer error's.
+any library that has never heard of this mechanism, finds no link with its
+message and is correctly reported as carrying no fields. An error held past the
+next raise on the same thread finds a record built by somebody else, matches
+nothing in it, and reports no fields rather than the newer error's.
 
 The limit is worth stating: two errors with the same message text on the same
-thread are indistinguishable here, and the later one's fields win. In practice
-the message is built from the fields, so two identical messages come from
-identical fields, but that is a convention rather than something enforced.
-Holding an error for longer than the next raise is what `capture` is for.
+thread are indistinguishable here, and the newer record wins. Since the lookup
+searches inner links too, that now includes an error whose text happens to
+equal a link inside somebody else's chain. In practice the message is built
+from the fields, so identical messages come from identical fields, but that is
+a convention rather than something enforced. Holding an error for longer than
+the next raise is what `capture` is for.
 """
 
 from std.ffi import external_call
@@ -56,28 +69,74 @@ from std.sys import size_of
 comptime _Any = AnyOrigin[mut=True]
 
 
-struct Report(Movable):
-    """An error being built, and the record it leaves behind.
+struct Code(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
+    """A sentinel, in the only form this library can compare.
 
-    One struct doing both jobs rather than a builder and a record, because
-    Mojo will not move a struct valued field out of an owned `self`. Splitting
-    them means `error()` has to move the record out of the report, and that is
-    the exact operation the compiler refuses with "field destroyed out of the
-    middle of a value". So the thing that is built is the thing that is stored.
+    Go's `errors.Is(err, io.EOF)` works because `io.EOF` is a value you can
+    hold. There is no comparable error value here, so a sentinel is a number
+    tagged onto the record and `matches` is a lookup.
 
-    Building is a chain so the fields read down the page in the order somebody
-    would say them out loud, and so the common case of an error with no fields
-    at all stays `Report(message).error()`.
+    Nobody writes the number. `codes.toml` lists the sentinels and the
+    generator assigns them, because two packages picking the same constant by
+    hand makes `matches(e, io.EOF)` quietly true for an `os` error, and a wrong
+    answer that never crashes is the category this repository generates rather
+    than reviews.
 
-    Nothing reads a `Report` back. The catch site uses the free functions below,
-    which copy out of it, so no caller ends up holding a reference into storage
-    the next raise is going to overwrite.
+    **A code is meaningless outside the process that produced it.** The numbers
+    come from a position in a generated table and they move when a line is
+    added above. Never write one to a file, a socket or a log and expect to
+    read it back; write the message, or a name you chose yourself.
+
+    A struct rather than a bare `Int` so that `with_code(2)` where
+    `with_count(2)` was meant does not compile.
+    """
+
+    var value: Int
+    """Zero means no code. The generator therefore starts numbering at one."""
+
+    def __init__(out self, value: Int):
+        """Wrap a number. Called by the generated table and by nothing else."""
+        self.value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        """Whether these are the same sentinel."""
+        return self.value == other.value
+
+    def __ne__(self, other: Self) -> Bool:
+        """Whether these are different sentinels."""
+        return self.value != other.value
+
+    def __bool__(self) -> Bool:
+        """Whether this is a code at all, as opposed to the absence of one."""
+        return self.value != 0
+
+    def write_to[W: Writer](self, mut writer: W):
+        """The number, so that a failing assertion says which sentinel it was.
+
+        There is no name to print. The names live in `codes.toml` and the
+        generated constants, and carrying them into the binary would put a
+        string table for every sentinel in the library into every program.
+        """
+        writer.write(self.value)
+
+
+comptime NO_CODE = Code(0)
+"""What `code` returns for an error that was never tagged."""
+
+
+struct Link(Copyable, Movable):
+    """One error in a record: its message, its fields, and what it wraps.
+
+    Copyable because splicing a chain into a longer one copies links from the
+    old record into the new. That happens once per wrap on the cold path, and
+    the alternative is sharing, which means deciding who frees what across a
+    pthread key destructor.
     """
 
     var message: String
     """The message the error was raised with. This is the identity check."""
 
-    var code: Int
+    var code: Code
     """Which kind of error this is, for matching against a sentinel."""
 
     var count: Int
@@ -94,8 +153,63 @@ struct Report(Movable):
     scan costs at catch time, and raises happen whether or not anybody looks.
     """
 
+    var kids: List[Int]
+    """Indices of the errors this one wraps, into the same record.
+
+    Empty for a plain error, one for a wrap, several for a join. Indices rather
+    than pointers because a struct cannot hold itself, which is design.md
+    section 5.
+    """
+
     def __init__(out self, var message: String):
-        """Start an error with a message and no fields.
+        """A link with a message and nothing else."""
+        self.message = message^
+        self.code = NO_CODE
+        self.count = 0
+        self.names = List[String]()
+        self.values = List[String]()
+        self.kids = List[Int]()
+
+    def find(self, name: String) -> Optional[String]:
+        """The value of one field, or nothing. A repeated name keeps the first.
+        """
+        for i in range(self.names.__len__()):
+            if self.names[i] == name:
+                return Optional[String](self.values[i])
+        return Optional[String]()
+
+
+struct Report(Movable):
+    """An error being built, and the record it leaves behind.
+
+    One struct doing both jobs rather than a builder and a record, because
+    Mojo will not move a struct valued field out of an owned `self`. Splitting
+    them means `error()` has to move the record out of the report, and that is
+    the exact operation the compiler refuses, either with "field destroyed out
+    of the middle of a value" or with "cannot be consumed, because `self` is
+    used later" depending on the order. `move_out_of_field.mojo` pins the rule.
+    So the thing that is built is the thing that is stored, and `error()` moves
+    the whole of `self` into the slot.
+
+    Building is a chain so the fields read down the page in the order somebody
+    would say them out loud, and so the common case of an error with no fields
+    at all stays `Report(message).error()`.
+
+    Nothing reads a `Report` back. The catch site uses the free functions
+    below and in `chain.mojo`, which copy out of it, so no caller ends up
+    holding a reference into storage the next raise is going to overwrite.
+    """
+
+    var links: List[Link]
+    """The error at index zero, then everything it wraps or joins.
+
+    A flat arena with integer indices rather than links holding links, because
+    a struct cannot hold itself, which is design.md section 5. An error with no
+    wrapping is one element, which is the common case.
+    """
+
+    def __init__(out self, var message: String):
+        """Start an error with a message and no causes.
 
         ```mojo
         from core.errors import Report
@@ -107,26 +221,23 @@ struct Report(Movable):
                 print(e)
         ```
         """
-        self.message = message^
-        self.code = 0
-        self.count = 0
-        self.names = List[String]()
-        self.values = List[String]()
+        self.links = List[Link]()
+        self.links.append(Link(message^))
 
-    def with_code(var self, code: Int) -> Self:
+    def with_code(var self, code: Code) -> Self:
         """Tag this error so it can be recognised without a value to compare.
 
         ```mojo
-        from core.errors import Report, code
+        from core.errors import Code, Report, code
 
         def main():
             try:
-                raise Report("file does not exist").with_code(2).error()
+                raise Report("file does not exist").with_code(Code(2)).error()
             except e:
                 print(code(e))
         ```
         """
-        self.code = code
+        self.links[0].code = code
         return self^
 
     def with_count(var self, n: Int) -> Self:
@@ -142,7 +253,7 @@ struct Report(Movable):
                 print(partial(e))
         ```
         """
-        self.count = n
+        self.links[0].count = n
         return self^
 
     def with_field(var self, var name: String, var value: String) -> Self:
@@ -158,16 +269,64 @@ struct Report(Movable):
                 print(field(e, "path").or_else(""))
         ```
         """
-        self.names.append(name^)
-        self.values.append(value^)
+        self.links[0].names.append(name^)
+        self.links[0].values.append(value^)
         return self^
 
-    def find(self, name: String) -> Optional[String]:
-        """The value of one field, or nothing."""
-        for i in range(self.names.__len__()):
-            if self.names[i] == name:
-                return Optional[String](self.values[i])
-        return Optional[String]()
+    def wrapping(var self, e: Error) -> Self:
+        """Wrap an error, keeping its fields and its own chain.
+
+        The message grows: `Report("reading config").wrapping(e)` raises
+        `reading config: <e>`, which is the shape Go's `%w` convention produces
+        and the shape every reader expects.
+
+        ```mojo
+        from core.errors import Report, field, unwrap
+
+        def main():
+            try:
+                try:
+                    raise Report("no such file").with_field("path", "/a").error()
+                except inner:
+                    raise Report("reading config").wrapping(inner).error()
+            except e:
+                print(e)
+        ```
+        """
+        return self^.absorbing(e, String(": "))
+
+    def absorbing(var self, e: Error, var separator: String) -> Self:
+        """`wrapping` with the separator spelled out. `join` uses a newline.
+
+        The cause is copied out of the thread\'s slot **now**, not at
+        `error()`, because `error()` is what overwrites the slot. A cause with
+        no record, which is any error this mechanism did not raise, contributes
+        its message and nothing else, which is all anybody knows about it.
+
+        Splicing happens here rather than at `error()` for the same reason the
+        struct is shaped this way: assembling at the end means reading one
+        field of an owned `self` after moving another out of it, and that does
+        not compile.
+        """
+        var cause = _extract(e)
+
+        # An empty message so far is `join`, which is Go\'s shape: the causes
+        # and the separators between them, with nothing in front.
+        if self.links[0].message:
+            self.links[0].message += separator^
+        self.links[0].message += cause.links[0].message
+
+        # The cause\'s links were numbered from zero in their own record and
+        # they stay contiguous here, so every index inside them shifts by the
+        # same amount. That is the whole reason the arena is a flat list.
+        var offset = self.links.__len__()
+        self.links[0].kids.append(offset)
+        for i in range(cause.links.__len__()):
+            var moved = cause.links[i].copy()
+            for k in range(moved.kids.__len__()):
+                moved.kids[k] += offset
+            self.links.append(moved^)
+        return self^
 
     def error(var self) -> Error:
         """Install the record on this thread and give back the error to raise.
@@ -187,9 +346,20 @@ struct Report(Movable):
                 print(e)
         ```
         """
-        var message = self.message.copy()
+        var message = self.links[0].message.copy()
         _install(self^)
         return Error(message^)
+
+    def locate(self, message: String) -> Int:
+        """The index of the link raised with this message, or -1.
+
+        A linear scan rather than a walk from the root, because the arena holds
+        exactly the links of one tree and nothing else.
+        """
+        for i in range(self.links.__len__()):
+            if self.links[i].message == message:
+                return i
+        return -1
 
 
 comptime _Held = Optional[Pointer[Report, _Any]]
@@ -214,7 +384,7 @@ def _install(var record: Report):
 
     The allocation is reused rather than freed and made again, so a thread that
     raises a million times allocates once. Assigning through the pointer
-    destroys the old value, which is what releases the old message and fields.
+    destroys the old value, which is what releases the old messages and fields.
 
     `malloc` rather than the standard library's allocator, because this block
     is handed to C and comes back through a pthread key destructor. One
@@ -258,18 +428,55 @@ def _free(raw: OpaquePointer[_Any]) abi("C"):
     external_call["free", NoneType](raw)
 
 
-def _mine(e: Error) -> _Held:
-    """This thread's record, but only if it belongs to this error.
+def _at(e: Error) -> Int:
+    """Where this error sits in this thread's record, or -1 if it does not.
 
     Everything public goes through here. See the module docstring for why the
     message is the identity and what that does and does not guarantee.
     """
     var held = _slot()
     if not held:
-        return _Held()
-    if held.value()[].message != String(e):
-        return _Held()
-    return held
+        return -1
+    return held.value()[].locate(String(e))
+
+
+def _extract(e: Error) -> Report:
+    """A standalone record for this error and everything below it.
+
+    Used by `wrapping` and `join` to take a cause out of the slot before the
+    slot is overwritten. An error with nothing in the slot yields a record of
+    one link holding its message, which is exactly what is known about an error
+    somebody else raised.
+    """
+    var out = Report(String(e))
+    var held = _slot()
+    var index = -1
+    if held:
+        index = held.value()[].locate(String(e))
+    if index < 0:
+        return out^
+
+    # Copy the subtree rooted at `index`, renumbering as it goes. `old` holds
+    # the source index of each link already copied, so `old[i]` and
+    # `out.links[i]` stay in step and a link is copied before anything asks
+    # where its children went.
+    ref source = held.value()[]
+    out.links[0] = source.links[index].copy()
+    out.links[0].kids = List[Int]()
+    var old = List[Int]()
+    old.append(index)
+    var seen = 0
+    while seen < old.__len__():
+        var here = old[seen]
+        for k in range(source.links[here].kids.__len__()):
+            var kid = source.links[here].kids[k]
+            var copied = source.links[kid].copy()
+            copied.kids = List[Int]()
+            out.links.append(copied^)
+            out.links[seen].kids.append(out.links.__len__() - 1)
+            old.append(kid)
+        seen += 1
+    return out^
 
 
 def has_record(e: Error) -> Bool:
@@ -288,11 +495,16 @@ def has_record(e: Error) -> Bool:
             print(has_record(e))
     ```
     """
-    return Bool(_mine(e))
+    return _at(e) >= 0
 
 
 def field(e: Error, name: String) -> Optional[String]:
     """One field of this error, or nothing when it has none by that name.
+
+    Only this error's own fields. An error that wraps another does not inherit
+    the inner one's fields, because two links in a chain can each have a `path`
+    and silently answering with the wrong one is worse than answering nothing.
+    Reach the inner one with `unwrap`.
 
     ```mojo
     from core.errors import Report, field
@@ -304,32 +516,32 @@ def field(e: Error, name: String) -> Optional[String]:
             print(field(e, "path").or_else(""))
     ```
     """
-    var held = _mine(e)
-    if not held:
+    var index = _at(e)
+    if index < 0:
         return Optional[String]()
-    return held.value()[].find(name)
+    return _slot().value()[].links[index].find(name)
 
 
-def code(e: Error) -> Int:
-    """The code this error was tagged with, or zero when it has none.
+def code(e: Error) -> Code:
+    """The code this error was tagged with, or `NO_CODE`.
 
-    Zero means no code rather than a code of zero, which is why the registry
-    that hands these out starts at one.
+    This error's own code and not its causes'. `matches` is what walks the
+    chain, and it is what a sentinel comparison should use.
 
     ```mojo
-    from core.errors import Report, code
+    from core.errors import Code, Report, code
 
     def main():
         try:
-            raise Report("nope").with_code(2).error()
+            raise Report("nope").with_code(Code(2)).error()
         except e:
-            print(code(e))
+            print(code(e).value)
     ```
     """
-    var held = _mine(e)
-    if not held:
-        return 0
-    return held.value()[].code
+    var index = _at(e)
+    if index < 0:
+        return NO_CODE
+    return _slot().value()[].links[index].code
 
 
 def partial(e: Error) -> Int:
@@ -348,7 +560,7 @@ def partial(e: Error) -> Int:
             print(partial(e))
     ```
     """
-    var held = _mine(e)
-    if not held:
+    var index = _at(e)
+    if index < 0:
         return 0
-    return held.value()[].count
+    return _slot().value()[].links[index].count

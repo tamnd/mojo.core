@@ -28,6 +28,18 @@ Two more language facts, each with a probe. A struct valued field cannot be move
 
 `tools/lib/native.py` is now the one place that goes looking for a C compiler, shared by `pixi run baseline` and the test runner, and it explains why neither takes one from the lockfile.
 
+The rest of Go's `errors` package: `wrap`, `matches`, `join`, `unwrap`, `causes` and `new`. `core.errors` is the first package in this library at full parity, five symbols present and two waived.
+
+The record is a tree now, because wrapping and joining both make one. It is an arena of links with integer indices, which is the technique the design already committed to for every recursive type here, used for the first time. A chain survives any number of levels with each level keeping its own fields, and `wrap` copies the cause out of the thread's slot before the new record replaces it, which is the only order that works when there is one slot per thread. `field` and `code` answer about the error you hand them and not about what it wraps, because two links in a chain can each carry a `path` and the wrong one is worse than nothing. `matches` is the one that walks, and it walks every cause of a joined error rather than the first, which is the part of Go's contract that is easy to get wrong and which now fails a test when it is.
+
+A sentinel is a code, and nobody picks the number. Go's `errors.Is(err, io.EOF)` works because `io.EOF` is a value you can hold, and there is none here, so a sentinel is an integer on the record. Integers chosen by hand collide, and a collision makes `matches(e, io.EOF)` quietly true for an `os` error, so `core/errors/codes.toml` lists every sentinel in the library and `tools/gen/codes.py` numbers them. That makes a collision impossible rather than unlikely, at the cost that the numbers move when a line is inserted, so a code is meaningless outside the process that produced it and the type says so. `Code` is a struct rather than an `Int`, which is what stops `with_code(300)` compiling where `with_count(300)` was meant.
+
+`errors.As` and `errors.AsType` are waived. Both are reflection over a type hierarchy and this library has neither, so there is no honest partial version; the replacement is the field lookup, the sentinel comparison, and a per package helper such as `os.PathError.of(e)`. `errors.Is` is renamed to `matches`, because `is` is a Mojo keyword.
+
+`join` is weaker than Go's and the deviations page says so rather than leaving it to be found. Go holds error values and every field with them. At most one of the errors passed here still owns the thread's record, so the others contribute their message and their place in the tree and nothing more. `capture` is what will close it.
+
+Sixteen new tests, and the suite was checked against three ways of getting this wrong: a `matches` that does not walk the chain, a `join` that reports only its first cause, and a wrap that refers to the record instead of copying it. Each one fails the tests that name it and nothing else.
+
 ## v0.1.0 - 2026-09-03
 
 M0 is complete. The tree, the manifests, the linter, the parity tool, the test runner, the platform tables, the language probes and CI on macOS arm64, Linux x86-64 and Linux arm64. There is still no library code, and that is the point of the milestone: every check that the rest of the work depends on now exists, runs everywhere, and has been shown to fail when it should.

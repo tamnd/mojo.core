@@ -44,3 +44,8 @@ NewNYCbCrA = "new_nycbcra"
 ["image/color"]
 RGBToYCbCr = "rgb_to_ycbcr"
 YCbCrToRGB = "ycbcr_to_rgb"
+
+["errors"]
+# `is` is a Mojo keyword. `matches` is what the call reads as anyway:
+# `matches(e, io.EOF)`.
+Is = "matches"
