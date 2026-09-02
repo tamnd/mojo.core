@@ -37,7 +37,7 @@ Everything else depends on these, and they are the first three milestones.
 | `sort` | 40 | `core.sort` | Wrap | Over `std.builtin.sort`. Go's `sort.Interface` becomes a comparator function pointer plus context. |
 | `slices` | 40 | `core.slices` | Port | Over `Span` and `List`. |
 | `maps` | 10 | `core.maps` | Port | Over `Dict`. |
-| `iter` | 4 | `core.iter` | Adapt | Go's range-over-func needs closures. The fallible-iteration rule in [design](design.md) governs this whole area. |
+| `iter` | 4 | `core.iter` | Adapt | All four of Go's symbols are range-over-func and need storable closures, so all four are waived. What is here instead is `Cursor`, the fallible-iteration rule in [design](design.md) written as a trait. |
 | `unique` | 3 | `core.unique` | Port | Interning. Needs the atomics from [design](design.md). |
 | `weak` | 3 | `core.weak` | Adapt | Go's weak pointers assume a tracing collector. Here it is a weak count beside the strong one in the shared box. |
 | `container/heap` | 11 | `core.container.heap` | Adapt | `heap.Interface` becomes a trait for the static path. |

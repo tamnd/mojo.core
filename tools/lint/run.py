@@ -73,7 +73,14 @@ SECRET_ENV = ROOT / ".fleet.env"
 MARKER = "core:"
 
 IMPORT = re.compile(r"^\s*(?:from|import)\s+(core(?:\.[a-z_0-9]+)*)", re.M)
-FALLIBLE_NEXT = re.compile(r"^\s*def\s+__next__\s*\([^)]*\)[^:]*\braises\b", re.M)
+# The parameter list is optional and has to be skipped rather than ignored,
+# because a `__next__` over a span is written `def __next__[o: Origin](...)`
+# and the older pattern required the parenthesis straight after the name. That
+# spelling is not exotic, it is what an iterator borrowing its input looks
+# like, and it went through unnoticed.
+FALLIBLE_NEXT = re.compile(
+    r"^\s*def\s+__next__\s*(?:\[[^\]]*\])?\s*\([^)]*\)[^:]*\braises\b", re.M
+)
 MUST_CALL = re.compile(r"\b(must_[a-z_0-9]+)\s*\(\s*([^)]*)\)")
 
 
@@ -308,6 +315,7 @@ def selftest() -> int:
     fixtures = ROOT / "tests" / "lint"
     sources = {
         "fallible_next": check_iteration,
+        "parametric_next": check_iteration,
         "must_on_variable": check_must_calls,
         "unsafe_in_safe_package": None,
         "unsafe_family_in_safe_package": None,

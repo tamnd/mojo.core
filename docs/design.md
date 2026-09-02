@@ -64,7 +64,11 @@ A pointer crossing a thread boundary has to be laundered to an untracked origin 
 
 This is the sharpest edge in the language for a library like this one. Write an iterator that can fail, loop over it, and the failure disappears.
 
-So nothing fallible gets an `__iter__`. Fallible iteration is an explicit `has_next()` and `next()` pair, the linter rejects a `__next__` that raises, and a probe pins the compiler behaviour so that we find out if a future release fixes it.
+So nothing fallible gets an `__iter__`. Fallible iteration is an explicit `has_next()` and `next()` pair, spelled as the `core.iter.Cursor` trait, the linter rejects a `__next__` that raises, and a probe pins the compiler behaviour so that we find out if a future release fixes it.
+
+The swallowing is specific to `__next__`, and that is worth knowing rather than assuming. A raising `__has_next__` makes the `for` statement itself a raising call, so the loop cannot be written in a function that is not `raises` and the error comes out normally. A second probe pins that half, because the two behaviours being different is what makes the linter rule correct as narrowly as it is written, and because a release that made them consistent could do it in either direction.
+
+`Cursor` is deliberately not called `Iterator`. The hazard is a reader assuming `for x in it` works, and a trait with that name invites the assumption at every use site. Its element type is an associated `comptime Element` rather than a parameter, because `trait Cursor[T]` does not compile: trait declarations do not take parameters. The bound on it is `Deinitable & Movable`, the least a caller needs to own what it is handed, so a cursor may yield a buffer or a file handle. Both methods may raise and the implementation chooses which one does the work, because a reader cannot always know whether there is a next record without parsing one.
 
 ## 8. There is no reflection, and there is not going to be
 
