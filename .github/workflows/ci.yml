@@ -140,6 +140,8 @@ jobs:
         run: pixi run mojo --version
       # The errno table, the struct layouts and the syscall numbers are platform specific, and this is the only place they can be checked against the platform that will use them.
       - run: pixi run baseline
+      # The probes run before the suite and on every platform. Before, because a probe failing names the language assumption that moved and a suite failing only says that something did. On every platform, because the pthread and atomic probes are foreign calls into whatever libc is on the machine, and arm64 is the only runner where a missing barrier would show up at all.
+      - run: pixi run probe
       - run: pixi run test
 
   dependency-review:
