@@ -18,7 +18,7 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `(n int, err error)` where both matter | A raise, with the count available through `errors.partial(e)` | 4 |
 | An error held indefinitely as a value | Records live until the next raise on that thread, and `errors.capture` extends that | 4 |
 | `errors.Is(err, io.EOF)` against a sentinel value | `errors.matches(e, io.EOF)` against a generated code, since there is no comparable error value to hold | 4 |
-| `errors.Join(a, b)` keeping every error's fields | The message and the causes of all of them, but the fields of at most one, until they are captured | 4 |
+| `errors.Join(a, b)` keeping every error's fields | All of them over captured errors. Over live ones, every cause and every message but the fields of at most one. | 4 |
 | Recursive types for JSON, regexp, templates and lists | Arenas of nodes with integer indices and generation counters | 5 |
 | A usable zero value such as `var b bytes.Buffer` | An explicit constructor, everywhere | no zero value semantics |
 | `for rec := range reader` | An explicit `has_next` and `next` pair for all fallible iteration | 7, `for` drops the error |
@@ -71,7 +71,7 @@ Nothing here is present because it seemed nice. Each one is either forced by an 
 | `core.unicode.norm`, the four normalisation forms | In Go's extended text repository rather than its standard library. A library that cannot tell you two spellings of the same string are equal is unfinished. |
 | `core.sync.chan` as a package | Go spells channels in the language. Mojo has no channel, select or go keyword. |
 | `core.runtime.sched` as a package | Go's scheduler is its runtime. Ours is a library. |
-| `errors.capture` | Go's errors are values with the lifetime of whoever holds them. Ours need an explicit capture to outlive the raise. |
+| `errors.capture` and `ErrorValue` | Go's errors are values with the lifetime of whoever holds them. Ours need an explicit capture to outlive the raise, to be stored, or to cross a thread. |
 | `errors.partial` | Recovers the count from Go's count and error pair, which a raise would otherwise drop. |
 | `errors.wrap` | Go spells wrapping as a `%w` verb inside `fmt.Errorf`, which needs a runtime format string. This is the operation on its own. |
 | `errors.causes` | Go exposes the multiple cause case only as an `Unwrap() []error` method on a type it does not export, so a joined error's causes cannot be reached from outside. |

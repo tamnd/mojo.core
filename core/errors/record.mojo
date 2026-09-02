@@ -179,7 +179,7 @@ struct Link(Copyable, Movable):
         return Optional[String]()
 
 
-struct Report(Movable):
+struct Report(Copyable, Movable):
     """An error being built, and the record it leaves behind.
 
     One struct doing both jobs rather than a builder and a record, because
@@ -202,6 +202,11 @@ struct Report(Movable):
 
     var links: List[Link]
     """The error at index zero, then everything it wraps or joins.
+
+    Copyable so that `ErrorValue` can be, since the whole point of a captured
+    error is to be stored and passed around. The copy is deep, and that is the
+    requirement rather than a cost to apologise for: a value sharing links with
+    the thread's slot is exactly what `capture` exists to avoid.
 
     A flat arena with integer indices rather than links holding links, because
     a struct cannot hold itself, which is design.md section 5. An error with no
@@ -298,25 +303,34 @@ struct Report(Movable):
     def absorbing(var self, e: Error, var separator: String) -> Self:
         """`wrapping` with the separator spelled out. `join` uses a newline.
 
-        The cause is copied out of the thread\'s slot **now**, not at
-        `error()`, because `error()` is what overwrites the slot. A cause with
-        no record, which is any error this mechanism did not raise, contributes
-        its message and nothing else, which is all anybody knows about it.
-
-        Splicing happens here rather than at `error()` for the same reason the
-        struct is shaped this way: assembling at the end means reading one
-        field of an owned `self` after moving another out of it, and that does
-        not compile.
+        The cause is copied out of the thread's slot **now**, not at `error()`,
+        because `error()` is what overwrites the slot. A cause with no record,
+        which is any error this mechanism did not raise, contributes its
+        message and nothing else, which is all anybody knows about it.
         """
-        var cause = _extract(e)
+        return self^.absorbing_record(_extract(e), separator^)
 
-        # An empty message so far is `join`, which is Go\'s shape: the causes
+    def absorbing_record(
+        var self, var cause: Report, var separator: String
+    ) -> Self:
+        """The same, for a cause whose record is already owned.
+
+        This is the entry point a captured error uses. An `ErrorValue` holds
+        its whole arena, so nothing has to be recovered from the slot and
+        nothing is lost, which is what lets `join` over captured errors keep
+        every field where `join` over live errors cannot.
+
+        Splicing happens here rather than at `error()` because assembling at
+        the end means reading one field of an owned `self` after moving another
+        out of it, and that does not compile.
+        """
+        # An empty message so far is `join`, which is Go's shape: the causes
         # and the separators between them, with nothing in front.
         if self.links[0].message:
             self.links[0].message += separator^
         self.links[0].message += cause.links[0].message
 
-        # The cause\'s links were numbered from zero in their own record and
+        # The cause's links were numbered from zero in their own record and
         # they stay contiguous here, so every index inside them shifts by the
         # same amount. That is the whole reason the arena is a flat list.
         var offset = self.links.__len__()
@@ -360,6 +374,53 @@ struct Report(Movable):
             if self.links[i].message == message:
                 return i
         return -1
+
+    def subtree(self, index: Int) -> Report:
+        """A standalone record holding this link and everything under it.
+
+        This is what makes a chain outlive the slot it was built in. `wrapping`
+        uses it to take a cause out before the next raise overwrites the slot,
+        and `capture` uses it to take an error out of the thread entirely.
+
+        `old[i]` is the source index of `out.links[i]`, so the two stay in step
+        and a link is always copied before anything asks where its children
+        went. Renumbering rather than sharing, because the copy has to be able
+        to travel to another thread and own everything it can reach.
+        """
+        var out = Report(self.links[index].message.copy())
+        out.links[0] = self.links[index].copy()
+        out.links[0].kids = List[Int]()
+        var old = List[Int]()
+        old.append(index)
+        var seen = 0
+        while seen < old.__len__():
+            var here = old[seen]
+            for k in range(self.links[here].kids.__len__()):
+                var kid = self.links[here].kids[k]
+                var copied = self.links[kid].copy()
+                copied.kids = List[Int]()
+                out.links.append(copied^)
+                out.links[seen].kids.append(out.links.__len__() - 1)
+                old.append(kid)
+            seen += 1
+        return out^
+
+    def carries(self, start: Int, code: Code) -> Bool:
+        """Whether this link or anything under it is tagged with this code.
+
+        Breadth first, so a joined error's second cause is reached as surely as
+        its first. That is the part of Go's contract that is easy to get wrong.
+        """
+        var todo = List[Int]()
+        todo.append(start)
+        var seen = 0
+        while seen < todo.__len__():
+            if self.links[todo[seen]].code == code:
+                return True
+            for k in range(self.links[todo[seen]].kids.__len__()):
+                todo.append(self.links[todo[seen]].kids[k])
+            seen += 1
+        return False
 
 
 comptime _Held = Optional[Pointer[Report, _Any]]
@@ -443,40 +504,17 @@ def _at(e: Error) -> Int:
 def _extract(e: Error) -> Report:
     """A standalone record for this error and everything below it.
 
-    Used by `wrapping` and `join` to take a cause out of the slot before the
-    slot is overwritten. An error with nothing in the slot yields a record of
-    one link holding its message, which is exactly what is known about an error
-    somebody else raised.
+    Used by `wrapping` to take a cause out of the slot before the slot is
+    overwritten, and by `capture` to take an error out of the thread. An error
+    with nothing in the slot yields a record of one link holding its message,
+    which is exactly what is known about an error somebody else raised.
     """
-    var out = Report(String(e))
     var held = _slot()
-    var index = -1
     if held:
-        index = held.value()[].locate(String(e))
-    if index < 0:
-        return out^
-
-    # Copy the subtree rooted at `index`, renumbering as it goes. `old` holds
-    # the source index of each link already copied, so `old[i]` and
-    # `out.links[i]` stay in step and a link is copied before anything asks
-    # where its children went.
-    ref source = held.value()[]
-    out.links[0] = source.links[index].copy()
-    out.links[0].kids = List[Int]()
-    var old = List[Int]()
-    old.append(index)
-    var seen = 0
-    while seen < old.__len__():
-        var here = old[seen]
-        for k in range(source.links[here].kids.__len__()):
-            var kid = source.links[here].kids[k]
-            var copied = source.links[kid].copy()
-            copied.kids = List[Int]()
-            out.links.append(copied^)
-            out.links[seen].kids.append(out.links.__len__() - 1)
-            old.append(kid)
-        seen += 1
-    return out^
+        var index = held.value()[].locate(String(e))
+        if index >= 0:
+            return held.value()[].subtree(index)
+    return Report(String(e))
 
 
 def has_record(e: Error) -> Bool:
@@ -535,7 +573,7 @@ def code(e: Error) -> Code:
         try:
             raise Report("nope").with_code(Code(2)).error()
         except e:
-            print(code(e).value)
+            print(code(e))
     ```
     """
     var index = _at(e)

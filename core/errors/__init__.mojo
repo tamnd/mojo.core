@@ -10,4 +10,5 @@ explains the mechanism and its limits, `chain.mojo` explains wrapping.
 
 from .chain import causes, join, matches, new, unwrap, wrap
 from .codes import ErrUnsupported
+from .value import ErrorValue, capture
 from .record import NO_CODE, Code, Report, code, field, has_record, partial
