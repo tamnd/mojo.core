@@ -30,7 +30,8 @@ deliberately do not, because two links can each carry a `path` and answering
 with the wrong one is worse than answering nothing.
 """
 
-from .record import Code, Report, _at, _extract, _slot
+from .record import Code, Report, _at, _slot
+from .value import ErrorValue
 
 
 def new(var message: String) -> Error:
@@ -105,6 +106,37 @@ def join(*errs: Error) -> Error:
     return report^.error()
 
 
+def join(*vals: ErrorValue) -> Error:
+    """`join` over captured errors, which keeps every field of every one.
+
+    The version above can only keep the fields of whichever cause still owns
+    the thread's record, because a record is written at raise time and the next
+    raise replaces it. A captured error owns its own arena, so this one loses
+    nothing. Capture first when a joined error's fields have to survive.
+
+    ```mojo
+    from core.errors import Report, capture, causes, field, join
+
+    def main():
+        var kept = List[ErrorValue]()
+        for name in ["a", "b"]:
+            try:
+                raise Report("cannot open " + name).with_field("path", name).error()
+            except e:
+                kept.append(capture(e))
+        try:
+            raise join(kept[0], kept[1])
+        except e:
+            for c in causes(e):
+                print(field(c, "path").or_else(""))  # a, then b
+    ```
+    """
+    var report = Report(String(""))
+    for i in range(len(vals)):
+        report = report^.absorbing_record(vals[i].record.copy(), String("\n"))
+    return report^.error()
+
+
 def matches(e: Error, code: Code) -> Bool:
     """Whether this error or anything it wraps carries this sentinel.
 
@@ -131,19 +163,7 @@ def matches(e: Error, code: Code) -> Bool:
     var start = _at(e)
     if start < 0:
         return False
-
-    ref record = _slot().value()[]
-    var todo = List[Int]()
-    todo.append(start)
-    var seen = 0
-    while seen < todo.__len__():
-        ref link = record.links[todo[seen]]
-        if link.code == code:
-            return True
-        for k in range(link.kids.__len__()):
-            todo.append(link.kids[k])
-        seen += 1
-    return False
+    return _slot().value()[].carries(start, code)
 
 
 def unwrap(e: Error) -> Optional[Error]:

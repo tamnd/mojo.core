@@ -40,6 +40,14 @@ A sentinel is a code, and nobody picks the number. Go's `errors.Is(err, io.EOF)`
 
 Sixteen new tests, and the suite was checked against three ways of getting this wrong: a `matches` that does not walk the chain, a `join` that reports only its first cause, and a wrap that refers to the record instead of copying it. Each one fails the tests that name it and nothing else.
 
+`errors.capture(e)` and `ErrorValue`, which is what makes an error a value again. It copies the error's whole subtree out of the thread and owns every message, field and cause it can reach, so a failure can go in a list, sit in a struct field, or be read by a thread that never saw it raised. `ErrorValue.error()` is the way back: it installs the record on whatever thread calls it, so a task's error can be re-raised by the thread that collected it and every function in this package then works on it as though it had just happened.
+
+The cross thread case is the one that decides whether any of this is real, and it now has a test. The reading thread first raises an error of its own, so its slot holds something else entirely, and then reads the captured value. Routing `ErrorValue.field` through the thread's slot instead of the value makes that test fail with `left: /the wrong one`, which is the exact wrong answer it exists to rule out.
+
+`join` over captured errors keeps every field of every cause. Over live errors it cannot, because a record is written at raise time and the next raise replaces it, so all but one arrive as a message. Both halves have a test, so the code and the deviations page cannot drift apart.
+
+With that, the three ways design.md section 4 can fail silently are all covered: a foreign error mistaken for ours, an error held past the next raise, and a capture read on a thread whose own storage holds something else.
+
 ## v0.1.0 - 2026-09-03
 
 M0 is complete. The tree, the manifests, the linter, the parity tool, the test runner, the platform tables, the language probes and CI on macOS arm64, Linux x86-64 and Linux arm64. There is still no library code, and that is the point of the milestone: every check that the rest of the work depends on now exists, runs everywhere, and has been shown to fail when it should.
