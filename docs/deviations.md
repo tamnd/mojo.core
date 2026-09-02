@@ -94,6 +94,7 @@ These are deviations too, because code written against Go's semantics may not po
 | A split function returning a token that is not inside the data it was given cannot be checked, because the token is a slice and is inside by construction | The token is a pair of indices the split function chose, so the range is bounds checked and an off by one raises rather than handing out neighbouring bytes |
 | `ErrFinalToken`, an error value that is not a failure and means stop after this token | `Split.last` and `Split.stop_here`, which are data. The error channel only ever carries failures. |
 | `bufio` panics in three places: `Split` after scanning, `Buffer` after scanning, and a split function returning tokens without advancing | All three raise. The last one is `ErrNoProgress` after the same hundred empty tokens Go counts. |
+| Each of Go's map iterators randomises separately, so a caller wanting parallel key and value lists has to go through `All` and unpack the pairs | `keys` and `values` walk the dict the same way when nothing has changed in between, so `keys(d)[i]` and `values(d)[i]` are one entry. Which order it is stays unpromised, as in Go. |
 | `slices.Chunk` clips the capacity of every chunk it yields, so that appending to one cannot overwrite the start of the next | A chunk is a `Span`, which has no capacity and cannot be appended to, so the hazard the clip exists to prevent has nowhere to happen |
 | `utf8.ValidString` is the check you run before trusting a `string`, since a Go `string` is arbitrary bytes | A `String` is validated when it is built, so this answers `True` unless somebody went through the `unsafe_` constructor. The function stays precisely so that assertion has somewhere to be audited. |
 
@@ -134,7 +135,8 @@ Things a Go programmer will look for and not find. This is separate from the 41 
 | --- | --- |
 | `strings.Title` | Deprecated in Go itself. Use the case mapping with a Unicode aware word breaker. |
 | A single `len` for a string | `count_bytes`, `count_runes` and `count_graphemes`. Mojo makes `len(s)` a compile error and it is right to. |
-| `maps.Keys` returning an iterator | `keys()` returning a list, and `keys_into(out)`. Go's iterators are closures. |
+| `maps.Keys`, `Values` and `All` returning an iterator | `keys()`, `values()` and `all()` returning a list, each with an `_into(out)` sibling. Go's iterators are closures, and a `Dict` already has iterators of its own, so a function handing one back would be a second name for something that exists. |
+| `maps.Insert(m, seq)` and `Collect(seq)` taking an `iter.Seq2[K, V]` | Both take a `Span[Tuple[K, V]]`. The natural translation is a `Cursor` of pairs, and it cannot be written: `where C.Element == Tuple[K, V]` is checked at the call site and leaves the type opaque in the body, so a dict cannot get the key and the value out separately. Drain a fallible source with `slices.collect` first. |
 | Go's iterator function types generally | Traits for iterable and fallible iterable. |
 | Backreferences and lookaround in regexp | Linear time matching, as in Go. Not a deviation from Go, listed because it is the first thing people ask. |
 | Encrypted zip entries | Not supported, matching Go. The old scheme is broken and the new one is not interoperably standardised. |

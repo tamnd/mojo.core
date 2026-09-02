@@ -6,12 +6,13 @@
 # loop silently drops an error raised out of `__next__`, so this iterator
 # reports a clean end of input and the caller carries on with half the data.
 #
-# It is a third fixture because of what it raises. The check exempts
+# It is a third fixture because of how the raise is spelled. The check exempts
 # `raises StopIteration`, because that is not an error and is the signature
-# Mojo's `Iterator` trait requires. This one names a real error type as well,
-# which is exactly the shape a too-generous exemption would wave through: end
-# of input and a read failure arriving by the same route, and the loop unable
-# to tell them apart. Do not simplify this to a bare `raises`, because then
+# Mojo's `Iterator` trait requires. This one names a type too, and a different
+# one, which is exactly what a lazier exemption would wave through: a check
+# that stopped at the word `raises` and accepted anything typed after it would
+# accept a read failure arriving by the route the loop uses to learn that the
+# data ended. Do not rewrite this as a bare `raises`, because then
 # `fallible_next.mojo` already covers it and this file proves nothing.
 
 
@@ -21,10 +22,8 @@ struct Records:
     def __iter__(self) -> Self:
         return self
 
-    def __next__(mut self) raises StopIteration | Error -> String:
-        if self.remaining == 0:
-            raise StopIteration()
-        if self.remaining < 0:
+    def __next__(mut self) raises Error -> String:
+        if self.remaining <= 0:
             raise Error("read failed")
         self.remaining -= 1
         return String("record")

@@ -23,7 +23,7 @@ from core.slices import (
     values,
 )
 
-from _fixtures import Ints, counted
+from tests.slices._fixtures import Ints, counted
 
 
 def _by_value(a: Int, b: Int) -> Int:

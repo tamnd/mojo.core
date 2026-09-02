@@ -25,7 +25,7 @@ from core.slices import (
     min_func,
 )
 
-from _fixtures import nan
+from tests.slices._fixtures import nan
 
 
 def test_equal_on_the_same_contents() raises:

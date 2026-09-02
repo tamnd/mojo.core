@@ -1,9 +1,13 @@
 [package]
 name = "core.maps"
 go = "maps"
-verdict = "Wrap"
-tier = 1
+# Not a Wrap. `std` has `Dict` and nothing over it, so every symbol here is
+# written out. Adapt rather than Port because two shapes change: Go's three
+# producers return an `iter.Seq`, which is a closure and cannot be stored, and
+# Go's two consumers take one, which cannot be spelled as a `Cursor` because an
+# associated element type cannot be taken apart into a key and a value.
+# `probes/pair_cursor.mojo` pins the second and deviations.md has both rows.
+verdict = "Adapt"
+tier = 0
 unsafe = false
-deps = [
-  "core.cmp",
-]
+deps = []
