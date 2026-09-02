@@ -28,7 +28,7 @@ Everything else depends on these, and they are the first three milestones.
 | `bytes` | 101 | `core.bytes` | Port | `Buffer` and `Reader` plus the search functions. |
 | `strings` | 83 | `core.strings` | Port | `Builder`, `Reader`, and the same function set over text. [design](design.md). |
 | `strconv` | 46 | `core.strconv` | Port | Ryū for float formatting, Eisel-Lemire for parsing. Correctly-rounded both ways. |
-| `unicode` | 328 | `core.unicode` | Port | Tables generated from the Unicode database by `tools/gen_unicode.py`, checked in and re-verified in CI. |
+| `unicode` | 328 | `core.unicode` | Port | Tables generated from the Unicode database by `tools/gen/unicode.py`, checked in and re-verified in CI. |
 | `unicode/utf8` | 23 | `core.unicode.utf8` | Port | Operates on `Span[UInt8]`, not `String`, because the input is often invalid. |
 | `unicode/utf16` | 7 | `core.unicode.utf16` | Port | |
 | `cmp` | 4 | `core.cmp` | Adapt | Go's `cmp.Ordered` is a type constraint; Mojo's is a trait, which is a better fit. |
