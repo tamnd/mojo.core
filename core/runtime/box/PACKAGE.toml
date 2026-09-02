@@ -1,0 +1,10 @@
+[package]
+name = "core.runtime.box"
+go = "none"
+verdict = "New"
+tier = 0
+# Raw pointers, posix_memalign and reinterpretation. An erased heap box cannot
+# be written any other way, and this package exists so that the permission
+# covers forty lines here rather than every line of core.io. See issue #11.
+unsafe = true
+deps = []

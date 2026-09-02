@@ -52,6 +52,12 @@ test = "python tools/mojotest/run.py"
 # nothing else here would notice, so the runner is checked against fixtures
 # that are supposed to fail.
 test-selftest = "python tools/mojotest/run.py --selftest"
+# The same suite under the thread sanitiser. Refcounts and locks are the two
+# things here whose bugs do not show up as a failing assertion, so a green run
+# of `pixi run test` is not evidence about either of them. The sanitiser prints
+# and leaves the exit code alone, and the runner is what promotes a report to a
+# failure.
+race = "python tools/mojotest/run.py --race"
 
 # Build a single package against only what its PACKAGE.toml declares, so that
 # the dependency graph is tested rather than assumed. Takes a package name:

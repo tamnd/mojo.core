@@ -71,6 +71,7 @@ Nothing here is present because it seemed nice. Each one is either forced by an 
 | `core.unicode.norm`, the four normalisation forms | In Go's extended text repository rather than its standard library. A library that cannot tell you two spellings of the same string are equal is unfinished. |
 | `core.sync.chan` as a package | Go spells channels in the language. Mojo has no channel, select or go keyword. |
 | `core.runtime.sched` as a package | Go's scheduler is its runtime. Ours is a library. |
+| `core.runtime.box` as a package | Go's interface value is a type pointer and a data pointer allocated by its runtime. Mojo has no interface value at all, so the box is a library type and the vtable is written by hand. |
 | `errors.capture` and `ErrorValue` | Go's errors are values with the lifetime of whoever holds them. Ours need an explicit capture to outlive the raise, to be stored, or to cross a thread. |
 | `errors.partial` | Recovers the count from Go's count and error pair, which a raise would otherwise drop. |
 | `errors.wrap` | Go spells wrapping as a `%w` verb inside `fmt.Errorf`, which needs a runtime format string. This is the operation on its own. |

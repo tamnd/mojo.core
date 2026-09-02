@@ -10,6 +10,8 @@ A trait is a compile time constraint, not a value. `List[Reader]` does not exist
 
 Anywhere Go stores a heterogeneous collection behind an interface, this library builds an erased struct by hand: a type erased box holding the value, plus a table of thin function pointers, plus capability bits for the operations Go would have discovered with a type assertion. `io.Reader`, `io.Writer`, the nine `database/sql` driver interfaces and `net.Conn` are all built this way.
 
+The box is `core.runtime.box`, a package of its own rather than forty lines inside `core.io`. It is the only thing in the erasure design that needs raw pointers, so giving it its own package confines that permission to it and leaves `core.io` safe, and it means anything wanting a heterogeneous collection does not have to depend on `core.io` to get one. It holds the value on the heap behind an atomic refcount, with the destructor kept as a thin function pointer captured at construction, which is the only thing left that remembers what the type was. Reading it back is a `ref` and not a pointer, so a caller does not have to declare itself unsafe to use one. Nothing checks that the type asked for is the type that went in, because section 8 says there is no reflection to check it with; what makes that safe is that the box and the vtable that reads it are always built by the same constructor.
+
 The static path is kept alongside it. A function that knows its reader's concrete type takes a trait bound and gets a direct call, and only code that genuinely does not know the type pays for the indirection.
 
 ## 2. `raises` survives a function pointer
