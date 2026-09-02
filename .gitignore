@@ -24,6 +24,10 @@ tools/differ/oracle/
 .DS_Store
 *.log
 .env
+# The names of the private machines the longer suites run on. The linter reads
+# its needles from here so that this repository never contains the strings it
+# is searching for.
+.fleet.env
 .venv/
 __pycache__/
 *.pyc

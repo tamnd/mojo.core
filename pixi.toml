@@ -27,6 +27,7 @@ channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
 
 [feature.nightly.dependencies]
 mojo = "*"
+python = ">=3.12"
 
 # Go is the oracle for the differential suite and the source for the harvested
 # test tables. It is never needed to build or test this library, only to check
@@ -73,7 +74,14 @@ parity = "python tools/parity/run.py"
 # checked in as well as generated. This rebuilds them and fails on a diff, which
 # is the single most valuable check in the list, because generated code drifting
 # from its source surfaces months later somewhere unrelated.
+gen = "python tools/gen/run.py"
 generated-check = "python tools/gen/run.py --check"
+
+# The language assumptions this library is built on, each a small program plus
+# a statement of what is supposed to happen to it. Run in the nightly job
+# separately from the suite, so a failure names the assumption that moved
+# rather than showing up as a hundred broken tests.
+probe = "python tools/probe/run.py"
 
 # Vendored test corpora are checked against the digests in
 # tests/data/LOCK.toml. Fetching is a separate deliberate step.
