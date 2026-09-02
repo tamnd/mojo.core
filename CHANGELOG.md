@@ -4,6 +4,8 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 ## Unreleased
 
+A correction to design.md section 5, and a probe so it stays corrected. The section said a struct field cannot carry an unbound origin, and left the reader to conclude that the erased box stores an integer because nothing else was available. That conclusion is wrong: `AnyOrigin` in a field is rejected, but `Pointer[T, UntrackedOrigin[mut=True]]` in a field is accepted and erases just as thoroughly. There are now two probes, one on each side of that line. The integer is a choice, and the reason is that the box has forgotten its pointee type as well as its origin, so a pointer field would have to name a placeholder `T` and reinterpret at every use.
+
 The bottom of the erasure design: `core.runtime.box`, a refcounted heap box holding a value whose type has been forgotten. `io.Reader`, `io.Writer`, `net.Conn`, the nine `database/sql` driver interfaces and every value in a JSON document sit on this, because Mojo has no trait objects and each of those has to be built by hand out of a box and a table of function pointers.
 
 It is its own package rather than forty lines inside `core.io`, which is the decision worth explaining. All four of the consumers already depend on `core.io`, so that would have cost nothing in dependency edges. It was rejected because `core.io` would have to declare `unsafe = true`, and that permission then covers every line of the reader, the writer and `copy` rather than the forty that need it, and because erasure is not an IO idea: anything that ever wants a heterogeneous collection would have to depend on `core.io` to get one. That makes 138 packages and 17 unsafe, with `core.io` still safe, which was the point.

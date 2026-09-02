@@ -48,7 +48,9 @@ The record needs somewhere to live that is per thread and outlives the call that
 
 No recursive types. The JSON document, the regexp abstract syntax tree, the template parse trees and the linked list are all arenas of nodes addressed by integer index, with generation counters on the handles so that a stale handle raises instead of reading somebody else's node.
 
-A struct field also cannot carry `AnyOrigin`, which is why the type erased box stores its address as an integer.
+A struct field also cannot carry `AnyOrigin`. It is worth being exact about how far that goes, because the obvious conclusion from it is wrong: a field *can* hold `Pointer[T, UntrackedOrigin[mut=True]]`, and that erases just as thoroughly. Two probes pin the pair, one on each side. So the type erased box stores an integer by choice rather than by force, and the choice is that the box has forgotten its pointee type as well as its origin. A pointer field would have to name some placeholder `T` and reinterpret at every use, which is a second erasure to explain on top of the one that is actually happening. An integer has no pointee type to lie about, and `Pointer[T, AnyOrigin[mut=True]](unsafe_from_address=...)` reconstitutes it at the one place that knows the real `T`.
+
+The same reasoning does not reach the vtable slots in `core.io`, which are function pointers rather than data pointers, and those have no origin to launder in the first place.
 
 ## 6. Pointers are non-nullable and carry an origin
 
