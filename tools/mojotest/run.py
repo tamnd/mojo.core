@@ -1,14 +1,37 @@
 #!/usr/bin/env python3
 """Run the test suite.
 
-The whole suite is one binary. The runner generates a main that calls every
-test function it found, builds it once and runs it, so the build time tracks
-the size of the library rather than the number of tests. A library heading for
-tens of thousands of test cases cannot afford a process per case.
+The whole suite is one binary. The runner finds every test function, generates
+a main that calls all of them, builds it once and runs it, so the build time
+tracks the size of the library rather than the number of tests. A library
+heading for tens of thousands of test cases cannot afford a process per case.
 
-Takes an optional package name to run one package: `pixi run test core.json`.
-Pass --short to skip the tests that take minutes, which is what a local run
-wants and what CI does not do.
+That has a limit and we will hit it. When the suite takes longer to link than
+to run, the answer is to split by package rather than to keep raising the
+timeout.
+
+A test is a `def test_something() raises:` in a `test_*.mojo` file under tests/.
+The `raises` is required and the runner says so when it is missing, because a
+test that cannot raise cannot fail an assertion and will pass forever.
+
+Assertions come from `std.testing`, which already reports the file, the line
+and both values. The runner's job is to catch that, say which test it came out
+of, and make the paths relative so they are clickable.
+
+  test: 1 of 12 tests failed
+  FAIL tests/strings/test_index.test_index_finds
+       tests/strings/test_index.mojo:4:17: AssertionError: `left == right`
+       comparison failed:
+          left: 4
+         right: 5
+
+Takes a package to run one package, `pixi run test core.strings`, and fails
+rather than passing quietly when the name matches nothing. A filter that
+silently matches no tests is how a suite stops running without anybody noticing.
+
+Pass --short to skip the cases marked slow, which is what a local run wants and
+what CI does not do. A case is marked by a `# slow: why` comment on the line
+above it, so the decision lives in the test rather than in a list here.
 """
 
 from __future__ import annotations
@@ -19,6 +42,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -26,81 +50,268 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.tree import ROOT, report
 
 TESTS = ROOT / "tests"
+MAIN = TESTS / "_generated_main.mojo"
+
+# tests/lint holds files that are supposed to fail the linter and tests/mojotest
+# holds files that are supposed to fail this. Neither belongs in the suite.
+FIXTURES = TESTS / "mojotest"
+EXCLUDED = (TESTS / "lint", FIXTURES)
 
 # Go's convention, kept, because a reader coming from Go already knows it and
 # because the harvested tests arrive with these names.
-TEST_FN = re.compile(r"^\s*def\s+(test_[a-z_0-9]+)\s*\(\s*\)", re.M)
+TEST_FN = re.compile(r"^def\s+(test_[a-z_0-9]*)\s*\(\s*\)(\s+raises)?\s*:")
+SLOW = re.compile(r"^#\s*slow:\s*(\S.*)$")
 
 
-def cases(package: str | None) -> list[tuple[Path, str]]:
-    """Every test function in the tree, as a file and a name."""
-    if not TESTS.is_dir():
-        return []
-    found = []
-    for path in sorted(TESTS.rglob("test_*.mojo")):
-        if package and package.replace("core.", "").replace(".", "/") not in str(path):
+@dataclass
+class Case:
+    """One test function, and where it came from."""
+
+    path: Path
+    name: str
+    slow: str = ""
+
+    @property
+    def module(self) -> str:
+        """The dotted module path `mojo build -I ROOT` resolves."""
+        return str(self.path.relative_to(ROOT).with_suffix("")).replace("/", ".")
+
+    @property
+    def label(self) -> str:
+        return f"{self.module}.{self.name}"
+
+
+def scan(path: Path) -> tuple[list[Case], list[str]]:
+    """Every test in one file, and anything wrong with how it is declared.
+
+    Line by line rather than one regular expression over the whole file,
+    because a slow marker is a comment on the line above the test it marks and
+    that relationship is the thing being read.
+    """
+    found: list[Case] = []
+    problems: list[str] = []
+    marker = ""
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        slow = SLOW.match(line)
+        if slow:
+            marker = slow.group(1).strip()
             continue
-        for name in TEST_FN.findall(path.read_text()):
-            found.append((path, name))
-    return found
+        match = TEST_FN.match(line)
+        if match:
+            where = f"{path.relative_to(ROOT)}:{number}"
+            if not match.group(2):
+                problems.append(
+                    f"{where} declares {match.group(1)} without `raises`, so no assertion "
+                    "in it can fail. Add `raises` to the signature"
+                )
+            found.append(Case(path, match.group(1), marker))
+        if line.strip() and not line.lstrip().startswith("#"):
+            # A marker only reaches past blank lines and other comments, so a
+            # stray one at the top of a file does not silently mark whatever
+            # test happens to come first.
+            marker = ""
+    return found, problems
 
 
-def write_main(found: list[tuple[Path, str]], target: Path, short: bool) -> None:
-    """Generate the one main that calls all of them."""
-    lines = ["# Generated by tools/mojotest/run.py. Do not edit.", ""]
-    modules = sorted({path.relative_to(ROOT).with_suffix("") for path, _ in found})
-    for module in modules:
-        lines.append(f"import {str(module).replace('/', '.')}")
-    lines.append("")
-    lines.append("def main():")
-    lines.append(f"    var short = {'True' if short else 'False'}")
-    lines.append("    var failed = 0")
-    for path, name in found:
-        module = str(path.relative_to(ROOT).with_suffix("")).replace("/", ".")
-        lines.append("    try:")
-        lines.append(f"        {module}.{name}()")
-        lines.append("    except e:")
-        lines.append("        failed += 1")
-        lines.append(f'        print("FAIL {module}.{name}:", e)')
-    lines.append(f"    print(\"ran {len(found)} tests,\", failed, \"failed\")")
-    lines.append("    if failed:")
-    lines.append("        raise Error('test suite failed')")
-    lines.append("")
+def discover(where: Path, only: str | None) -> tuple[list[Case], list[str]]:
+    """Every test under a directory, filtered to one package if asked."""
+    if not where.is_dir():
+        return [], []
+    wanted = None
+    if only:
+        # `core.strings` is tests/strings, because the tests mirror the tree
+        # they test. A bare path works too, for a directory that is not a
+        # package yet.
+        wanted = TESTS / only.removeprefix("core.").replace(".", "/")
+
+    found: list[Case] = []
+    problems: list[str] = []
+    for path in sorted(where.rglob("test_*.mojo")):
+        if where == TESTS and any(skip in path.parents for skip in EXCLUDED):
+            continue
+        if wanted and wanted != path.parent and wanted not in path.parents:
+            continue
+        cases, said = scan(path)
+        found.extend(cases)
+        problems.extend(said)
+    return found, problems
+
+
+def write_main(found: list[Case], target: Path) -> None:
+    """Generate the one main that calls all of them.
+
+    Every call is its own try, so one failing test does not stop the rest.
+    That is the whole reason this is generated rather than written: the shape
+    is identical every time and there will eventually be thousands of them.
+    """
+    lines = [
+        "# Generated by tools/mojotest/run.py. Do not edit, and do not commit.",
+        "",
+        "from std.sys import exit",
+        "",
+    ]
+    for module in sorted({case.module for case in found}):
+        lines.append(f"import {module}")
+    lines += ["", "", "def main():", "    var failed = 0"]
+    for case in found:
+        lines += [
+            "    try:",
+            f"        {case.module}.{case.name}()",
+            "    except e:",
+            "        failed += 1",
+            f'        print("FAIL {case.label}")',
+            '        print("    ", e)',
+        ]
+    lines += [
+        f'    print("ran", {len(found)}, "tests,", failed, "failed")',
+        "    if failed:",
+        # exit rather than raise, so a failing suite reports a count and not an
+        # unhandled exception on top of the failures it just printed.
+        "        exit(1)",
+        "",
+    ]
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines))
+
+
+def ignored(path: Path) -> bool:
+    """Whether git is set up to never commit the generated main.
+
+    Checked rather than assumed. The .gitignore entry is one line away from
+    being deleted by somebody tidying up, and a generated file appearing in a
+    commit is the kind of thing that is noticed a month later.
+    """
+    if not shutil.which("git"):
+        return True
+    out = subprocess.run(
+        ["git", "check-ignore", "-q", str(path)], cwd=ROOT, capture_output=True
+    )
+    return out.returncode == 0
+
+
+def build_and_run(scratch: Path, quiet: bool) -> tuple[int, str]:
+    """Build the suite, run it, and give back its exit code and output.
+
+    Streamed rather than captured and printed at the end, so a suite that takes
+    a while says what it is doing. Paths are made relative on the way past,
+    because Mojo reports the absolute one and nothing in a terminal can be
+    clicked when it is prefixed by somebody's home directory.
+
+    Quiet is for the selftest, whose fixtures are supposed to fail. Printing
+    that failure would put the word FAIL in the log of a build that passed,
+    and a log nobody can read for real failures is a log nobody reads.
+    """
+    binary = scratch / "suite"
+    built = subprocess.run(
+        ["mojo", "build", "-I", str(ROOT), "-o", str(binary), str(MAIN)],
+        capture_output=True,
+        text=True,
+    )
+    if built.returncode != 0:
+        if not quiet:
+            sys.stderr.write((built.stdout + built.stderr).replace(f"{ROOT}/", ""))
+        return built.returncode, ""
+
+    collected = []
+    process = subprocess.Popen(
+        [str(binary)], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+    assert process.stdout is not None
+    for line in process.stdout:
+        line = line.replace(f"{ROOT}/", "")
+        collected.append(line)
+        if not quiet:
+            sys.stdout.write(line)
+    return process.wait(), "".join(collected)
+
+
+def suite(
+    where: Path, only: str | None, short: bool, quiet: bool = False
+) -> tuple[int, int, str, list[str]]:
+    """Find, build and run. Returns cases run, skipped, output and problems."""
+    found, problems = discover(where, only)
+    if problems:
+        return 0, 0, "", problems
+    if only and not found:
+        return 0, 0, "", [f"no tests match {only}, so nothing ran"]
+
+    skipped = [case for case in found if short and case.slow]
+    for case in skipped:
+        if not quiet:
+            print(f"test: skipping {case.label}, {case.slow}")
+    found = [case for case in found if case not in skipped]
+    if not found:
+        return 0, len(skipped), "", []
+
+    if not shutil.which("mojo"):
+        return 0, 0, "", ["mojo is not on PATH, so nothing can be built"]
+
+    write_main(found, MAIN)
+    if not ignored(MAIN):
+        return 0, 0, "", [f"{MAIN.relative_to(ROOT)} is not ignored by git, fix .gitignore"]
+
+    with tempfile.TemporaryDirectory() as scratch:
+        code, output = build_and_run(Path(scratch), quiet)
+    if code != 0 and not output:
+        return len(found), len(skipped), output, ["the suite did not build"]
+    if code != 0:
+        return len(found), len(skipped), output, ["the suite reported failures"]
+    return len(found), len(skipped), output, []
+
+
+def selftest() -> int:
+    """Prove the runner reports a failure, and reports it usefully.
+
+    A runner that swallows a failing test turns the whole suite into theatre
+    and nothing else in the repository would notice. So the fixtures under
+    tests/mojotest contain a test that is supposed to fail, and this asserts
+    that it is reported, with the file, the line and both values, and that the
+    slow one is skipped under --short.
+    """
+    problems = []
+
+    ran, skipped, output, said = suite(FIXTURES, None, short=False, quiet=True)
+    if said != ["the suite reported failures"]:
+        problems.append(f"the fixtures should have failed, instead got {said or 'a pass'}")
+    for needle in (
+        "FAIL tests.mojotest.test_failing.test_two_and_two",
+        "tests/mojotest/test_failing.mojo:",
+        "left: 4",
+        "right: 5",
+    ):
+        if needle not in output:
+            problems.append(f"a failure should report {needle!r}, and this one did not")
+    if skipped:
+        problems.append(f"a full run should skip nothing, and this one skipped {skipped}")
+
+    short_ran, short_skipped, _, _ = suite(FIXTURES, None, short=True, quiet=True)
+    if short_skipped != 1:
+        problems.append(f"--short should skip the one slow fixture, and it skipped {short_skipped}")
+    if short_ran != ran - 1:
+        problems.append(f"--short should run {ran - 1} of the fixtures, and it ran {short_ran}")
+
+    return report("test-selftest", 2, "runs of the fixtures", problems)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("package", nargs="?", help="run one package")
-    parser.add_argument("--short", action="store_true", help="skip the slow cases")
+    parser.add_argument("package", nargs="?", help="run one package: `pixi run test core.strings`")
+    parser.add_argument("--short", action="store_true", help="skip the cases marked slow")
+    parser.add_argument(
+        "--selftest", action="store_true", help="check that the runner reports a failure"
+    )
     args = parser.parse_args()
 
-    found = cases(args.package)
-    if not found:
-        where = args.package or "the tree"
-        print(f"test: no tests in {where} yet")
+    if args.selftest:
+        return selftest()
+
+    ran, skipped, _, problems = suite(TESTS, args.package, args.short)
+    if not (ran or skipped or problems or args.package):
+        print("test: no tests in the tree yet")
         return 0
-    if not shutil.which("mojo"):
-        print("test: mojo is not on PATH", file=sys.stderr)
-        return 1
-
-    with tempfile.TemporaryDirectory() as scratch:
-        entry = Path(scratch) / "suite.mojo"
-        binary = Path(scratch) / "suite"
-        write_main(found, entry, args.short)
-        built = subprocess.run(
-            ["mojo", "build", "-I", str(ROOT), "-o", str(binary), str(entry)],
-            capture_output=True,
-            text=True,
-        )
-        if built.returncode != 0:
-            print(built.stdout + built.stderr, file=sys.stderr)
-            return report("test", len(found), "tests", ["the suite did not build"])
-        ran = subprocess.run([str(binary)], cwd=ROOT)
-
-    if ran.returncode != 0:
-        return report("test", len(found), "tests", ["the suite reported failures"])
-    return report("test", len(found), "tests", [])
+    if skipped:
+        print(f"test: {skipped} slow case(s) skipped, run without --short for all of them")
+    return report("test", ran, "tests", problems)
 
 
 if __name__ == "__main__":

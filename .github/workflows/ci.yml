@@ -144,6 +144,8 @@ jobs:
       - run: pixi run baseline
       # The probes run before the suite and on every platform. Before, because a probe failing names the language assumption that moved and a suite failing only says that something did. On every platform, because the pthread and atomic probes are foreign calls into whatever libc is on the machine, and arm64 is the only runner where a missing barrier would show up at all.
       - run: pixi run probe
+      # Before the suite, because a runner that swallows a failing test looks exactly like a suite with nothing wrong in it, and every platform, because the runner builds and runs a binary and that is the part that differs per platform.
+      - run: pixi run test-selftest
       - run: pixi run test
 
   dependency-review:

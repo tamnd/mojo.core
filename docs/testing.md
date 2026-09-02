@@ -1,6 +1,6 @@
 # Testing
 
-The problem this document solves is not how to write tests. It is that 11,598 symbols cannot be tested by writing tests for them one at a time. At a generous ten symbols a day that is five person years, and the result would be worse than what Go already has, because Go's tests encode two decades of bugs found in production.
+The problem this document solves is not how to write tests. It is that 8,900 symbols cannot be tested by writing tests for them one at a time. At a generous ten symbols a day that is nearly four person years, and the result would be worse than what Go already has, because Go's tests encode two decades of bugs found in production.
 
 So the strategy is to take Go's tests rather than write our own, and to spend the effort saved on the things Go's tests cannot check.
 
@@ -83,6 +83,29 @@ Correctness on one machine is not correctness, and three specific things need mo
 
 CI covers macOS arm64, Linux x86-64 and Linux arm64. The longer suites run on a small set of private machines that are not described here, through a runner that reads its targets from an environment file that is not checked in. The linter greps the tree for those names as a committed secret check.
 
+## The runner
+
+`pixi run test` finds every `def test_something() raises:` in a `test_*.mojo` file under `tests/`, generates one main that calls all of them, builds it once and runs it. One binary rather than one per test, because the build time then tracks the size of the library rather than the number of tests.
+
+The `raises` is required and the runner says so when it is missing. A test that cannot raise cannot fail an assertion, so it passes forever and looks like coverage.
+
+Assertions come from `std.testing`, which already reports the file, the line and both values. The runner catches the error, says which test it came out of, and rewrites the absolute path to a relative one so it can be clicked.
+
+```
+FAIL tests.strings.test_index.test_index_finds
+     tests/strings/test_index.mojo:4:17: AssertionError: `left == right` comparison failed:
+   left: 4
+  right: 5
+```
+
+`pixi run test core.strings` runs one package. It fails rather than passing quietly when the name matches nothing, because a filter that silently matches no tests is how a suite stops running without anybody noticing.
+
+`--short` skips the cases marked slow, which is what a local run wants and what CI does not do. A case is marked by a `# slow: why` comment on the line above it, so the decision lives with the person who wrote the five minute test rather than in a list somewhere else that goes stale.
+
+The generated main is written to `tests/_generated_main.mojo` and is gitignored. The runner asks git whether it really is ignored and refuses to build if not, because that `.gitignore` line is one tidy up away from being deleted and generated code appearing in a commit is noticed a month later.
+
+`pixi run test-selftest` runs the runner against fixtures under `tests/mojotest` that are supposed to fail, and checks that the failure is reported at all and that it arrives with the file, the line and both values. A runner that swallows a failing test turns the whole suite into theatre, and nothing else in the repository would notice.
+
 ## core.testing
 
 Wraps Mojo's `std.testing`, which has assertions and little else, and adds what Go has. Subtests, benchmark iteration and allocation reporting, fuzz targets, a test main, golden files with an update flag, and a short mode, so that the five minute exhaustive float round trip is skipped locally and run in CI.
@@ -93,7 +116,8 @@ The helper packages earn their place. `iotest` supplies the half reader, the one
 
 ```
 pixi run check   ->  format-check  lint  lint-selftest  vendor-check
-                     generated-check  baseline  parity  warnings  test
+                     generated-check  baseline  parity  warnings  probe
+                     test-selftest  test
 ```
 
 on macOS arm64, Linux x86-64 and Linux arm64, on every commit. The generated code check rebuilds the Unicode tables, the time zone data, the syscall bindings and every codec and fails on a diff. It is the single most valuable check in the list, because generated code drifting from its source is a bug that surfaces months later somewhere unrelated.
