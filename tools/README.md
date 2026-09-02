@@ -6,7 +6,7 @@ Each directory is one job and each entry point prints what it checked even when 
 
 | Directory | Task | What it is for |
 | --- | --- | --- |
-| `lib` | | The shared model of the tree. Packages, sources, and the reporting shape the others use. |
+| `lib` | | The shared model of the tree. Packages, sources, and the reporting shape the others use. `native.py` is the two places a C compiler is needed: the baseline probe, and the thread local slot `core.errors` links. |
 | `fmt` | `format-check` | Formats a copy and compares, because `mojo format` has no check mode. |
 | `lint` | `lint`, `lint-selftest` | The package graph, layering, unsafe operations, the iteration rule, `must_` calls, marked compile time diagnostics, and the committed secret check. |
 | `parity` | `parity` | How much of Go's exported surface exists here, read from Go's own API manifests. `goapi.txt` is the condensed index, `rules.py` turns a Go name into the Mojo one, and `waivers.toml` and `renames.toml` are the two escape hatches. |
@@ -16,7 +16,7 @@ Each directory is one job and each entry point prints what it checked even when 
 | `baseline` | `baseline` | Struct sizes and offsets, open flags, errno values and signal numbers, asked of the platform's own headers and compared to the tables in `core/syscall/baseline`. |
 | `gen` | `gen`, `generated-check` | The code generators. Output is checked in and regenerated in CI, which fails on a diff. |
 | `vendor` | `vendor-check` | The vendored corpora against their recorded digests and licences. |
-| `probe` | `probe` | The ten language assumptions in `docs/design.md`, one Mojo file each under `probes/` with a header saying what is supposed to happen to it. |
+| `probe` | `probe` | The language assumptions in `docs/design.md`, one Mojo file each under `probes/` with a header naming the section it pins and saying what is supposed to happen to it. |
 | `differ` | `differ` | This library and an oracle against the same input, compared byte for byte. |
 | `fuzz` | `fuzz` | Every parser that reads bytes it did not produce. |
 | `testgen` | `testgen` | Converts Go's table driven tests into Mojo test data. Runs offline, output is checked in. |

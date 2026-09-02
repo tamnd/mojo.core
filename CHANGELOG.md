@@ -8,11 +8,25 @@ Two language probes and the design facts they pin, ahead of `core.errors` in M1.
 
 Mojo has no global mutable state. A module level `var` is refused outright and the message tells you to move it into a function or make it a `comptime` constant, so there is nowhere in the language to put a package level counter, cache, registry or default. Go's standard library has one in a dozen places. [docs/design.md](docs/design.md) now records that, and that every one of those becomes a value the caller owns and passes.
 
-The one exception is the thread local error record in section 4, which has to outlive the call that wrote it and cannot be passed. It gets its slot from a `_Thread_local void *` in a small C object that `core.errors` links. The cost is stated in the design rather than discovered later: `core.errors` is tier one, so every binary built on this library links a platform specific object file. The alternative was threading an explicit context through every fallible call in the library, which puts the error mechanism in the signature of every function in it.
+The one exception is the thread local error record in section 4, which has to outlive the call that wrote it and cannot be passed. It gets its slot from a small C object that `core.errors` links, described below. The cost is stated in the design rather than discovered later, and the alternative it was weighed against was threading an explicit context through every fallible call in the library, which puts the error mechanism in the signature of every function in it.
 
 `tools/probe/probes/thread_local.mojo` pins that pthread's per thread storage really is per thread. Four threads each claim a slot, hand its address to `pthread_setspecific`, wait at a barrier until all four have written, then read the pointer back and write through it, while the main thread holds a different value in the same key across all of it. Without the barrier a shared slot would still look correct, because each thread would set and read before the next arrived. The failure this rules out is one thread reading another thread's error fields, which is a wrong answer rather than a crash.
 
 Both probes were checked against the two ways they can fail: compiling when they should not, and still being refused for a different reason than the one recorded.
+
+The first library code in the tree: the thread local error record, which is the mechanism every fallible function in this library will be written against.
+
+`Report(message).with_field("path", name).error()` writes a record into this thread's slot and hands back the `Error` to raise. `field(e, "path")`, `code(e)` and `partial(e)` read it back at the catch site, so the fields Go would have put in a struct survive a raise that carries only a string, and so does the `n` from Go's `(n, err)` that a raise would otherwise drop.
+
+A record is matched to an error by the message it was raised with and by nothing else. That is what makes the two silent failures safe. An error raised by `std`, or by anything that has never heard of this mechanism, finds a record whose message is not its own and is correctly reported as carrying nothing. An error held past the next raise on the same thread finds the newer record, sees a different message, and reports nothing rather than the newer error's fields. Both of those would otherwise run, print something plausible and be wrong, so both have a test, and both tests were watched failing with the identity check removed. Nothing is appended to the message to make this work: a message with a token in it is a message that cannot be printed, and matching on text that somebody also reads would make every wording change a breaking change to a lookup.
+
+The slot is C, in `core/errors/shim/slot.c`, and that directory's README says why at length. It is a pthread key rather than a `_Thread_local` pointer because a key has a destructor, so a thread that exits still holding a record frees it. The destructor is a Mojo function handed to the shim rather than exported for it to find, because a function only C calls is a function a dead code pass removes, and the exported version linked on Linux and not on macOS. `core.errors` therefore declares `unsafe = true`, taking the linter's count from fifteen packages to sixteen, and running the tests now needs a C compiler on the host.
+
+`core.errors` is tier zero, so every binary built on this library links that object. The cost is stated in [docs/design.md](docs/design.md) section 4 rather than left to be found in a link line, and the alternative it was weighed against, threading an explicit context through every fallible call, is recorded there too.
+
+Two more language facts, each with a probe. A struct valued field cannot be moved out of an owned `self`, which is why `errors.Report` is both the builder and the record rather than the two structs that would read better. And the pthread key destructor really does call back into Mojo on a worker thread's exit, which was proved before the record depended on it.
+
+`tools/lib/native.py` is now the one place that goes looking for a C compiler, shared by `pixi run baseline` and the test runner, and it explains why neither takes one from the lockfile.
 
 ## v0.1.0 - 2026-09-03
 

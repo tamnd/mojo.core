@@ -28,6 +28,7 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `go f(x)` capturing locals | `spawn[f](payload)`, one moved value carrying what a closure would have captured | 3 |
 | A goroutine stack that grows | A fixed stack chosen at creation, with a guard page | no compiler support for stack copying |
 | `defer mu.Unlock()` | `with mu.lock():`, released on every exit path including a raise | no `defer` |
+| A package level `var` holding a registry, a cache or a default | A value the caller owns and passes, or storage outside Mojo for the one case that cannot | no global mutable state |
 | `panic` and `recover` | `abort`, which cannot be caught. See the residue section. | no unwinding |
 | `json.Marshal(v)` for a value of unknown type | Not available. Build a document, or use a type that has a codec. | 8 |
 | `driver.Value` as `any` | A tagged union over the seven types Go's documentation allows | 1 |

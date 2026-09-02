@@ -9,7 +9,9 @@
 # linter's output rather than a thing nobody tracks.
 
 
-def read_at[o: Origin[mut=False]](base: Pointer[UInt8, o], offset: Int) -> UInt8:
+def read_at[
+    o: Origin[mut=False]
+](base: Pointer[UInt8, o], offset: Int) -> UInt8:
     return base.offset(offset)[]
 
 
