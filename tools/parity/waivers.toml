@@ -37,3 +37,20 @@
 # package that wants Go's shape supplies its own, such as `os.PathError.of(e)`.
 As = "No reflection and no error hierarchy. Use errors.field, errors.matches, or the package's own `of` helper."
 AsType = "No reflection and no error hierarchy. Use errors.field, errors.matches, or the package's own `of` helper."
+
+["iter"]
+# All four of Go's symbols here are the range over func protocol. `Seq` is
+# `func(yield func(V) bool)`, so the sequence is a closure and iterating it
+# means storing another one, and design.md section 3 says a closure that
+# captures can be passed down but not kept. `Pull` turns a `Seq` into a next
+# and stop pair, which is the shape this library uses everywhere, but it gets
+# there by taking a `Seq` and so needs the same thing.
+#
+# What replaces them is `core.iter.Cursor`, which is that next and stop pair
+# written as a trait instead of derived from a closure at run time. There is
+# no `Cursor2`, because Go needs `Seq2` only to give a range over func a second
+# yield argument and a `Cursor` whose `Element` is a tuple covers it.
+Pull = "Range over func. Needs a storable closure, section 3. Write a core.iter.Cursor."
+Pull2 = "Range over func. Needs a storable closure, section 3. Write a core.iter.Cursor."
+Seq = "Range over func. Needs a storable closure, section 3. Write a core.iter.Cursor."
+Seq2 = "Range over func. Needs a storable closure, section 3. Write a core.iter.Cursor."

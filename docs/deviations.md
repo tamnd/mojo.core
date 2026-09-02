@@ -21,7 +21,8 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `errors.Join(a, b)` keeping every error's fields | All of them over captured errors. Over live ones, every cause and every message but the fields of at most one. | 4 |
 | Recursive types for JSON, regexp, templates and lists | Arenas of nodes with integer indices and generation counters | 5 |
 | A usable zero value such as `var b bytes.Buffer` | An explicit constructor, everywhere | no zero value semantics |
-| `for rec := range reader` | An explicit `has_next` and `next` pair for all fallible iteration | 7, `for` drops the error |
+| `for rec := range reader` | The `core.iter.Cursor` trait, an explicit `has_next` and `next` pair, for all fallible iteration | 7, `for` drops the error |
+| `iter.Seq`, `iter.Seq2`, `iter.Pull` and `iter.Pull2` | Nothing. Range over func needs a storable closure, and a `Cursor` yielding a tuple covers what `Seq2` was for | 3 |
 | `json.Unmarshal(data, &v)` by reflection | A dynamic document, or a codec generated at build time | 8, no reflection |
 | A format verb mismatch reported at run time | Detected at compile time, reported as a warning, plus Go's exact runtime marker | 10, no static assert |
 | `%v` printing arbitrary struct fields | Needs `Writable` or a generated codec, otherwise a warning and Go's marker | 8 |
