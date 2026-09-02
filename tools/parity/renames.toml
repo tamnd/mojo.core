@@ -85,3 +85,22 @@ MaxRune = "MAX_RUNE"
 RuneError = "RUNE_ERROR"
 RuneSelf = "RUNE_SELF"
 UTFMax = "UTF_MAX"
+
+["cmp"]
+# `or` is a Mojo keyword. `first_non_zero(a, b)` is what `cmp.Or(a, b)` means,
+# and unlike `or_else` it keeps reading correctly at three arguments and at
+# five. Same trade as `errors.Is` becoming `matches` above.
+Or = "first_non_zero"
+
+["sort"]
+# `Len` is `__len__` so that `len(data)` works on anything sortable and there
+# is not a second spelling of the language's own question sitting next to it.
+"Interface.Len" = "Interface.__len__"
+"IntSlice.Len" = "IntSlice.__len__"
+"Float64Slice.Len" = "Float64Slice.__len__"
+"StringSlice.Len" = "StringSlice.__len__"
+# Go's `Reverse` is a function returning an `Interface` that embeds the
+# original. There is no embedding here and no interface value to return, so it
+# is a struct that points at the data, and `Reverse(view)` still reads the
+# same at the call site.
+Reverse = "Reverse"

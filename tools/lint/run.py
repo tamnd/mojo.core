@@ -25,18 +25,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.tree import ROOT, Package, mojo_sources, packages, report
 
-# Operations that only a package declaring itself unsafe may name. Raw
-# pointers, foreign calls, reinterpretation and untracked allocation are the
-# four ways a Mojo program stops being memory safe, and each of them is spelled
-# with a name you can grep for, which is the whole reason this check is cheap.
+# Operations that only a package declaring itself unsafe may name. Foreign
+# calls, reinterpretation, origin erasure and untracked allocation are the ways
+# a Mojo program stops being memory safe, and each of them is spelled with a
+# name you can grep for, which is the whole reason this check is cheap.
 #
-# Pointer and UnsafePointer are both here because Mojo 1.0 renamed the second
-# to the first and kept the old name working with a deprecation. A word
-# boundary match on Pointer does not find UnsafePointer, so dropping either one
-# would leave a hole.
+# `Pointer` used to be on this list and is not any more, and the reason is that
+# it stopped being a raw pointer. In Mojo 1.0 `UnsafePointer` is a `comptime`
+# alias for `Pointer` — one type under two names, `std/memory/unsafe_pointer.mojo`
+# says so in its first line — and that type is origin tracked and borrow checked
+# when it is built with `Pointer(to=value)`. Holding one is holding a reference,
+# which is not a thing a safe package needs permission for.
+#
+# Everything that type can do to break memory safety is named with an `unsafe_`
+# prefix and so is caught by UNSAFE_FAMILY below: `Pointer(unsafe_from_address=)`,
+# `unsafe_offset`, `unsafe_bitcast`, `unsafe_load`, `unsafe_store`, and
+# `Allocation.unsafe_ptr`, which is the only way to get a pointer to heap memory
+# in the first place. So nothing has been let through here; the check moved from
+# the name of the type to the names of the operations, which is where the
+# danger actually is. `tests/lint/unsafe_in_safe_package.mojo` is the fixture
+# that proves it still fires.
 UNSAFE_NAMES = (
-    "Pointer",
-    "UnsafePointer",
     "OpaquePointer",
     "external_call",
     "stack_allocation",
@@ -46,15 +55,16 @@ UNSAFE_NAMES = (
 # Everything the standard library spells with an `unsafe_` prefix, matched as a
 # family rather than named one at a time. There are fifty odd of them today and
 # the set grows with the language, so a hand written list is a list that is
-# quietly out of date, and the two that used to be on the list above by name are
+# quietly out of date, and the names that used to be on the list above are
 # covered here instead.
 #
-# This is also the only thing that catches an unsafe operation reached through a
-# safe type. `Span.unsafe_ptr` hands out a raw pointer and
-# `as_unsafe_any_origin` forgets which region that pointer came from, and
-# neither of them contains the word Pointer for the list above to find. Between
-# them they are the whole erasure trick core.runtime.box is built out of, so
-# without this a package could do that trick itself and still call itself safe.
+# This is the only thing that catches an unsafe operation reached through a safe
+# type, and since `Pointer` came off the list above it is now the whole of the
+# pointer check as well. `Span.unsafe_ptr` hands out a pointer to memory the
+# span does not own and `as_unsafe_any_origin` forgets which region that pointer
+# came from. Between them they are the erasure trick core.runtime.box is built
+# out of, so without this a package could do that trick itself and still call
+# itself safe.
 UNSAFE_FAMILY = re.compile(r"\b(?:as_)?unsafe_[a-z_0-9]+\b")
 
 # The machines the longer suites run on are private. Their names live in an
@@ -78,8 +88,17 @@ IMPORT = re.compile(r"^\s*(?:from|import)\s+(core(?:\.[a-z_0-9]+)*)", re.M)
 # and the older pattern required the parenthesis straight after the name. That
 # spelling is not exotic, it is what an iterator borrowing its input looks
 # like, and it went through unnoticed.
+# `raises StopIteration` and nothing else is exempt. That is not a loophole,
+# it is the signature Mojo's own `Iterator` trait declares: end of input is
+# spelled as a raise of that one type, and a `for` loop does not swallow it, it
+# is how the loop knows to stop. Anything else after `raises`, including a bare
+# `raises`, is an error the loop would drop on the floor. The lookahead insists
+# `StopIteration` is the whole of the raise specification, so a union that
+# smuggles a real error alongside it is still caught.
 FALLIBLE_NEXT = re.compile(
-    r"^\s*def\s+__next__\s*(?:\[[^\]]*\])?\s*\([^)]*\)[^:]*\braises\b", re.M
+    r"^\s*def\s+__next__\s*(?:\[[^\]]*\])?\s*\([^)]*\)[^:]*"
+    r"\braises\b(?!\s+StopIteration\s*(?:->|:))",
+    re.M,
 )
 MUST_CALL = re.compile(r"\b(must_[a-z_0-9]+)\s*\(\s*([^)]*)\)")
 
@@ -191,11 +210,16 @@ def check_unsafe(pkgs: list[Package]) -> list[str]:
 
 
 def check_iteration(sources: list[Path]) -> list[str]:
-    """No __next__ that raises.
+    """No __next__ that raises anything but StopIteration.
 
     A Mojo for loop silently drops an error raised out of __next__, so an
     iterator that can fail reports a clean end of input and the program carries
     on with half the data. Fallible iteration is has_next and next instead.
+
+    StopIteration is the exception because it is not an error. It is how the
+    language spells end of input, the loop catches it by definition, and the
+    Iterator trait requires that exact signature, so forbidding it would forbid
+    writing an iterator at all.
     """
     problems = []
     for src in sources:
@@ -316,6 +340,7 @@ def selftest() -> int:
     sources = {
         "fallible_next": check_iteration,
         "parametric_next": check_iteration,
+        "typed_fallible_next": check_iteration,
         "must_on_variable": check_must_calls,
         "unsafe_in_safe_package": None,
         "unsafe_family_in_safe_package": None,
