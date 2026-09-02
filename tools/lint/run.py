@@ -26,7 +26,13 @@ from lib.tree import ROOT, Package, mojo_sources, packages, report
 # pointers, foreign calls, reinterpretation and untracked allocation are the
 # four ways a Mojo program stops being memory safe, and each of them is spelled
 # with a name you can grep for, which is the whole reason this check is cheap.
+#
+# Pointer and UnsafePointer are both here because Mojo 1.0 renamed the second
+# to the first and kept the old name working with a deprecation. A word
+# boundary match on Pointer does not find UnsafePointer, so dropping either one
+# would leave a hole.
 UNSAFE_NAMES = (
+    "Pointer",
     "UnsafePointer",
     "OpaquePointer",
     "external_call",
