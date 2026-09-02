@@ -66,7 +66,7 @@ from core.errors.value import ErrorValue
 from core.io import Byte, Reader as IoReader
 from core.iter import Cursor
 
-from ._rune import RUNE_SELF, _decode_rune, _full_rune
+from core.unicode.utf8 import RUNE_SELF, decode_rune, full_rune
 
 comptime MAX_SCAN_TOKEN_SIZE = 64 * 1024
 """The largest token a scanner will assemble unless told otherwise.
@@ -251,13 +251,13 @@ struct ScanRunes(Copyable, Movable, Splitter):
 
         var r: Int32
         var width: Int
-        r, width = _decode_rune(data)
+        r, width = decode_rune(data)
         if width > 1:
             return Split.token(width, 0, width)
         # One byte wide and not ASCII means either a broken encoding or a rune
-        # split across the end of what has arrived, and only `_full_rune` can
+        # split across the end of what has arrived, and only `full_rune` can
         # tell those apart.
-        if not at_eof and not _full_rune(data):
+        if not at_eof and not full_rune(data):
             return Split.more()
         return Split.token(1, 0, 1)
 
@@ -329,7 +329,7 @@ struct ScanWords(Copyable, Movable, Splitter):
         while start < len(data):
             var r: Int32
             var width: Int
-            r, width = _decode_rune(data[start:])
+            r, width = decode_rune(data[start:])
             if not _is_space(r):
                 break
             start += width
@@ -338,7 +338,7 @@ struct ScanWords(Copyable, Movable, Splitter):
         while i < len(data):
             var r: Int32
             var width: Int
-            r, width = _decode_rune(data[i:])
+            r, width = decode_rune(data[i:])
             if _is_space(r):
                 return Split.token(i + width, start, i)
             i += width

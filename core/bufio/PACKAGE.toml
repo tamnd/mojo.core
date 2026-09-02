@@ -3,14 +3,13 @@ name = "core.bufio"
 go = "bufio"
 verdict = "Port"
 tier = 2
-# `core.bytes` and `core.unicode.utf8` belong here and are not listed, because
-# neither has any code yet and the linter checks that a declaration is really
-# imported. The searching this package needs is a loop over a span, and the
-# rune decoding is `_rune.mojo`, which says on its first line that it goes when
-# issue #19 lands `core.unicode.utf8`.
+# `core.bytes` belongs here and is not listed, because it has no code yet and
+# the linter checks that a declaration is really imported. The searching this
+# package needs is a loop over a span, which is why its absence costs nothing.
 unsafe = false
 deps = [
   "core.errors",
   "core.io",
   "core.iter",
+  "core.unicode.utf8",
 ]

@@ -52,7 +52,7 @@ from core.io import (
     WriterTo,
 )
 
-from ._rune import RUNE_SELF, UTF_MAX, _decode_rune, _full_rune
+from core.unicode.utf8 import RUNE_SELF, UTF_MAX, decode_rune, full_rune
 
 comptime _DEFAULT_BUFFER = 4096
 """The buffer `new_reader` asks for. Go's `defaultBufSize`, same number."""
@@ -396,7 +396,7 @@ struct Reader[R: IoReader & Deinitable & Movable](
         """
         while (
             self.start + UTF_MAX > self.stop
-            and not _full_rune(Span(self.buf)[self.start : self.stop])
+            and not full_rune(Span(self.buf)[self.start : self.stop])
             and not self.pending
             and self.buffered() < len(self.buf)
         ):
@@ -408,7 +408,7 @@ struct Reader[R: IoReader & Deinitable & Movable](
         var r = Int32(self.buf[self.start])
         var size = 1
         if Int(r) >= RUNE_SELF:
-            r, size = _decode_rune(Span(self.buf)[self.start : self.stop])
+            r, size = decode_rune(Span(self.buf)[self.start : self.stop])
         self.start += size
         self.last_byte = Int(self.buf[self.start - 1])
         self.last_rune_size = size

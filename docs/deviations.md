@@ -50,6 +50,7 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `bufio.NewReaderSize` handing back the argument unchanged when it is already a big enough `*Reader` | No unwrapping, because there is nothing to type assert against, so wrapping a buffered reader gives two buffers | 1 |
 | `bufio.ScanRunes` substituting U+FFFD for a byte that is not valid UTF-8 | The offending byte is the token, one per byte. A token is a range of the input, so there is nowhere for bytes that are not in the input to come from; the advance is the same, so the token stream still lines up. | 5 |
 | `bufio.ReadWriter`, two embedded pointers and no methods of its own | Two named fields and twenty forwarders written out. `buffered`, `size` and `reset` are not forwarded, because each means two things. | no promotion |
+| `utf8.AppendRune(p, r)` returning the grown slice, because that is what `append` does | `append_rune(mut dst, r)` grows the list in place and returns the byte count instead, since two names for the same list is exactly what ownership forbids | no shared ownership |
 | `init()` | Compile time initialisers and explicit registration | no `init` |
 | Struct embedding with method promotion | Composition with explicit forwarding | no promotion |
 | The `embed` directive | A tool that generates a Mojo source file from a directory | a directive is not a library |
@@ -83,6 +84,7 @@ These are deviations too, because code written against Go's semantics may not po
 | A split function returning a token that is not inside the data it was given cannot be checked, because the token is a slice and is inside by construction | The token is a pair of indices the split function chose, so the range is bounds checked and an off by one raises rather than handing out neighbouring bytes |
 | `ErrFinalToken`, an error value that is not a failure and means stop after this token | `Split.last` and `Split.stop_here`, which are data. The error channel only ever carries failures. |
 | `bufio` panics in three places: `Split` after scanning, `Buffer` after scanning, and a split function returning tokens without advancing | All three raise. The last one is `ErrNoProgress` after the same hundred empty tokens Go counts. |
+| `utf8.ValidString` is the check you run before trusting a `string`, since a Go `string` is arbitrary bytes | A `String` is validated when it is built, so this answers `True` unless somebody went through the `unsafe_` constructor. The function stays precisely so that assertion has somewhere to be audited. |
 
 Four of those are the same observation. Go documents a hazard and Mojo's type system removes it.
 
