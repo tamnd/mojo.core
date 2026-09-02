@@ -30,13 +30,18 @@ other end and the destructor captured at construction.
 
 ## Why the address is an integer
 
-A struct field cannot carry an unbound origin, so a field cannot hold a
-`Pointer` into memory the borrow checker is not tracking. Design.md section 5
-says so, and says that the erased box is where that laundering is allowed to be
-visible. It is visible here and nowhere above here: `get` hands back a `ref`,
-so a caller reads the value without naming a pointer and without having to
-declare itself unsafe. That is the entire reason this is its own package rather
-than forty lines inside `core.io`.
+A struct field cannot carry `AnyOrigin`, so a field cannot hold a `Pointer` into
+memory the borrow checker is not tracking. It could hold one with
+`UntrackedOrigin`, which design.md section 5 and the `untracked_origin_field`
+probe now record, so this is a choice rather than the only option: the box has
+forgotten its pointee type as well as its origin, and a pointer field would have
+to name a placeholder `T` and reinterpret at every use, which is a second
+erasure on top of the real one. An integer has no pointee type to lie about.
+
+Either way the laundering is confined here and is not visible above here. `get`
+hands back a `ref`, so a caller reads the value without naming a pointer and
+without having to declare itself unsafe. That is the entire reason this is its
+own package rather than forty lines inside `core.io`.
 
 ## Why it is not implicitly copyable
 
@@ -68,6 +73,9 @@ mutable, and the safety argument is the one in this module's docstring rather
 than anything the compiler can check.
 """
 
+comptime _Ro = AnyOrigin[mut=False]
+"""The same, for a span a callee is only allowed to read from."""
+
 
 def _offset[T: AnyType]() -> Int:
     """Where the value starts, which is also the block's alignment.
@@ -91,6 +99,81 @@ def value[T: Deinitable & Movable](address: Int) -> ref[_Any] T:
     box. Same laundering as `ErasedBox.get`, and the same unchecked `T`.
     """
     return Pointer[T, _Any](unsafe_from_address=address + _offset[T]())[]
+
+
+def address_of[T: AnyType, o: Origin](ref[o] target: T) -> Int:
+    """The address of something the caller already owns.
+
+    For an erased view: a vtable that borrows rather than boxes needs the
+    address of a value on somebody else's stack, and the thunk on the other end
+    takes an `Int` for the reason section 5 gives. `io.copy`'s fast path is the
+    case that needs it, because `read_from` is handed a `mut src` it cannot take
+    ownership of and must still be able to call through a function pointer.
+
+    Nothing keeps the value alive. A view built from this outliving what it
+    points at is a use after free, and the rule that prevents it is that a view
+    is an argument and never a field. See `core.io`.
+    """
+    return Int(Pointer(to=target))
+
+
+def at[T: AnyType](address: Int) -> ref[_Any] T:
+    """The value at an address, as a reference.
+
+    The counterpart to `address_of`, and the unchecked half: nothing verifies
+    that `T` is what is there. `value` is the one to use for a box, since a box
+    has a count in front of its value and this does not.
+    """
+    return Pointer[T, _Any](unsafe_from_address=address)[]
+
+
+def launder[T: AnyType, o: Origin[mut=True]](span: Span[T, o]) -> Span[T, _Any]:
+    """A mutable span with its origin forgotten, for passing through a vtable.
+
+    A vtable slot is a struct field, so it has one concrete type and cannot be
+    parametric over the caller's origin: `def (Int, Span[T, o]) thin -> Int` is
+    not a type that exists. The slot pins the origin to `_Any` and the erased
+    struct's method laundens the caller's span into it on the way in. Without
+    this the call is rejected outright, because there is no implicit rebind
+    between origins:
+
+    ```
+    error: invalid indirect call: value cannot be converted from
+           'Span[UInt8, o]' to 'Span[UInt8, Any]'
+    ```
+
+    What makes it safe is that the laundered span never outlives the call. It is
+    an argument to the thunk, the thunk hands it to a `read` or a `write`, and
+    both of those are done with it before they return. An implementation that
+    stored it would be keeping a pointer into a buffer nobody is tracking any
+    more, and nothing here can stop that; it is the same unchecked pairing the
+    module docstring describes, in the one direction the borrow checker cannot
+    follow.
+
+    ```mojo
+    from core.runtime.box import launder
+
+    def main():
+        var buf = List[UInt8](1, 2, 3, __list_literal__=None)
+        print(len(launder(Span(buf))))
+    ```
+    """
+    return Span[T, _Any](
+        unsafe_ptr=span.unsafe_ptr().as_unsafe_any_origin(), length=len(span)
+    )
+
+
+def launder_ro[T: AnyType, o: Origin](span: Span[T, o]) -> Span[T, _Ro]:
+    """The same, for a span nothing is going to write through.
+
+    Takes an origin of either mutability and gives back an immutable one, which
+    is what a `write` wants: the writer is not allowed to modify the caller's
+    buffer, and a caller holding a mutable span should not have to give up that
+    guarantee to call one.
+    """
+    return Span[T, _Ro](
+        unsafe_ptr=span.unsafe_ptr().as_unsafe_any_origin(), length=len(span)
+    )
 
 
 def _release[T: Deinitable & Movable](address: Int):

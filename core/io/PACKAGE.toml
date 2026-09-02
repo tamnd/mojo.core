@@ -6,4 +6,5 @@ tier = 1
 unsafe = false
 deps = [
   "core.errors",
+  "core.runtime.box",
 ]

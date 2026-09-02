@@ -14,6 +14,8 @@ The box is `core.runtime.box`, a package of its own rather than forty lines insi
 
 The static path is kept alongside it. A function that knows its reader's concrete type takes a trait bound and gets a direct call, and only code that genuinely does not know the type pays for the indirection.
 
+The capability bits are on the trait rather than on the erased struct, and that is not where the first design put them. Go's optional interfaces need two things that are both missing here: `src.(WriterTo)` to ask a value what it is, and, less obviously, some way for a generic function to ask whether its `R` happens to implement something. Mojo has neither, so a bit that only existed on the erased side would leave the static side unable to find a fast path at all, which is the side that should be paying the least. So `capabilities` is a trait method with a default body returning zero, the optional methods are trait methods with default bodies that raise, and both paths read the same `Int` the same way. `core/io/iface.mojo` is the worked example.
+
 ## 2. `raises` survives a function pointer
 
 `def(Args) raises thin -> Ret` is a concrete, storable type. This is what makes the vtables in the previous section possible at all. Without it every erased call would have to encode failure in the return value and the whole error design would be different.
@@ -109,6 +111,8 @@ The same shape applies to codec field sets, struct tags, and SQL placeholder cou
 The rename left a convention behind it: everything in the standard library that can break memory safety is now spelled with an `unsafe_` prefix, on the order of fifty names and growing. The linter matches that prefix as a family rather than keeping a list, which is what closes the case that a list of type names cannot reach. `Span.unsafe_ptr` and `Pointer.as_unsafe_any_origin` are both methods on values a safe package already holds, and calling them in sequence turns a borrowed span into one the borrow checker has stopped tracking. That is exactly what section 5 permits inside `core.runtime.box` and nowhere else, so it has to be a thing the linter can see.
 
 There is no global mutable state. A module level `var` is refused outright, with a message telling you to move it into a function or make it a `comptime` constant, so there is nowhere in the language to put a package level counter, cache, registry or default. Go's standard library uses one in a dozen places. Every one of them here becomes either a value the caller owns and passes, or something that lives outside Mojo, which is section 4's thread local slot and the only case where the second answer was the right one.
+
+A value is destroyed after its last use, not at the end of its scope. This is mostly invisible and occasionally sharp: taking a value's address is a use, so a local whose address is passed to a function and never mentioned again is already gone when that function reads it, and no borrow rule catches this because the address left as an integer. The two places `core.io` builds a borrowed view and hands over its address end with `_ = view^` after the call, which is the whole fix, and a probe pins that it is still needed.
 
 A struct valued field cannot be moved out of an owned `self`. The compiler refuses with "field destroyed out of the middle of a value", so a builder that hands its contents to something else has to be the thing it builds rather than a wrapper around it. That is why `errors.Report` is both the builder and the record.
 

@@ -23,3 +23,8 @@
 
 ["core.errors"]
 ErrUnsupported = { go = "errors.ErrUnsupported", doc = "The operation is not supported. Go's sentinel for a method that exists so a type satisfies an interface and then declines, such as a read only filesystem's write." }
+
+["core.io"]
+EOF = { go = "io.EOF", doc = "No more input. Go returns this as an error and this library raises it, and in both the meaning is an orderly end rather than a failure: a reader that has been read to the end reports it every time from then on. A read that moved bytes returns the count instead of raising, so this always arrives with a count of zero. See `core.io` for why that rule is stricter than Go's." }
+ErrShortWrite = { go = "io.ErrShortWrite", doc = "A write accepted fewer bytes than it was given and did not say why. The count it did accept is on `errors.partial`." }
+ErrNoProgress = { go = "io.ErrNoProgress", doc = "A reader returned zero bytes without raising, from a buffer with room in it, more than once. Go raises this after a hundred such calls; this raises on the first, because a reader that reports no progress and no reason has a bug and looping is not going to fix it." }
