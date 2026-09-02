@@ -13,7 +13,7 @@ Each directory is one job and each entry point prints what it checked even when 
 | `pkgbuild` | `pkg` | Builds each package against only what its manifest declares. |
 | `mojotest` | `test`, `test-selftest` | Generates one main that calls every test, so build time tracks the size of the library rather than the number of tests. Takes a package to run one package, and `--short` to skip the cases marked slow. |
 | `warnings` | `warnings` | Files that are expected to produce compile time warnings, with the count and the text asserted. |
-| `baseline` | `baseline` | Struct offsets, errno values and signal numbers, asked of the platform's own headers. |
+| `baseline` | `baseline` | Struct sizes and offsets, open flags, errno values and signal numbers, asked of the platform's own headers and compared to the tables in `core/syscall/baseline`. |
 | `gen` | `gen`, `generated-check` | The code generators. Output is checked in and regenerated in CI, which fails on a diff. |
 | `vendor` | `vendor-check` | The vendored corpora against their recorded digests and licences. |
 | `probe` | `probe` | The ten language assumptions in `docs/design.md`, one Mojo file each under `probes/` with a header saying what is supposed to happen to it. |
