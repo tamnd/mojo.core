@@ -2,7 +2,7 @@
 name = "core.image.draw"
 go = "image/draw"
 verdict = "Adapt"
-tier = 5
+tier = 4
 unsafe = false
 deps = [
   "core.image",

@@ -26,7 +26,7 @@ Everything else depends on these, and they are the first three milestones.
 | `errors` | 7 | `core.errors` | Adapt | Go's `error` is an interface. Mojo has one string-shaped error type, so the payload travels beside the raise. [design](design.md). |
 | `io` | 104 | `core.io` | Adapt | `Reader`/`Writer` become a trait plus an erased vtable, and Go's type assertion for optional interfaces becomes capability bits on the trait. The single most important design here. [design](design.md). `Pipe` waits for `core.sync`. |
 | `io/fs` | 90 | `core.io.fs` | Adapt | Same treatment; `fs.FS` is an interface. |
-| `bufio` | 78 | `core.bufio` | Port | Composes over `core.io`, which is the proof that the erasure design works. |
+| `bufio` | 78 | `core.bufio` | Port | Composes over `core.io`, which is the proof that the erasure design works. `Scanner` is a `core.iter.Cursor` so it has no `Err`, the split function is a trait rather than a closure, and nothing returns a view into the buffer. [deviations](deviations.md). |
 | `bytes` | 99 | `core.bytes` | Port | `Buffer` and `Reader` plus the search functions. |
 | `strings` | 82 | `core.strings` | Port | `Builder`, `Reader`, and the same function set over text. [design](design.md). |
 | `strconv` | 43 | `core.strconv` | Port | Ryū for float formatting, Eisel-Lemire for parsing. Correctly-rounded both ways. |

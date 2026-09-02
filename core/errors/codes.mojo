@@ -71,3 +71,67 @@ in M4, per issue #112.
 
 Owned by `core.io`, answering for Go's `io.ErrClosedPipe`.
 """
+
+comptime ErrBufferFull = Code(8)
+"""A delimiter was not found and the buffer is full, so `read_slice` cannot make
+progress without a bigger one. The bytes stay buffered and a caller can retry
+with `read_bytes`, which grows instead.
+
+Owned by `core.bufio`, answering for Go's `bufio.ErrBufferFull`.
+"""
+
+comptime ErrInvalidUnreadByte = Code(9)
+"""`unread_byte` was called when the last operation was not a successful
+`read_byte`. There is nothing to put back, and quietly moving the position
+instead would corrupt the stream for the next reader.
+
+Owned by `core.bufio`, answering for Go's `bufio.ErrInvalidUnreadByte`.
+"""
+
+comptime ErrInvalidUnreadRune = Code(10)
+"""`unread_rune` was called when the last operation was not a successful
+`read_rune`. The same rule as `ErrInvalidUnreadByte`, kept separate because the
+width to put back is different.
+
+Owned by `core.bufio`, answering for Go's `bufio.ErrInvalidUnreadRune`.
+"""
+
+comptime ErrNegativeCount = Code(11)
+"""A count that has to be zero or more was negative. `peek` and `discard` raise
+this rather than treating it as zero, because a negative count is arithmetic
+that went wrong somewhere above.
+
+Owned by `core.bufio`, answering for Go's `bufio.ErrNegativeCount`.
+"""
+
+comptime ErrTooLong = Code(12)
+"""A scanner token grew past the maximum it was allowed. The default ceiling is
+`MAX_SCAN_TOKEN_SIZE`, and `Scanner.buffer` raises it for input that
+legitimately needs more; the ceiling exists so that a stream with no delimiter
+in it cannot be turned into an allocation the size of the stream.
+
+Owned by `core.bufio`, answering for Go's `bufio.ErrTooLong`.
+"""
+
+comptime ErrNegativeAdvance = Code(13)
+"""A split function asked the scanner to move backwards. That is a bug in the
+split function, and it is reported rather than clamped because clamping turns
+it into an infinite loop.
+
+Owned by `core.bufio`, answering for Go's `bufio.ErrNegativeAdvance`.
+"""
+
+comptime ErrAdvanceTooFar = Code(14)
+"""A split function asked the scanner to move past the end of the data it was
+given. Also a bug in the split function, and also fatal rather than clamped.
+
+Owned by `core.bufio`, answering for Go's `bufio.ErrAdvanceTooFar`.
+"""
+
+comptime ErrBadReadCount = Code(15)
+"""A reader returned more bytes than the span it was handed could hold. Nothing
+can be done with that answer except refuse it: the bytes are already somewhere
+they do not belong, and believing the count would read past the buffer.
+
+Owned by `core.bufio`, answering for Go's `bufio.ErrBadReadCount`.
+"""

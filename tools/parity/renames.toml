@@ -57,3 +57,22 @@ Is = "matches"
 SeekStart = "SEEK_START"
 SeekCurrent = "SEEK_CURRENT"
 SeekEnd = "SEEK_END"
+
+["bufio"]
+# The token ceiling is a `comptime` value, and this library spells a constant in
+# capitals for the same reason `io`'s seek constants are above.
+MaxScanTokenSize = "MAX_SCAN_TOKEN_SIZE"
+# Go's four split functions are functions. Here a split function is a type
+# implementing `Splitter`, because a stored closure has nowhere to keep what it
+# captured and a function type cannot be parametric over an origin, which is
+# `design.md` section 3. So each of these keeps its Go name and is a struct,
+# and the rule that lowercases a function name is the thing that is wrong here.
+ScanBytes = "ScanBytes"
+ScanLines = "ScanLines"
+ScanRunes = "ScanRunes"
+ScanWords = "ScanWords"
+SplitFunc = "Splitter"
+# `Scan` is `has_next`, because the scanner is a `core.iter.Cursor` and the loop
+# it is written for is `while s.has_next()`. Same call, same place, and the
+# failure comes out of it instead of being left in `Err`.
+"Scanner.Scan" = "Scanner.has_next"
