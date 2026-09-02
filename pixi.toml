@@ -68,6 +68,11 @@ lint-selftest = "python tools/lint/run.py --selftest"
 # API manifests. Symbols we are not going to implement are listed in
 # waivers.toml with a reason, and that file growing is the signal that the
 # contract is being negotiated away rather than met.
+#
+# `pixi run parity core.strings` does one package symbol by symbol, which is the
+# list somebody porting it is owed. Plain `pixi run parity` also fails when the
+# generated block in the README no longer matches what it measures, and
+# `pixi run parity --write` is what puts that right.
 parity = "python tools/parity/run.py"
 
 # Unicode tables, tzdata, the syscall bindings and every generated codec are

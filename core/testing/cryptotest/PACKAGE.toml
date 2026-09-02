@@ -1,6 +1,6 @@
 [package]
 name = "core.testing.cryptotest"
-go = "crypto/internal/cryptotest"
+go = "testing/cryptotest"
 verdict = "Adapt"
 tier = 9
 unsafe = false

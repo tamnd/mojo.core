@@ -9,7 +9,7 @@ Each directory is one job and each entry point prints what it checked even when 
 | `lib` | | The shared model of the tree. Packages, sources, and the reporting shape the others use. |
 | `fmt` | `format-check` | Formats a copy and compares, because `mojo format` has no check mode. |
 | `lint` | `lint`, `lint-selftest` | The package graph, layering, unsafe operations, the iteration rule, `must_` calls, marked compile time diagnostics, and the committed secret check. |
-| `parity` | `parity` | How much of Go's exported surface exists here, read from the table in `docs/packages.md`. |
+| `parity` | `parity` | How much of Go's exported surface exists here, read from Go's own API manifests. `goapi.txt` is the condensed index, `rules.py` turns a Go name into the Mojo one, and `waivers.toml` and `renames.toml` are the two escape hatches. |
 | `pkgbuild` | `pkg` | Builds each package against only what its manifest declares. |
 | `mojotest` | `test` | Generates one main that calls every test, so build time tracks the size of the library rather than the number of tests. |
 | `warnings` | `warnings` | Files that are expected to produce compile time warnings, with the count and the text asserted. |
@@ -32,3 +32,5 @@ If the check can be fooled by a small change to a regular expression, add a fixt
 ## Adding a generator
 
 Drop a module in `gen` with a `generate()` that returns a mapping of repository relative path to file contents. The runner picks it up by being there. Nothing else needs editing.
+
+A generator that needs a toolchain we do not always have should print a line saying so and return nothing, the way `goapi.py` does when Go is not installed. Then working offline stays possible and the check still runs somewhere: the CI job that runs `generated-check` uses the `oracle` environment, which pins Go in `pixi.lock`.

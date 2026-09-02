@@ -1,0 +1,46 @@
+# Symbols whose Mojo name the rules in rules.py could not derive.
+#
+# The rules turn CamelCase into snake_case by splitting at a capital letter,
+# which is right for almost everything and wrong wherever a run of capitals is
+# a word. `NaN` is one word and the rule reads it as two.
+#
+# Also here are the handful of places where Mojo spells something as an
+# operator that Go spells as a method. Those are not failures of the rule, they
+# are the point of having this file: no rule about capital letters was ever
+# going to work out that `Len` is `__len__`.
+#
+# Keyed by Go package, then by the Go symbol. Members are Owner.Member on both
+# sides. Adding a line here is a review conversation about a name, which is the
+# right size of thing to argue about.
+
+["math"]
+NaN = "nan"
+IsNaN = "is_nan"
+
+["math/cmplx"]
+NaN = "nan"
+IsNaN = "is_nan"
+
+["sync"]
+# The reader lock, not an `r_lock` of any kind.
+"RWMutex.TryRLock" = "RWMutex.try_rlock"
+"RWMutex.RLock" = "RWMutex.rlock"
+"RWMutex.RUnlock" = "RWMutex.runlock"
+"RWMutex.RLocker" = "RWMutex.rlocker"
+
+["crypto/tls"]
+# CAs is the plural of CA, and the rule reads the final s as a word.
+"Config.ClientCAs" = "Config.client_cas"
+"Config.RootCAs" = "Config.root_cas"
+"CertificateRequestInfo.AcceptableCAs" = "CertificateRequestInfo.acceptable_cas"
+
+["image"]
+# YCbCr is one colour model and NYCbCrA is that model with alpha.
+NewYCbCr = "new_ycbcr"
+NewNYCbCrA = "new_nycbcra"
+"YCbCr.YCbCrAt" = "YCbCr.ycbcr_at"
+"NYCbCrA.NYCbCrAAt" = "NYCbCrA.nycbcra_at"
+
+["image/color"]
+RGBToYCbCr = "rgb_to_ycbcr"
+YCbCrToRGB = "ycbcr_to_rgb"

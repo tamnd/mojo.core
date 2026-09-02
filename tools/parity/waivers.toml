@@ -1,0 +1,29 @@
+# Symbols inside a package we are implementing that we are deliberately not
+# implementing, one line each with a reason.
+#
+# This is the machine readable form of the excluded list in docs/packages.md,
+# for the cases too small to be a whole row. A package we are not writing at
+# all has no PACKAGE.toml and needs nothing here.
+#
+# The reason has to be about Go rather than about effort. "Deprecated in Go's
+# own documentation" is a reason. "Hard" is not, and a reviewer should say so.
+#
+# This file growing is the signal that the contract is being negotiated away
+# rather than met, which is why it is a reviewed file and not a flag, and why
+# `pixi run parity` prints how many lines are in it every time it runs.
+
+["crypto/elliptic"]
+# Go's own documentation says these are deprecated and that custom curves are
+# not supported, are not constant time and should not be used. The named curves
+# stay, and they go through OpenSSL, which has no entry point for arithmetic on
+# a curve somebody made up.
+"Curve.Add" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"Curve.Double" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"Curve.IsOnCurve" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"Curve.ScalarBaseMult" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"Curve.ScalarMult" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"CurveParams.Add" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"CurveParams.Double" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"CurveParams.IsOnCurve" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"CurveParams.ScalarBaseMult" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+"CurveParams.ScalarMult" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
