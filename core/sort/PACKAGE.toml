@@ -1,7 +1,11 @@
 [package]
 name = "core.sort"
 go = "sort"
-verdict = "Wrap"
+# Not a Wrap. `std.builtin.sort` hands the comparator elements from outside the
+# span it was given when the comparator is inconsistent, and Go's sort does not
+# at any size. That guarantee is most of the reason to want Go's sort, so
+# pdqsort and SymMerge are ported. Issue #16 has the measurement.
+verdict = "Port"
 tier = 1
 unsafe = false
 deps = [

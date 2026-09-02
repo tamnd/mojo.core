@@ -1,9 +1,15 @@
 [package]
 name = "core.slices"
 go = "slices"
-verdict = "Wrap"
-tier = 1
+# Not a Wrap any more. The sorting is delegated to `core.sort`, which is a Port
+# for the reason recorded in its own manifest, and the other thirty-odd symbols
+# are loops over a span that `std` does not have. So the verdict follows the
+# bulk of the code.
+verdict = "Port"
+tier = 2
 unsafe = false
 deps = [
   "core.cmp",
+  "core.iter",
+  "core.sort",
 ]

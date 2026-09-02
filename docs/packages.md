@@ -34,8 +34,8 @@ Everything else depends on these, and they are the first three milestones.
 | `unicode/utf8` | 19 | `core.unicode.utf8` | Port | Operates on `Span[UInt8]`, not `String`, because the input is often invalid. Arithmetic only, no tables, which is why it lands with the foundations rather than with `core.unicode`. All 19 symbols, no waivers. |
 | `unicode/utf16` | 7 | `core.unicode.utf16` | Port | |
 | `cmp` | 4 | `core.cmp` | Adapt | Go's `cmp.Ordered` is a type constraint; Mojo's is a trait, which is a better fit. |
-| `sort` | 40 | `core.sort` | Wrap | Over `std.builtin.sort`. Go's `sort.Interface` becomes a comparator function pointer plus context. |
-| `slices` | 40 | `core.slices` | Port | Over `Span` and `List`. |
+| `sort` | 40 | `core.sort` | Port | Was going to be a wrap over `std.builtin.sort`, and is not, because that sort hands the comparator indices from outside the span it was given when the comparator is inconsistent and Go's does not. Go's pdqsort and SymMerge, ported. `sort.Interface` is a trait taken as a generic parameter and a comparator is a compile time parameter. [deviations](deviations.md). |
+| `slices` | 40 | `core.slices` | Port | Over `Span` and `List`, with the sorting delegated to `core.sort` so that there is one sort in this library and not two. |
 | `maps` | 10 | `core.maps` | Port | Over `Dict`. |
 | `iter` | 4 | `core.iter` | Adapt | All four of Go's symbols are range-over-func and need storable closures, so all four are waived. What is here instead is `Cursor`, the fallible-iteration rule in [design](design.md) written as a trait. |
 | `unique` | 3 | `core.unique` | Port | Interning. Needs the atomics from [design](design.md). |
