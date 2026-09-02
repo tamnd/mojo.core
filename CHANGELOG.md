@@ -6,7 +6,7 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 Nothing since v0.1.0.
 
-## v0.1.0 - 2026-09-02
+## v0.1.0 - 2026-09-03
 
 M0 is complete. The tree, the manifests, the linter, the parity tool, the test runner, the platform tables, the language probes and CI on macOS arm64, Linux x86-64 and Linux arm64. There is still no library code, and that is the point of the milestone: every check that the rest of the work depends on now exists, runs everywhere, and has been shown to fail when it should.
 
