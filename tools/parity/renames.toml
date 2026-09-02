@@ -49,3 +49,11 @@ YCbCrToRGB = "ycbcr_to_rgb"
 # `is` is a Mojo keyword. `matches` is what the call reads as anyway:
 # `matches(e, io.EOF)`.
 Is = "matches"
+
+["io"]
+# The seek constants are `comptime` values rather than variables, and this
+# library spells a constant in capitals. The rule turns `SeekStart` into
+# `seek_start`, which would be a function.
+SeekStart = "SEEK_START"
+SeekCurrent = "SEEK_CURRENT"
+SeekEnd = "SEEK_END"

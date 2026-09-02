@@ -118,6 +118,8 @@ There is no global mutable state. A module level `var` is refused outright, with
 
 A value is destroyed after its last use, not at the end of its scope. This is mostly invisible and occasionally sharp: taking a value's address is a use, so a local whose address is passed to a function and never mentioned again is already gone when that function reads it, and no borrow rule catches this because the address left as an integer. The two places `core.io` builds a borrowed view and hands over its address end with `_ = view^` after the call, which is the whole fix, and a probe pins that it is still needed.
 
+A struct's own parameter has to be written `Self.R` in a field declaration. `struct LimitedReader[R: Reader]` with `var r: R` is refused with "unqualified access to struct parameter", while the same bare `R` is fine in a method signature and in the return type of a free function a few lines below. Nothing in the surrounding code hints that the rule exists, and every wrapper type has a field like this, so it is worth knowing before writing the first one rather than after.
+
 A struct valued field cannot be moved out of an owned `self`. The compiler refuses with "field destroyed out of the middle of a value", so a builder that hands its contents to something else has to be the thing it builds rather than a wrapper around it. That is why `errors.Report` is both the builder and the record.
 
 There are no zero values that mean anything, so every type has an explicit constructor and `var b bytes.Buffer` becomes `var b = Buffer()`.

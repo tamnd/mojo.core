@@ -24,7 +24,7 @@ Everything else depends on these, and they are the first three milestones.
 | Go package | Symbols | `core` package | Verdict | Note |
 | --- | --- | --- | --- | --- |
 | `errors` | 7 | `core.errors` | Adapt | Go's `error` is an interface. Mojo has one string-shaped error type, so the payload travels beside the raise. [design](design.md). |
-| `io` | 104 | `core.io` | Adapt | `Reader`/`Writer` become a trait plus an erased vtable. The single most important design here. [design](design.md). |
+| `io` | 104 | `core.io` | Adapt | `Reader`/`Writer` become a trait plus an erased vtable, and Go's type assertion for optional interfaces becomes capability bits on the trait. The single most important design here. [design](design.md). `Pipe` waits for `core.sync`. |
 | `io/fs` | 90 | `core.io.fs` | Adapt | Same treatment; `fs.FS` is an interface. |
 | `bufio` | 78 | `core.bufio` | Port | Composes over `core.io`, which is the proof that the erasure design works. |
 | `bytes` | 99 | `core.bytes` | Port | `Buffer` and `Reader` plus the search functions. |
@@ -233,7 +233,7 @@ Go's manifests are condensed into `tools/parity/goapi.txt` by `tools/gen/goapi.p
 
 `tools/parity/` reads that index, takes the Go package each `PACKAGE.toml` names, applies the naming rules in `tools/parity/rules.py`, and compares the result against the symbols `mojo doc` reports for the package. It prints what is missing, what is extra, and what is present under a name the rules did not predict. `pixi run parity core.strings` does one package symbol by symbol, which is the list somebody porting it is owed.
 
-`mojo doc` reports declarations, and a name a package republishes for its users is an import rather than a declaration, so the tool reads the `from ... import` lines of each package's `__init__.mojo` and counts those too. That is not a nicety: `core.io` exports `EOF`, `ErrShortWrite` and `ErrNoProgress`, which are declared in `core.errors.codes` because they come out of one generated table, and they are importable exactly as Go's `io.EOF` is. Only `__init__.mojo`, because that file is the package's public surface and an import anywhere else is a private dependency.
+`mojo doc` reports declarations, and a name a package republishes for its users is an import rather than a declaration, so the tool reads the `from ... import` lines of each package's `__init__.mojo` and counts those too, in both the one line and the parenthesised multi-line spelling, because `mojo format` rewrites the first into the second as soon as the names stop fitting on a line. That is not a nicety: `core.io` exports `EOF`, `ErrShortWrite` and `ErrNoProgress`, which are declared in `core.errors.codes` because they come out of one generated table, and they are importable exactly as Go's `io.EOF` is. Only `__init__.mojo`, because that file is the package's public surface and an import anywhere else is a private dependency.
 
 The naming rules are three lines long. Types, constants and variables keep Go's name. Functions and methods become snake case. Members are written `Owner.member` on both sides, so a method cannot satisfy the contract by existing on the wrong type.
 
