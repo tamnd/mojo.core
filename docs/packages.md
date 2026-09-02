@@ -31,7 +31,7 @@ Everything else depends on these, and they are the first three milestones.
 | `strings` | 82 | `core.strings` | Port | `Builder`, `Reader`, and the same function set over text. [design](design.md). |
 | `strconv` | 43 | `core.strconv` | Port | Ryū for float formatting, Eisel-Lemire for parsing. Correctly-rounded both ways. |
 | `unicode` | 309 | `core.unicode` | Port | Tables generated from the Unicode database by `tools/gen/unicode.py`, checked in and re-verified in CI. |
-| `unicode/utf8` | 19 | `core.unicode.utf8` | Port | Operates on `Span[UInt8]`, not `String`, because the input is often invalid. |
+| `unicode/utf8` | 19 | `core.unicode.utf8` | Port | Operates on `Span[UInt8]`, not `String`, because the input is often invalid. Arithmetic only, no tables, which is why it lands with the foundations rather than with `core.unicode`. All 19 symbols, no waivers. |
 | `unicode/utf16` | 7 | `core.unicode.utf16` | Port | |
 | `cmp` | 4 | `core.cmp` | Adapt | Go's `cmp.Ordered` is a type constraint; Mojo's is a trait, which is a better fit. |
 | `sort` | 40 | `core.sort` | Wrap | Over `std.builtin.sort`. Go's `sort.Interface` becomes a comparator function pointer plus context. |

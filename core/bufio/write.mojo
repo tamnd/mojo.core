@@ -36,7 +36,7 @@ from core.io import (
     Writer as IoWriter,
 )
 
-from ._rune import RUNE_SELF, UTF_MAX, _encode_rune
+from core.unicode.utf8 import RUNE_SELF, UTF_MAX, encode_rune
 from .read import _DEFAULT_BUFFER, _MIN_BUFFER
 
 
@@ -261,7 +261,7 @@ struct Writer[W: IoWriter & Deinitable & Movable](
         self._check()
         if self.available() < UTF_MAX:
             self.flush()
-        var size = _encode_rune(Span(self.buf)[self.n :], r)
+        var size = encode_rune(Span(self.buf)[self.n :], r)
         self.n += size
         return size
 

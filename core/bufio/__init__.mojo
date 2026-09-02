@@ -55,9 +55,10 @@ it, because a destructor cannot raise and a write failure swallowed on the way
 out of a scope is worse than one never attempted.
 
 `read.mojo` is the reader, `write.mojo` the writer, `scan.mojo` the scanner and
-its splitters, and `rw.mojo` joins a reader and a writer into one value.
-`_rune.mojo` is a private UTF-8 decoder that goes when issue #19 lands
-`core.unicode.utf8`.
+its splitters, and `rw.mojo` joins a reader and a writer into one value. The
+rune handling in all three comes from `core.unicode.utf8`; `_rune.mojo` was a
+private copy of it written when that package did not exist yet, and issue #115
+deleted it.
 """
 
 from core.errors.codes import (

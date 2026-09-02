@@ -76,3 +76,12 @@ SplitFunc = "Splitter"
 # it is written for is `while s.has_next()`. Same call, same place, and the
 # failure comes out of it instead of being left in `Err`.
 "Scanner.Scan" = "Scanner.has_next"
+
+["unicode/utf8"]
+# The four constants, in capitals for the same reason `io`'s seek constants are.
+# `RuneError` under the usual rule would be `rune_error`, which reads as a
+# function that produces one rather than the code point it is.
+MaxRune = "MAX_RUNE"
+RuneError = "RUNE_ERROR"
+RuneSelf = "RUNE_SELF"
+UTFMax = "UTF_MAX"
