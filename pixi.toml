@@ -1,6 +1,6 @@
 [workspace]
 name = "mojo-core"
-version = "0.0.1"
+version = "0.1.0"
 description = "Core libraries for Mojo, modelled on the Go standard library"
 authors = ["mojo.core contributors"]
 license = "Apache-2.0"

@@ -4,6 +4,14 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 ## Unreleased
 
+Nothing since v0.1.0.
+
+## v0.1.0 - 2026-09-02
+
+M0 is complete. The tree, the manifests, the linter, the parity tool, the test runner, the platform tables, the language probes and CI on macOS arm64, Linux x86-64 and Linux arm64. There is still no library code, and that is the point of the milestone: every check that the rest of the work depends on now exists, runs everywhere, and has been shown to fail when it should.
+
+The two checks that landed in this release were both, before it, reporting success while checking nothing. That is the failure mode this milestone exists to rule out.
+
 `pixi run test` is a real test runner now. It finds every `def test_something() raises:` under `tests/`, generates one main that calls all of them, builds it once and runs it, so the build time tracks the size of the library rather than the number of tests. Failures come out with the file, the line and both values, because `std.testing` already reports all three and the runner rewrites the absolute path to a relative one so it can be clicked. The `raises` is required and the runner says so when it is missing, since a test that cannot raise cannot fail an assertion and passes forever while looking like coverage.
 
 `pixi run test core.strings` runs one package and fails rather than passing quietly when the name matches nothing, which is how a suite stops running without anybody noticing. `--short` skips the cases marked slow, and a case is marked with a `# slow: why` comment on the line above it, so the decision sits with the person who wrote the five minute test.
@@ -18,9 +26,9 @@ Also corrected the symbol count in [docs/testing.md](docs/testing.md), which sti
 
 The tables earn their place immediately. `pthread_mutex_t` is 40 bytes on Linux x86-64, 48 on Linux arm64 and 64 on macOS, and the threads probe had been taking a generous fixed buffer while saying these were the numbers that would pin it down. `sin_family` is at offset 0 on Linux and offset 1 on macOS, because macOS puts a length byte first. `O_CREAT` is 64 on Linux and 512 on macOS. `struct stat` has a different field order on the two Linux architectures, not merely a different size.
 
-Branch protection on `main` now requires a pull request with the `ci ok` check passing and the branch up to date, on top of the force push and deletion rules that were already there. Approving reviews are the one protection deliberately left off, because requiring one deadlocks a single maintainer who cannot approve their own work. [CONTRIBUTING.md](CONTRIBUTING.md) records that, and the trigger for turning it on.
-
 A mismatch now names the structure, the field, what the platform says and what was recorded, rather than printing a key and two numbers. The platform key is the operating system and the architecture and nothing else, spelled the way the CI matrix spells them. It used to come from `sysconfig.get_platform()`, which puts the macOS release in the string, so a runner one point release behind would have looked like a platform nobody had ever recorded and the check would have passed by finding nothing.
+
+Branch protection on `main` now requires a pull request with the `ci ok` check passing and the branch up to date, on top of the force push and deletion rules that were already there. Approving reviews are the one protection deliberately left off, because requiring one deadlocks a single maintainer who cannot approve their own work. [CONTRIBUTING.md](CONTRIBUTING.md) records that, and the trigger for turning it on.
 
 ## v0.0.1 - 2026-09-02
 
