@@ -23,8 +23,61 @@ returns them rather than raising. That is stricter than Go, which allows both
 at once; `deviations.md` says why.
 """
 
-from core.errors.codes import EOF, ErrNoProgress, ErrShortWrite
+from core.errors.codes import (
+    EOF,
+    ErrClosedPipe,
+    ErrNoProgress,
+    ErrShortBuffer,
+    ErrShortWrite,
+    ErrUnexpectedEOF,
+)
 
-from .copy import BUFFER, copy
+from .copy import BUFFER, copy, copy_buffer, copy_n
 from .erased import AnyReader, AnyWriter, ReaderView, WriterView
-from .iface import Byte, READER_FROM, Reader, WRITER_TO, Writer
+from .iface import (
+    Byte,
+    ByteReader,
+    ByteScanner,
+    ByteWriter,
+    Closer,
+    READER_FROM,
+    ReadCloser,
+    ReadSeekCloser,
+    ReadSeeker,
+    ReadWriteCloser,
+    ReadWriteSeeker,
+    ReadWriter,
+    Reader,
+    ReaderAt,
+    ReaderFrom,
+    RuneReader,
+    RuneScanner,
+    SEEK_CURRENT,
+    SEEK_END,
+    SEEK_START,
+    Seeker,
+    StringWriter,
+    WRITER_TO,
+    WriteCloser,
+    WriteSeeker,
+    Writer,
+    WriterAt,
+    WriterTo,
+)
+from .limit import (
+    LimitedReader,
+    OffsetWriter,
+    SectionReader,
+    limit_reader,
+    new_offset_writer,
+    new_section_reader,
+)
+from .multi import (
+    Discard,
+    NopCloser,
+    multi_reader,
+    multi_writer,
+    nop_closer,
+    tee_reader,
+)
+from .read import read_all, read_at_least, read_full, write_string

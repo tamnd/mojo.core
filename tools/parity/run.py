@@ -134,7 +134,14 @@ def waivers() -> dict[str, str]:
     return out
 
 
-REEXPORT = re.compile(r"^from\s+\S+\s+import\s+(.+)$", re.MULTILINE)
+# Two spellings, because `mojo format` rewrites a long import into the
+# parenthesised multi-line form the moment the names stop fitting on one line.
+# Matching only the one-line form meant a package measured worse the more it
+# exported, which is exactly backwards, and it happened silently the first time
+# `core.io` grew past the column limit.
+REEXPORT = re.compile(
+    r"^from\s+\S+\s+import\s+(?:\(([^)]*)\)|([^(\n]+))$", re.MULTILINE
+)
 
 
 def reexported(package: Package) -> set[str]:
@@ -154,8 +161,8 @@ def reexported(package: Package) -> set[str]:
     if not init.is_file():
         return set()
     names: set[str] = set()
-    for clause in REEXPORT.findall(init.read_text()):
-        for name in clause.split(","):
+    for parenthesised, plain in REEXPORT.findall(init.read_text()):
+        for name in (parenthesised or plain).split(","):
             name = name.strip().strip("()").split(" as ")[-1].strip()
             if name and not PRIVATE.match(name):
                 names.add(name)

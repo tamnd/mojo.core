@@ -36,6 +36,11 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `json.Marshal(v)` for a value of unknown type | Not available. Build a document, or use a type that has a codec. | 8 |
 | `driver.Value` as `any` | A tagged union over the seven types Go's documentation allows | 1 |
 | A type assertion for an optional interface | Capability bits, declared on the trait so the static path can read them too | 1 |
+| `io.SectionReader.Outer` returning the underlying `ReaderAt` with the offset and size | `outer()` returns the offset and size, and the source is the public field `r`, because a method cannot hand back a borrow of a field alongside two values | 1 |
+| `io.Discard`, a package level variable | `Discard()`, a type with no fields, since there are no package level variables and nothing to construct anyway | no global mutable state |
+| `io.NopCloser` returning an unexported type behind `io.ReadCloser` | `NopCloser[R]`, a named generic type, because there is no erased `ReadCloser` to hide it behind | 1 |
+| `io.MultiReader` flattening a multi reader given to a multi reader | No flattening. The erased value's type is gone by the time it is seen, so there is nothing to recognise. | 1 |
+| `io.WriterAt` documented as safe for parallel non overlapping writes | `write_at` takes `mut self`, so the borrow checker serialises calls on one value. The destination property survives; the parallelism is not expressible without interior mutability. | 5 |
 | `init()` | Compile time initialisers and explicit registration | no `init` |
 | Struct embedding with method promotion | Composition with explicit forwarding | no promotion |
 | The `embed` directive | A tool that generates a Mojo source file from a directory | a directive is not a library |
@@ -52,6 +57,9 @@ These are deviations too, because code written against Go's semantics may not po
 | A buffer's byte slice is invalidated by the next write, which is a documented hazard | The origin is tracked, so using it afterwards is a compile error |
 | A string builder copied after use panics through a runtime check | Not copyable, so the mistake does not compile |
 | A mutex copied by value is caught by a separate analysis tool | Not copyable, so it does not compile |
+| `io.MultiReader` returns a zero length read when a source in the middle is empty | The loop moves to the next source instead, so a caller never sees a zero without an error |
+| `io.TeeReader` reads and writes, and a caller that ignored the error loses the bytes it already took | A write failure comes out of the read, because the bytes are already gone from the source by then |
+| `io.WriteString` type asserts to `io.StringWriter` to avoid the copy that `[]byte(s)` makes | `String.as_bytes` is a borrow, so there is no copy to avoid and no assertion to make |
 | A removed list element is a dangling pointer the documentation asks you not to use | An index and a generation counter, so a stale handle raises |
 | `rows.Scan(&a, &b)` checks the column count at run time | `rows.scan[Int, String]()` checks it at compile time |
 | `context.WithValue` stores `any` and reading it back is an unchecked assertion | `ctx.value[RequestID]()` returns an optional, and a mismatch does not compile |
@@ -110,6 +118,9 @@ Things a Go programmer will look for and not find. This is separate from the 41 
 | Anything Windows specific | Windows is not a Mojo target, so Go packages whose reason to exist is Windows portability lose it. |
 | Placeholder rewriting between SQL dialects | Matching Go. A question mark stays a question mark. |
 | Compile time compiled regular expressions | Deferred past 1.0 behind a benchmark gate. The API is shaped so it can be added later without changing anything else. |
+| `io.Pipe`, `io.PipeReader` and `io.PipeWriter` | Deferred to M4. Every method blocks until the other side arrives, which needs `core.sync`. `io.ErrClosedPipe` is already numbered so the sentinel does not move when the pipe lands. |
+| `io.ReadAll` returning the bytes it did read alongside a failure | The failure alone. Copy into a buffer you own if the partial result matters; `errors.partial` still says how far it got. |
+| `io.CopyN` taking the destination's `read_from` fast path | It does not. Go gets there by wrapping the source in a `LimitReader`, which here would mean holding a borrowed reader in a field. Write `copy(dst, limit_reader(src^, n))` when you own the source. |
 
 ## The abort residue
 

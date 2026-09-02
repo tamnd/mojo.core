@@ -54,3 +54,22 @@ Pull = "Range over func. Needs a storable closure, section 3. Write a core.iter.
 Pull2 = "Range over func. Needs a storable closure, section 3. Write a core.iter.Cursor."
 Seq = "Range over func. Needs a storable closure, section 3. Write a core.iter.Cursor."
 Seq2 = "Range over func. Needs a storable closure, section 3. Write a core.iter.Cursor."
+
+["io"]
+# An in memory pipe is one goroutine writing while another reads, and every
+# one of Go's methods here blocks until the other side shows up. That needs a
+# mutex and a condition variable, which are `core.sync` in M4, and writing it
+# against nothing would produce a pipe that deadlocks on the first use.
+#
+# `ErrClosedPipe` is already in `core/errors/codes.toml`, so the sentinel
+# exists where the rest of the io sentinels are and the number will not move
+# when the pipe arrives. Issue #112 records the decision.
+Pipe = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+PipeReader = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+PipeWriter = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+"PipeReader.Close" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+"PipeReader.CloseWithError" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+"PipeReader.Read" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+"PipeWriter.Close" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+"PipeWriter.CloseWithError" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+"PipeWriter.Write" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."

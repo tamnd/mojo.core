@@ -46,3 +46,28 @@ looping is not going to fix it.
 
 Owned by `core.io`, answering for Go's `io.ErrNoProgress`.
 """
+
+comptime ErrShortBuffer = Code(5)
+"""A read needed a longer buffer than it was given. `read_at_least` raises this
+when the span it was handed is smaller than the minimum it was asked to reach,
+which is a caller mistake and is reported before any reading happens.
+
+Owned by `core.io`, answering for Go's `io.ErrShortBuffer`.
+"""
+
+comptime ErrUnexpectedEOF = Code(6)
+"""Input ended in the middle of something that was supposed to be whole.
+`read_full` raises this when it has read some bytes and then hit the end, and
+`EOF` when it read none, which is the distinction that lets a caller tell an
+empty stream from a truncated one.
+
+Owned by `core.io`, answering for Go's `io.ErrUnexpectedEOF`.
+"""
+
+comptime ErrClosedPipe = Code(7)
+"""The pipe was closed at the other end. Reserved now so that the number exists
+where the rest of the io sentinels are; the pipe itself waits for `core.sync`
+in M4, per issue #112.
+
+Owned by `core.io`, answering for Go's `io.ErrClosedPipe`.
+"""

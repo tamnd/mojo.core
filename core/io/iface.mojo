@@ -45,6 +45,15 @@ comptime WRITER_TO = 1
 comptime READER_FROM = 2
 """The writer implements `read_from`. Go's `io.ReaderFrom`."""
 
+comptime SEEK_START = 0
+"""`seek` counts from the beginning. Go's `io.SeekStart`."""
+
+comptime SEEK_CURRENT = 1
+"""`seek` counts from where it is now. Go's `io.SeekCurrent`."""
+
+comptime SEEK_END = 2
+"""`seek` counts back from the end. Go's `io.SeekEnd`."""
+
 
 trait Writer:
     """Somewhere bytes go. Go's `io.Writer`.
@@ -148,3 +157,249 @@ trait Reader:
         raise Report("io: this reader has no write_to").with_code(
             ErrUnsupported
         ).error()
+
+
+trait ReaderFrom:
+    """A writer that can drain a reader itself. Go's `io.ReaderFrom`.
+
+    The same method `Writer` already declares, under the name Go gives it, and
+    that is the whole of it. A type writes `read_from` once and lists both
+    traits; there is no second mechanism and no second signature.
+
+    Which of the two names to use is a question about what a function needs
+    rather than about what a type is. A function that only makes sense over a
+    writer with a fast path takes `[W: ReaderFrom]` and the compiler enforces
+    it. `copy` cannot do that, because it takes any writer and finds out at run
+    time, which is what the capability bit is for. The bit stays the thing
+    `copy` reads; this trait is a bound, not a second source of truth.
+
+    A type must still set `READER_FROM` in `capabilities` to be found by
+    `copy`. Conforming here and not setting the bit is legal and means the fast
+    path is available to anyone who asks for it by name and invisible to
+    anything that discovers it at run time.
+    """
+
+    def read_from[R: Reader](mut self, mut src: R) raises -> Int64:
+        """Drain `src` into this writer, and return how many bytes moved."""
+        ...
+
+
+trait WriterTo:
+    """A reader that can push itself into a writer. Go's `io.WriterTo`.
+
+    `ReaderFrom` the other way round, and everything it says applies.
+    """
+
+    def write_to[W: Writer](mut self, mut dst: W) raises -> Int64:
+        """Push everything this reader has into `dst`, and return how much."""
+        ...
+
+
+trait Closer:
+    """Something with an end. Go's `io.Closer`.
+
+    Closing twice is not defined here any more than it is in Go, and a type
+    whose second close is harmless should say so in its own documentation.
+    What is defined is that a close which fails says so: this library does not
+    have Go's problem of a deferred `Close()` whose error goes nowhere, because
+    there is no `defer`, cleanup is a `with` block, and a failure out of one
+    reaches the caller.
+    """
+
+    def close(mut self) raises:
+        """Release whatever this holds. A failure here is a real failure."""
+        ...
+
+
+trait ByteReader:
+    """A reader that can hand over one byte. Go's `io.ByteReader`.
+
+    Worth having as its own thing rather than a one byte `read`, because the
+    types that implement it are sitting on a buffer and can answer without the
+    span, the bounds check and the loop that a general `read` needs. Every
+    parser in this library that walks input a byte at a time takes this.
+    """
+
+    def read_byte(mut self) raises -> Byte:
+        """The next byte. Raises `EOF` at the end, like every read here."""
+        ...
+
+
+trait ByteScanner(ByteReader):
+    """A `ByteReader` that can put one byte back. Go's `io.ByteScanner`.
+
+    One byte, and only the one just read. That is Go's rule and it is the
+    right one: a parser that has to look at the next byte to know whether it
+    wanted it needs exactly this much lookahead, and anything more is a buffer
+    the caller should be holding itself.
+    """
+
+    def unread_byte(mut self) raises:
+        """Put the last byte read back. Raises if the last call was not a read.
+        """
+        ...
+
+
+trait ByteWriter:
+    """A writer that can take one byte. Go's `io.ByteWriter`."""
+
+    def write_byte(mut self, c: Byte) raises:
+        """Write one byte. Nothing to return: it went or it raised."""
+        ...
+
+
+trait RuneReader:
+    """A reader that decodes UTF-8 as it goes. Go's `io.RuneReader`.
+
+    Returns the rune and how many bytes it took, because a caller that is
+    counting positions needs the width and cannot recover it from the rune
+    without encoding it again.
+
+    An invalid encoding is Go's replacement rune with a width of one, not a
+    failure. That is deliberate and it is Go's behaviour: a decoder that raised
+    on bad input would make every text tool in this library refuse whole files
+    over one bad byte, and the replacement character is what the caller wants
+    to see printed anyway.
+    """
+
+    def read_rune(mut self) raises -> Tuple[Int32, Int]:
+        """The next rune and its width in bytes. Raises `EOF` at the end."""
+        ...
+
+
+trait RuneScanner(RuneReader):
+    """A `RuneReader` that can put one rune back. Go's `io.RuneScanner`."""
+
+    def unread_rune(mut self) raises:
+        """Put the last rune read back. Raises if the last call was not a read.
+        """
+        ...
+
+
+trait StringWriter:
+    """A writer that can take a `String` without a copy. Go's `io.StringWriter`.
+
+    Go's reason is that converting a string to a byte slice allocates. Mojo's
+    is different and smaller: a `String` already knows its bytes and handing
+    them over as a span is free, so this exists mostly so that `write_string`
+    has something to look for. It is still worth having, because a writer that
+    builds a string wants the string.
+    """
+
+    def write_string(mut self, s: String) raises -> Int:
+        """Write `s` and return how many bytes were accepted."""
+        ...
+
+
+trait Seeker:
+    """Something you can move around in. Go's `io.Seeker`.
+
+    `whence` is `SEEK_START`, `SEEK_CURRENT` or `SEEK_END`, and the return is
+    the new position from the start. Seeking before the start raises; seeking
+    past the end is allowed and reading there gives nothing, which is what a
+    file does.
+    """
+
+    def seek(mut self, offset: Int64, whence: Int) raises -> Int64:
+        """Move to `offset` relative to `whence` and return the new position."""
+        ...
+
+
+trait ReaderAt:
+    """A reader addressed by position rather than by a cursor. Go's `io.ReaderAt`.
+
+    The one trait here with a concurrency promise attached: several calls may
+    run at once on the same value, because none of them moves anything. That
+    is what makes a `SectionReader` over one of these safe to hand to two
+    readers at the same time, and a type that cannot keep the promise must not
+    conform.
+
+    Unlike `read`, this one reads until it has filled the span or run out, so a
+    short result always means the end of the input.
+    """
+
+    def read_at[
+        o: Origin[mut=True]
+    ](self, into: Span[Byte, o], offset: Int64) raises -> Int:
+        """Read at `offset` into `into`. `self` is immutable on purpose."""
+        ...
+
+
+trait WriterAt:
+    """A writer addressed by position. Go's `io.WriterAt`.
+
+    Go says two `WriteAt` calls on the same destination may run at once as
+    long as their ranges do not overlap. That is a promise about the
+    destination and not about the value, and Go can make it because its
+    implementations write through a pointer while the interface value itself
+    never changes.
+
+    Here the receiver is `mut self`, unlike `ReaderAt`'s. Writing changes
+    something by definition, and a sink that keeps its bytes in a field cannot
+    change them through an immutable borrow without interior mutability, which
+    this library does not have. So Go's allowance survives as a property of the
+    destination, and the borrow checker will not let two calls overlap on one
+    value anyway. Nothing is lost that could have been expressed.
+    """
+
+    def write_at[
+        o: Origin
+    ](mut self, data: Span[Byte, o], offset: Int64) raises -> Int:
+        """Write `data` at `offset`, without moving any write position."""
+        ...
+
+
+trait ReadWriter(Reader, Writer):
+    """Both directions on one value. Go's `io.ReadWriter`.
+
+    The composed traits below are all this: a name for a set of bounds, no
+    method of their own. Go needs them because an interface value can only be
+    one type and a function taking two interfaces cannot be written; here they
+    are a convenience, because `[T: Reader & Writer]` says the same thing.
+    They exist anyway so that a port of Go code has the name it is looking for,
+    and because a signature reads better with one bound than three.
+    """
+
+    pass
+
+
+trait ReadCloser(Closer, Reader):
+    """A reader with an end. Go's `io.ReadCloser`."""
+
+    pass
+
+
+trait WriteCloser(Closer, Writer):
+    """A writer with an end. Go's `io.WriteCloser`."""
+
+    pass
+
+
+trait ReadWriteCloser(Closer, Reader, Writer):
+    """Both directions, with an end. Go's `io.ReadWriteCloser`."""
+
+    pass
+
+
+trait ReadSeeker(Reader, Seeker):
+    """A reader you can move around in. Go's `io.ReadSeeker`."""
+
+    pass
+
+
+trait WriteSeeker(Seeker, Writer):
+    """A writer you can move around in. Go's `io.WriteSeeker`."""
+
+    pass
+
+
+trait ReadWriteSeeker(Reader, Seeker, Writer):
+    """Both directions, seekable. Go's `io.ReadWriteSeeker`."""
+
+    pass
+
+
+trait ReadSeekCloser(Closer, Reader, Seeker):
+    """A seekable reader with an end. Go's `io.ReadSeekCloser`."""
+
+    pass
