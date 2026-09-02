@@ -33,4 +33,6 @@ If the check can be fooled by a small change to a regular expression, add a fixt
 
 Drop a module in `gen` with a `generate()` that returns a mapping of repository relative path to file contents. The runner picks it up by being there. Nothing else needs editing.
 
-A generator that needs a toolchain we do not always have should print a line saying so and return nothing, the way `goapi.py` does when Go is not installed. Then working offline stays possible and the check still runs somewhere: the CI job that runs `generated-check` uses the `oracle` environment, which pins Go in `pixi.lock`.
+A generator that needs a toolchain we do not always have should print a line saying so and return nothing, the way `goapi.py` does when Go is not installed. Then working offline stays possible and the check still runs somewhere: the jobs that run `generated-check` use the `oracle` environment, which pins Go in `pixi.lock`.
+
+Check the version of that toolchain and not only that it is there. Two releases of Go produce two different API indexes, both correct, and a diff check cannot tell that apart from somebody hand editing the file. `goapi.py` reads the pinned version out of `pixi.lock` and skips anything else, which is why `pixi run check` passes on a GitHub runner, where a Go nobody asked for is already on PATH. Moving to a newer Go is then a lock file update followed by `pixi run -e oracle gen`, and the diff is the review.
