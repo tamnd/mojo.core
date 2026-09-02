@@ -1,0 +1,7 @@
+[package]
+name = "core.container.list"
+go = "container/list"
+verdict = "Adapt"
+tier = 0
+unsafe = false
+deps = []

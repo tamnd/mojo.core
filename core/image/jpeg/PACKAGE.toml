@@ -1,0 +1,14 @@
+[package]
+name = "core.image.jpeg"
+go = "image/jpeg"
+verdict = "Port"
+tier = 5
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.errors",
+  "core.image",
+  "core.image.color",
+  "core.io",
+  "core.math",
+]

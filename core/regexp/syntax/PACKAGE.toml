@@ -1,0 +1,14 @@
+[package]
+name = "core.regexp.syntax"
+go = "regexp/syntax"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.errors",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.unicode",
+  "core.unicode.utf8",
+]

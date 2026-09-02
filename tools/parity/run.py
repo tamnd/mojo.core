@@ -88,7 +88,9 @@ def exported(package: str) -> set[str] | None:
         # measured by the rows underneath them rather than here.
         return None
     path = CORE / Path(*package.split(".")[1:])
-    if not path.is_dir():
+    if not path.is_dir() or not any(path.glob("*.mojo")):
+        # A directory with a manifest and no code is a plan, not a package at
+        # zero percent, and mojo doc has nothing to read in it.
         return None
     if not shutil.which("mojo"):
         print("parity: mojo is not on PATH, so nothing can be measured", file=sys.stderr)

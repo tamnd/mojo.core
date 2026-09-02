@@ -1,0 +1,15 @@
+[package]
+name = "core.debug.dwarf"
+go = "debug/dwarf"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.encoding.binary",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.path",
+  "core.sort",
+  "core.strconv",
+]

@@ -1,0 +1,16 @@
+[package]
+name = "core.encoding.csv"
+go = "encoding/csv"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.strings",
+  "core.unicode",
+  "core.unicode.utf8",
+]

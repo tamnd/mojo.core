@@ -1,0 +1,14 @@
+[package]
+name = "core.math.big"
+go = "math/big"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.errors",
+  "core.io",
+  "core.math",
+  "core.math.bits",
+  "core.strconv",
+  "core.strings",
+]

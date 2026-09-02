@@ -1,0 +1,17 @@
+[package]
+name = "core.debug.elf"
+go = "debug/elf"
+verdict = "Port"
+tier = 6
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.compress.zlib",
+  "core.encoding.binary",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.os",
+  "core.strconv",
+  "core.strings",
+]

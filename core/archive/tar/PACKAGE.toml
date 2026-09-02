@@ -1,0 +1,22 @@
+[package]
+name = "core.archive.tar"
+go = "archive/tar"
+verdict = "Port"
+tier = 7
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.io.fs",
+  "core.math",
+  "core.os",
+  "core.path",
+  "core.path.filepath",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.time",
+  "core.unicode.utf8",
+]

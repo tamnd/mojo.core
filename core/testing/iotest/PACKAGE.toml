@@ -1,0 +1,11 @@
+[package]
+name = "core.testing.iotest"
+go = "testing/iotest"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.errors",
+  "core.io",
+]

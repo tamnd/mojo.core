@@ -1,0 +1,13 @@
+[package]
+name = "core.mime.quotedprintable"
+go = "mime/quotedprintable"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+]

@@ -1,0 +1,12 @@
+[package]
+name = "core.crypto.sha512"
+go = "crypto/sha512"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.crypto",
+  "core.encoding.binary",
+  "core.errors",
+  "core.hash",
+]

@@ -1,0 +1,37 @@
+[package]
+name = "core.crypto.tls"
+go = "crypto/tls"
+verdict = "Wrap"
+tier = 9
+unsafe = true
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.container.list",
+  "core.context",
+  "core.crypto",
+  "core.crypto.aes",
+  "core.crypto.cipher",
+  "core.crypto.ecdh",
+  "core.crypto.ed25519",
+  "core.crypto.hkdf",
+  "core.crypto.hmac",
+  "core.crypto.rand",
+  "core.crypto.rc4",
+  "core.crypto.rsa",
+  "core.crypto.sha1",
+  "core.crypto.sha256",
+  "core.crypto.sha512",
+  "core.crypto.subtle",
+  "core.crypto.x509",
+  "core.encoding.pem",
+  "core.errors",
+  "core.fmt",
+  "core.hash",
+  "core.io",
+  "core.net",
+  "core.os",
+  "core.strings",
+  "core.sync",
+  "core.time",
+]

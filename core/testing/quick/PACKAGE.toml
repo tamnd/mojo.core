@@ -1,0 +1,13 @@
+[package]
+name = "core.testing.quick"
+go = "testing/quick"
+verdict = "Adapt"
+tier = 4
+unsafe = false
+deps = [
+  "core.errors",
+  "core.fmt",
+  "core.math",
+  "core.math.rand",
+  "core.strings",
+]

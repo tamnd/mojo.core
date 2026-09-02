@@ -1,0 +1,17 @@
+[package]
+name = "core.mime"
+go = "mime"
+verdict = "Port"
+tier = 7
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.errors",
+  "core.fmt",
+  "core.os",
+  "core.path.filepath",
+  "core.sort",
+  "core.strings",
+  "core.unicode",
+]

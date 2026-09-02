@@ -1,0 +1,10 @@
+[package]
+name = "core.os.signal"
+go = "os/signal"
+verdict = "Adapt"
+tier = 6
+unsafe = false
+deps = [
+  "core.os",
+  "core.syscall",
+]

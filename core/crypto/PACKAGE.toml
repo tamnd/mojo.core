@@ -1,0 +1,12 @@
+[package]
+name = "core.crypto"
+go = "crypto"
+verdict = "Adapt"
+tier = 3
+unsafe = false
+deps = [
+  "core.errors",
+  "core.hash",
+  "core.io",
+  "core.strconv",
+]

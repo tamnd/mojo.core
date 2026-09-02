@@ -1,0 +1,12 @@
+[package]
+name = "core.compress.lzw"
+go = "compress/lzw"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+]

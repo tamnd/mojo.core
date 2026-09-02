@@ -1,0 +1,11 @@
+[package]
+name = "core.hash.maphash"
+go = "hash/maphash"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.errors",
+  "core.hash",
+  "core.math.bits",
+]

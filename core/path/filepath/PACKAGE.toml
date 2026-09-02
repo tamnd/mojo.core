@@ -1,0 +1,14 @@
+[package]
+name = "core.path.filepath"
+go = "path/filepath"
+verdict = "Port"
+tier = 6
+unsafe = false
+deps = [
+  "core.errors",
+  "core.io.fs",
+  "core.os",
+  "core.sort",
+  "core.strings",
+  "core.unicode.utf8",
+]

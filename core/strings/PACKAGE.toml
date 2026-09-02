@@ -1,0 +1,12 @@
+[package]
+name = "core.strings"
+go = "strings"
+verdict = "Port"
+tier = 2
+unsafe = false
+deps = [
+  "core.errors",
+  "core.io",
+  "core.unicode",
+  "core.unicode.utf8",
+]

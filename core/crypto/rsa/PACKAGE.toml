@@ -1,0 +1,16 @@
+[package]
+name = "core.crypto.rsa"
+go = "crypto/rsa"
+verdict = "Wrap"
+tier = 7
+unsafe = true
+deps = [
+  "core.crypto",
+  "core.crypto.rand",
+  "core.crypto.subtle",
+  "core.encoding.asn1",
+  "core.errors",
+  "core.hash",
+  "core.io",
+  "core.math.big",
+]

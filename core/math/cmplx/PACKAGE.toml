@@ -1,0 +1,9 @@
+[package]
+name = "core.math.cmplx"
+go = "math/cmplx"
+verdict = "Port"
+tier = 2
+unsafe = false
+deps = [
+  "core.math",
+]

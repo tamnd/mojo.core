@@ -1,0 +1,12 @@
+[package]
+name = "core.crypto.rand"
+go = "crypto/rand"
+verdict = "Adapt"
+tier = 6
+unsafe = false
+deps = [
+  "core.errors",
+  "core.io",
+  "core.os",
+  "core.syscall",
+]

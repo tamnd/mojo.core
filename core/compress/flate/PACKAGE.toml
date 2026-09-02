@@ -1,0 +1,16 @@
+[package]
+name = "core.compress.flate"
+go = "compress/flate"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.math",
+  "core.math.bits",
+  "core.sort",
+  "core.strconv",
+]

@@ -1,0 +1,10 @@
+[package]
+name = "core.hash.adler32"
+go = "hash/adler32"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.errors",
+  "core.hash",
+]

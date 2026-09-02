@@ -1,0 +1,13 @@
+[package]
+name = "core.runtime.metrics"
+go = "runtime/metrics"
+verdict = "Adapt"
+tier = 4
+unsafe = false
+deps = [
+  "core.errors",
+  "core.math",
+  "core.sort",
+  "core.strings",
+  "core.time",
+]

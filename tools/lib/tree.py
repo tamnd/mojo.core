@@ -24,10 +24,30 @@ class Package:
     tier: int = 0
     deps: list[str] = field(default_factory=list)
     unsafe: bool = False
+    go: str = ""
+    verdict: str = ""
 
     @property
     def sources(self) -> list[Path]:
-        return sorted(self.path.rglob("*.mojo"))
+        """This package's own Mojo files, not its subpackages'.
+
+        A subpackage has its own manifest and answers for itself, so counting
+        its files here would let it satisfy the parent's declarations.
+        """
+        owned = []
+        for path in sorted(self.path.rglob("*.mojo")):
+            if not any((p / "PACKAGE.toml").is_file() for p in path.parents if p != self.path and self.path in p.parents):
+                owned.append(path)
+        return owned
+
+    @property
+    def started(self) -> bool:
+        """Whether there is any code here yet.
+
+        A manifest with no code is a plan, and the checks that read imports
+        have nothing to read. They say so rather than passing quietly.
+        """
+        return bool(self.sources)
 
 
 def packages() -> list[Package]:
@@ -50,6 +70,8 @@ def packages() -> list[Package]:
                 tier=int(pkg.get("tier", 0)),
                 deps=list(pkg.get("deps", [])),
                 unsafe=bool(pkg.get("unsafe", False)),
+                go=pkg.get("go", ""),
+                verdict=pkg.get("verdict", ""),
             )
         )
     return sorted(found, key=lambda p: p.name)

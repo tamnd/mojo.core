@@ -1,0 +1,14 @@
+[package]
+name = "core.net.url"
+go = "net/url"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.errors",
+  "core.fmt",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.unicode.utf8",
+]

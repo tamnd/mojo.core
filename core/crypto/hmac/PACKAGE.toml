@@ -1,0 +1,12 @@
+[package]
+name = "core.crypto.hmac"
+go = "crypto/hmac"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.crypto",
+  "core.crypto.subtle",
+  "core.errors",
+  "core.hash",
+]

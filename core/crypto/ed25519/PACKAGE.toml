@@ -1,0 +1,16 @@
+[package]
+name = "core.crypto.ed25519"
+go = "crypto/ed25519"
+verdict = "Wrap"
+tier = 7
+unsafe = true
+deps = [
+  "core.crypto",
+  "core.crypto.rand",
+  "core.crypto.sha512",
+  "core.crypto.subtle",
+  "core.encoding.pem",
+  "core.errors",
+  "core.io",
+  "core.strconv",
+]

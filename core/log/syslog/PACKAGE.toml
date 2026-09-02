@@ -1,0 +1,15 @@
+[package]
+name = "core.log.syslog"
+go = "log/syslog"
+verdict = "Port"
+tier = 7
+unsafe = false
+deps = [
+  "core.errors",
+  "core.fmt",
+  "core.log",
+  "core.net",
+  "core.os",
+  "core.strings",
+  "core.time",
+]

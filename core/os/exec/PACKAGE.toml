@@ -1,0 +1,17 @@
+[package]
+name = "core.os.exec"
+go = "os/exec"
+verdict = "Adapt"
+tier = 7
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.errors",
+  "core.io",
+  "core.os",
+  "core.path.filepath",
+  "core.strconv",
+  "core.strings",
+  "core.syscall",
+  "core.time",
+]

@@ -1,0 +1,19 @@
+[package]
+name = "core.net.mail"
+go = "net/mail"
+verdict = "Port"
+tier = 8
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.encoding.base64",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.mime",
+  "core.net.textproto",
+  "core.strings",
+  "core.time",
+  "core.unicode.utf8",
+]

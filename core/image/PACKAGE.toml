@@ -1,0 +1,14 @@
+[package]
+name = "core.image"
+go = "image"
+verdict = "Adapt"
+tier = 4
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.errors",
+  "core.image.color",
+  "core.io",
+  "core.math",
+  "core.strconv",
+]

@@ -1,0 +1,17 @@
+[package]
+name = "core.image.gif"
+go = "image/gif"
+verdict = "Port"
+tier = 5
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.compress.lzw",
+  "core.errors",
+  "core.fmt",
+  "core.image",
+  "core.image.color",
+  "core.image.color.palette",
+  "core.io",
+  "core.math.bits",
+]

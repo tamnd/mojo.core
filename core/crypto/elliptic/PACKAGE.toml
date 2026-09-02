@@ -1,0 +1,11 @@
+[package]
+name = "core.crypto.elliptic"
+go = "crypto/elliptic"
+verdict = "Wrap"
+tier = 4
+unsafe = false
+deps = [
+  "core.errors",
+  "core.io",
+  "core.math.big",
+]

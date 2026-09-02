@@ -1,0 +1,23 @@
+[package]
+name = "core.html.template"
+go = "html/template"
+verdict = "Adapt"
+tier = 8
+unsafe = false
+deps = [
+  "core.encoding.json",
+  "core.errors",
+  "core.fmt",
+  "core.html",
+  "core.io",
+  "core.io.fs",
+  "core.net.url",
+  "core.path",
+  "core.path.filepath",
+  "core.regexp",
+  "core.strconv",
+  "core.strings",
+  "core.text.template",
+  "core.text.template.parse",
+  "core.unicode",
+]

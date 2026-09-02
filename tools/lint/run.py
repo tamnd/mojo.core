@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """The linter.
 
-Four checks, each defending something that a convention alone will not. Every
-one of them exists because of a specific way this library can go wrong, and the
-reasons are written next to the checks rather than in a commit message.
+Each check defends something that a convention alone will not, and each one
+exists because of a specific way this library can go wrong. The reasons are
+written next to the checks rather than in a commit message, so that somebody
+who finds a check inconvenient can read what it is for before deleting it.
 
 Run with --selftest to check the checks. A lint that has stopped matching
 anything reports success forever, so each check is also run against a fixture
@@ -21,8 +22,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.tree import ROOT, Package, mojo_sources, packages, report
 
-# Operations that only a package declaring itself unsafe may name.
-UNSAFE_NAMES = ("Pointer", "external_call", "unsafe_bitcast", "unsafe_take_allocation")
+# Operations that only a package declaring itself unsafe may name. Raw
+# pointers, foreign calls, reinterpretation and untracked allocation are the
+# four ways a Mojo program stops being memory safe, and each of them is spelled
+# with a name you can grep for, which is the whole reason this check is cheap.
+UNSAFE_NAMES = (
+    "UnsafePointer",
+    "OpaquePointer",
+    "external_call",
+    "unsafe_bitcast",
+    "unsafe_take_allocation",
+    "stack_allocation",
+    "__mlir_op",
+)
 
 # The machines the longer suites run on are private. Their names live in an
 # environment file that is not checked in, and this is the check that they have
@@ -36,16 +48,75 @@ FALLIBLE_NEXT = re.compile(r"^\s*def\s+__next__\s*\([^)]*\)[^:]*\braises\b", re.
 MUST_CALL = re.compile(r"\b(must_[a-z_0-9]+)\s*\(\s*([^)]*)\)")
 
 
+def check_graph(pkgs: list[Package]) -> list[str]:
+    """The manifests describe a real graph.
+
+    Every declared dependency names a package that exists, the graph has no
+    cycle, the directory matches the name, and the recorded tier is one more
+    than the deepest dependency. That last one makes the tier a fact about the
+    graph rather than an opinion somebody typed, which is the only way the
+    layering rule stays true as packages arrive.
+    """
+    problems = []
+    by_name = {p.name: p for p in pkgs}
+    for pkg in pkgs:
+        where = pkg.path.relative_to(ROOT)
+        if str(where) != "/".join(["core"] + pkg.name.split(".")[1:]):
+            problems.append(f"{pkg.name} is declared in {where}, which is not where that name lives")
+        for dep in pkg.deps:
+            if dep not in by_name:
+                problems.append(f"{pkg.name} declares {dep}, which is not a package in this tree")
+        if pkg.deps != sorted(pkg.deps):
+            problems.append(f"{pkg.name} lists its dependencies out of order")
+
+    # Depth first, so a cycle is reported as the path that closes it rather
+    # than as a set of names somebody then has to work out for themselves.
+    depth: dict[str, int] = {}
+    visiting: list[str] = []
+
+    def walk(name: str) -> int:
+        if name in depth:
+            return depth[name]
+        if name in visiting:
+            problems.append("cycle: " + " -> ".join(visiting[visiting.index(name):] + [name]))
+            return 0
+        visiting.append(name)
+        pkg = by_name[name]
+        value = 1 + max((walk(d) for d in pkg.deps if d in by_name), default=-1)
+        visiting.pop()
+        depth[name] = value
+        return value
+
+    for pkg in pkgs:
+        want = walk(pkg.name)
+        if pkg.tier != want:
+            problems.append(
+                f"{pkg.name} records tier {pkg.tier} and its deepest dependency puts it at {want}"
+            )
+    if pkgs and not problems:
+        print(f"lint: {len(pkgs)} packages over {max(depth.values()) + 1} tiers, no cycles")
+    return problems
+
+
 def check_layering(pkgs: list[Package]) -> list[str]:
     """Every import declared, and every declaration used.
 
     Both directions, because a stale declaration is how a dependency graph
     quietly becomes wrong: nothing breaks, and the manifest stops describing
     the code it is supposed to describe.
+
+    A package with no code yet is a plan rather than a lie, so the second
+    direction does not apply to it. The count of those is printed, because a
+    number that is not going down is the interesting thing about this tree for
+    a while.
     """
     problems = []
     known = {p.name for p in pkgs}
+    unstarted = 0
     for pkg in pkgs:
+        if not pkg.started:
+            unstarted += 1
+            continue
         declared = set(pkg.deps)
         used = set()
         for src in pkg.sources:
@@ -58,26 +129,20 @@ def check_layering(pkgs: list[Package]) -> list[str]:
             problems.append(f"{pkg.name} imports {name} without declaring it")
         for name in sorted(declared - used):
             problems.append(f"{pkg.name} declares {name} and never imports it")
-        for name in sorted(declared):
-            dep = next((p for p in pkgs if p.name == name), None)
-            if dep and dep.tier > pkg.tier:
-                problems.append(
-                    f"{pkg.name} is tier {pkg.tier} and depends on {name} at tier {dep.tier}"
-                )
+    if pkgs:
+        print(f"lint: {len(pkgs) - unstarted} of {len(pkgs)} packages have code")
     return problems
 
 
 def check_unsafe(pkgs: list[Package]) -> list[str]:
     """Raw pointers and foreign calls only where they are declared.
 
-    The count of unsafe packages is reported rather than merely allowed,
-    because that number going up is a thing to notice.
+    The count of unsafe packages is reported by the caller rather than merely
+    allowed, because that number going up is a thing to notice.
     """
     problems = []
-    unsafe_count = 0
     for pkg in pkgs:
         if pkg.unsafe:
-            unsafe_count += 1
             continue
         for src in pkg.sources:
             text = src.read_text()
@@ -85,8 +150,6 @@ def check_unsafe(pkgs: list[Package]) -> list[str]:
                 if re.search(rf"\b{name}\b", text):
                     rel = src.relative_to(ROOT)
                     problems.append(f"{rel} names {name} in a package that is not unsafe")
-    if pkgs:
-        print(f"lint: {unsafe_count} of {len(pkgs)} packages declare unsafe")
     return problems
 
 
@@ -165,23 +228,53 @@ def selftest() -> int:
     Without this, a check whose regular expression stopped matching would
     report success forever and nobody would find out.
     """
-    fixtures = ROOT / "tests" / "lint"
-    if not fixtures.is_dir():
-        print("lint selftest: no fixtures yet, nothing to prove")
-        return 0
     failures = []
-    cases = {
+    fixtures = ROOT / "tests" / "lint"
+    sources = {
         "fallible_next": check_iteration,
         "must_on_variable": check_must_calls,
+        "unsafe_in_safe_package": None,
     }
-    for name, check in cases.items():
+    for name, check in sources.items():
         path = fixtures / f"{name}.mojo"
         if not path.is_file():
             failures.append(f"missing fixture {path.relative_to(ROOT)}")
             continue
+        if check is None:
+            # The unsafe check reads a package rather than a list of files, so
+            # it gets a package built around the fixture.
+            fake = Package(name="core.fixture", path=path.parent, unsafe=False)
+            if not [p for p in check_unsafe([fake]) if name in p]:
+                failures.append(f"{name} fixture was accepted, so the unsafe check is dead")
+            continue
         if not check([path]):
             failures.append(f"{name} fixture was accepted, so that check is dead")
-    return report("lint selftest", len(cases), "checks", failures)
+
+    # The graph checks read manifests rather than source, so they are proved
+    # against a graph built here instead of against a file on disk. A tree with
+    # a real cycle in it would fail every other run as well.
+    here = ROOT / "core"
+    graphs = {
+        "a cycle": [
+            Package(name="core.a", path=here / "a", tier=0, deps=["core.b"]),
+            Package(name="core.b", path=here / "b", tier=0, deps=["core.a"]),
+        ],
+        "a wrong tier": [
+            Package(name="core.a", path=here / "a", tier=0, deps=[]),
+            Package(name="core.b", path=here / "b", tier=7, deps=["core.a"]),
+        ],
+        "a dependency that does not exist": [
+            Package(name="core.a", path=here / "a", tier=0, deps=["core.nowhere"]),
+        ],
+        "a name that does not match its directory": [
+            Package(name="core.a", path=here / "elsewhere", tier=0, deps=[]),
+        ],
+    }
+    for what, pkgs in graphs.items():
+        if not check_graph(pkgs):
+            failures.append(f"the graph check accepted {what}, so it is dead")
+
+    return report("lint selftest", len(sources) + len(graphs), "checks", failures)
 
 
 def main() -> int:
@@ -194,8 +287,11 @@ def main() -> int:
 
     pkgs = packages()
     sources = mojo_sources()
+    if pkgs:
+        print(f"lint: {sum(1 for p in pkgs if p.unsafe)} of {len(pkgs)} packages declare unsafe")
     problems = (
-        check_layering(pkgs)
+        check_graph(pkgs)
+        + check_layering(pkgs)
         + check_unsafe(pkgs)
         + check_iteration(sources)
         + check_must_calls(sources)

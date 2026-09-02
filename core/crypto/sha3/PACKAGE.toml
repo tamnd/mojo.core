@@ -1,0 +1,13 @@
+[package]
+name = "core.crypto.sha3"
+go = "crypto/sha3"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.crypto",
+  "core.crypto.subtle",
+  "core.encoding.binary",
+  "core.errors",
+  "core.hash",
+]

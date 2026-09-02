@@ -1,0 +1,12 @@
+[package]
+name = "core.log"
+go = "log"
+verdict = "Port"
+tier = 6
+unsafe = false
+deps = [
+  "core.fmt",
+  "core.io",
+  "core.os",
+  "core.time",
+]

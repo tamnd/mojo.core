@@ -1,0 +1,7 @@
+[package]
+name = "core.unicode.utf16"
+go = "unicode/utf16"
+verdict = "Port"
+tier = 0
+unsafe = false
+deps = []

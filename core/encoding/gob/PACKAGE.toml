@@ -1,0 +1,19 @@
+[package]
+name = "core.encoding.gob"
+go = "encoding/gob"
+verdict = "Adapt"
+tier = 6
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.encoding",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.math",
+  "core.os",
+  "core.strings",
+  "core.unicode",
+  "core.unicode.utf8",
+]

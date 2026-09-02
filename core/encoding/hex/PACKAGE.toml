@@ -1,0 +1,12 @@
+[package]
+name = "core.encoding.hex"
+go = "encoding/hex"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.encoding",
+  "core.errors",
+  "core.io",
+  "core.strings",
+]

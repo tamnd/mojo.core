@@ -1,0 +1,10 @@
+[package]
+name = "core.image.draw"
+go = "image/draw"
+verdict = "Adapt"
+tier = 5
+unsafe = false
+deps = [
+  "core.image",
+  "core.image.color",
+]

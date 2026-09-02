@@ -1,0 +1,9 @@
+[package]
+name = "core.syscall"
+go = "syscall"
+verdict = "Adapt"
+tier = 1
+unsafe = true
+deps = [
+  "core.errors",
+]

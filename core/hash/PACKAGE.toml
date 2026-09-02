@@ -1,0 +1,9 @@
+[package]
+name = "core.hash"
+go = "hash"
+verdict = "Adapt"
+tier = 2
+unsafe = false
+deps = [
+  "core.io",
+]

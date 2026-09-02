@@ -1,0 +1,16 @@
+[package]
+name = "core.net.textproto"
+go = "net/textproto"
+verdict = "Port"
+tier = 7
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.net",
+  "core.strconv",
+  "core.strings",
+]

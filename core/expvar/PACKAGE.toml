@@ -1,0 +1,16 @@
+[package]
+name = "core.expvar"
+go = "expvar"
+verdict = "Adapt"
+tier = 7
+unsafe = false
+deps = [
+  "core.encoding.json",
+  "core.fmt",
+  "core.log",
+  "core.math",
+  "core.os",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+]

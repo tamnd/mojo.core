@@ -1,0 +1,12 @@
+[package]
+name = "core.encoding.base64"
+go = "encoding/base64"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.encoding",
+  "core.errors",
+  "core.io",
+  "core.strconv",
+]

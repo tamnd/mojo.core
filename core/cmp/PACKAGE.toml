@@ -1,0 +1,7 @@
+[package]
+name = "core.cmp"
+go = "cmp"
+verdict = "Adapt"
+tier = 0
+unsafe = false
+deps = []

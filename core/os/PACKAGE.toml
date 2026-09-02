@@ -1,0 +1,13 @@
+[package]
+name = "core.os"
+go = "os"
+verdict = "Adapt"
+tier = 5
+unsafe = true
+deps = [
+  "core.errors",
+  "core.io",
+  "core.io.fs",
+  "core.syscall",
+  "core.time",
+]

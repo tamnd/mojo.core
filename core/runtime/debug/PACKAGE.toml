@@ -1,0 +1,16 @@
+[package]
+name = "core.runtime.debug"
+go = "runtime/debug"
+verdict = "Adapt"
+tier = 6
+unsafe = false
+deps = [
+  "core.errors",
+  "core.fmt",
+  "core.os",
+  "core.runtime.sched",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.time",
+]

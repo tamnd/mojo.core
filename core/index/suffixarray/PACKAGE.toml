@@ -1,0 +1,15 @@
+[package]
+name = "core.index.suffixarray"
+go = "index/suffixarray"
+verdict = "Port"
+tier = 5
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.encoding.binary",
+  "core.errors",
+  "core.io",
+  "core.math",
+  "core.regexp",
+  "core.sort",
+]

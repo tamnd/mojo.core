@@ -1,0 +1,14 @@
+[package]
+name = "core.text.scanner"
+go = "text/scanner"
+verdict = "Port"
+tier = 6
+unsafe = false
+deps = [
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.os",
+  "core.unicode",
+  "core.unicode.utf8",
+]

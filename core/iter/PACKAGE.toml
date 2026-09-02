@@ -1,0 +1,7 @@
+[package]
+name = "core.iter"
+go = "iter"
+verdict = "Adapt"
+tier = 0
+unsafe = false
+deps = []

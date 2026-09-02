@@ -1,0 +1,15 @@
+[package]
+name = "core.database.sql.driver"
+go = "database/sql/driver"
+verdict = "Adapt"
+tier = 5
+unsafe = false
+deps = [
+  "core.context",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.math.big",
+  "core.strconv",
+  "core.time",
+]

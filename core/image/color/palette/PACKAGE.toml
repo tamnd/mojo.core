@@ -1,0 +1,9 @@
+[package]
+name = "core.image.color.palette"
+go = "image/color/palette"
+verdict = "Port"
+tier = 1
+unsafe = false
+deps = [
+  "core.image.color",
+]

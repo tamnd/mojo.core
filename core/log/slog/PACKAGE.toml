@@ -1,0 +1,22 @@
+[package]
+name = "core.log.slog"
+go = "log/slog"
+verdict = "Adapt"
+tier = 7
+unsafe = false
+deps = [
+  "core.context",
+  "core.encoding.json",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.log",
+  "core.math",
+  "core.os",
+  "core.path.filepath",
+  "core.sort",
+  "core.strconv",
+  "core.time",
+  "core.unicode",
+  "core.unicode.utf8",
+]
