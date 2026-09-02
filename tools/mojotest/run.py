@@ -37,7 +37,8 @@ Pass --race to build the same suite under the thread sanitiser. Refcounts and
 locks are the two things in this library whose bugs do not show up as a failing
 assertion, and a suite that passes is not evidence about either of them. The
 sanitiser is a build flag rather than a separate suite so that whatever tests
-exist are the tests it runs.
+exist are the tests it runs. It works on macOS and not on Linux, for a reason
+that is somebody else's and is recorded next to RACE_UNAVAILABLE below.
 """
 
 from __future__ import annotations
@@ -63,6 +64,14 @@ MAIN = TESTS / "_generated_main.mojo"
 # lets the program carry on with its exit code untouched, so this string is the
 # only thing standing between a data race and a green suite.
 RACE_FOUND = "WARNING: ThreadSanitizer"
+
+# What a sanitised binary prints on Linux instead of running. The Mojo runtime
+# links tcmalloc, which assumes a 48-bit address space, and the sanitiser takes
+# that range for its shadow memory, so the allocator dies before main. There is
+# no flag to build without tcmalloc. Recognised by name so that `pixi run race`
+# on Linux says what actually happened rather than reporting a suite failure
+# and sending somebody looking for a bug in their own code.
+RACE_UNAVAILABLE = "TCMalloc assumes a 48-bit virtual address space"
 
 # tests/lint holds files that are supposed to fail the linter and tests/mojotest
 # holds files that are supposed to fail this. Neither belongs in the suite.
@@ -291,6 +300,13 @@ def suite(
     # assertion as well. Reporting only the assertion would leave the more
     # interesting half sitting in the log.
     said = []
+    if RACE_UNAVAILABLE in output:
+        return (
+            len(found),
+            len(skipped),
+            output,
+            ["the thread sanitiser does not work with this runtime's allocator, which is Linux"],
+        )
     if RACE_FOUND in output:
         said.append(f"the thread sanitiser reported {output.count(RACE_FOUND)} race(s)")
     if code != 0:

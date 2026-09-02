@@ -147,7 +147,26 @@ jobs:
       # Before the suite, because a runner that swallows a failing test looks exactly like a suite with nothing wrong in it, and every platform, because the runner builds and runs a binary and that is the part that differs per platform.
       - run: pixi run test-selftest
       - run: pixi run test
-      # The same suite under the thread sanitiser. A refcount or a lock that is wrong does not fail an assertion, it corrupts something and the failure arrives later somewhere else, so the run above is not evidence about either. It builds a second binary, which is the cost, and it runs everywhere because a race that only appears under a weak memory model is exactly the kind arm64 is in this matrix for.
+
+  # The same suite under the thread sanitiser. A refcount or a lock that is wrong does not fail an assertion, it corrupts something and the failure arrives later somewhere else, so the plain run says nothing about either.
+  #
+  # macOS only, and not by choice. On Linux the Mojo runtime links tcmalloc, which assumes a 48-bit address space, and the sanitiser takes that range for its shadow memory, so every binary built with `--sanitize thread` dies in the allocator before it reaches main. There is no flag to build without tcmalloc. macOS uses the system allocator and works.
+  #
+  # The loss is smaller than it looks: this runner is arm64, so the weak memory model that a missing barrier needs in order to show up at all is still covered. What is not covered is anything that only races under glibc.
+  race:
+    name: race
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: default
+          locked: true
+          cache: true
       - run: pixi run race
 
   dependency-review:
@@ -167,7 +186,7 @@ jobs:
   ci-ok:
     name: ci ok
     runs-on: ubuntu-24.04
-    needs: [format, lint, generated, packages, warnings, test]
+    needs: [format, lint, generated, packages, warnings, test, race]
     if: always()
     timeout-minutes: 5
     steps:
