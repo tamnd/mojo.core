@@ -73,3 +73,29 @@ PipeWriter = "Blocking handoff between two threads. Needs core.sync, M4, issue #
 "PipeWriter.Close" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
 "PipeWriter.CloseWithError" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
 "PipeWriter.Write" = "Blocking handoff between two threads. Needs core.sync, M4, issue #112."
+
+["bufio"]
+# The scanner is a `core.iter.Cursor`, and the whole reason that trait exists is
+# `Scanner.Err`: Go's loop ends the same way whether the input finished or the
+# disk broke, and the difference is in a method called after the loop that is
+# easy to leave out. `has_next` raises instead, so there is nothing left to ask.
+"Scanner.Err" = "The scanner raises. core.iter.Cursor exists to remove this method."
+# The splitter is a type parameter fixed when the scanner is built, so there is
+# no setter to call and Go's "Split after Scan panics" is not expressible.
+# `new_scanner(src^, ScanWords())` is the whole of it.
+"Scanner.Split" = "The splitter is a type parameter. Pass it to new_scanner; it cannot change mid scan."
+# Go's one place where an error is not a failure. Here a split function returns
+# `Split.last(...)` or `Split.stop_here()`, so the error channel only ever
+# carries failures and a sentinel that means success cannot be raised by
+# accident.
+ErrFinalToken = "Not an error. `Split.last` and `Split.stop_here` carry it as data."
+# Go hands out the writer's own free space so a caller can append into it and
+# hand it back, which saves a copy. A Mojo `Span` has no capacity to append into
+# and a `List` would reallocate somewhere else, so there is no translation that
+# keeps the property the method exists for. `write` and `write_string` are the
+# replacement and they copy once.
+"Writer.AvailableBuffer" = "Appending into the writer's own memory. A Span has no capacity and a List reallocates."
+"ReadWriter.AvailableBuffer" = "Appending into the writer's own memory. A Span has no capacity and a List reallocates."
+# Go's embedding, not a symbol. `ReadWriter` here has a `reader` and a `writer`
+# field and forwards by hand, `design.md` on method promotion.
+"ReadWriter.embedded" = "Go's embedding. The two halves are named fields and the forwarding is written out."

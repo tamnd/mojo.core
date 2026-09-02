@@ -41,6 +41,15 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `io.NopCloser` returning an unexported type behind `io.ReadCloser` | `NopCloser[R]`, a named generic type, because there is no erased `ReadCloser` to hide it behind | 1 |
 | `io.MultiReader` flattening a multi reader given to a multi reader | No flattening. The erased value's type is gone by the time it is seen, so there is nothing to recognise. | 1 |
 | `io.WriterAt` documented as safe for parallel non overlapping writes | `write_at` takes `mut self`, so the borrow checker serialises calls on one value. The destination property survives; the parallelism is not expressible without interior mutability. | 5 |
+| `bufio.Peek`, `ReadSlice`, `ReadLine` and `Scanner.Bytes` returning a view into the reader's own buffer | Owned bytes, copied out, everywhere | 5, a span does not keep its owner still |
+| `bufio.Writer.AvailableBuffer`, an empty slice over the writer's spare capacity to be appended to and written back | Nothing. The same reason: the slice it hands out is invalidated by the next flush and nothing here would catch the use. | 5 |
+| `bufio.SplitFunc`, and the closures people write for it | The `Splitter` trait, one method, with the receiver as the captured state | 3 |
+| `Scanner.Split(f)`, a setter that panics if called after the first `Scan` | The splitter is a type parameter, fixed when the scanner is built, so the mistake cannot be written down | 3 |
+| `Scanner.Buffer(buf []byte, max int)`, reusing an allocation across scanners | `buffer(size, max)`, a size rather than the memory, because the scanner would own the list and the caller could not have it back | no shared ownership |
+| `bufio.Reader.Reset(r io.Reader)` with any other reader | `reset` takes another `R`. A caller swapping one kind of source for another wraps an `AnyReader` and resets that. | 1 |
+| `bufio.NewReaderSize` handing back the argument unchanged when it is already a big enough `*Reader` | No unwrapping, because there is nothing to type assert against, so wrapping a buffered reader gives two buffers | 1 |
+| `bufio.ScanRunes` substituting U+FFFD for a byte that is not valid UTF-8 | The offending byte is the token, one per byte. A token is a range of the input, so there is nowhere for bytes that are not in the input to come from; the advance is the same, so the token stream still lines up. | 5 |
+| `bufio.ReadWriter`, two embedded pointers and no methods of its own | Two named fields and twenty forwarders written out. `buffered`, `size` and `reset` are not forwarded, because each means two things. | no promotion |
 | `init()` | Compile time initialisers and explicit registration | no `init` |
 | Struct embedding with method promotion | Composition with explicit forwarding | no promotion |
 | The `embed` directive | A tool that generates a Mojo source file from a directory | a directive is not a library |
@@ -54,7 +63,6 @@ These are deviations too, because code written against Go's semantics may not po
 | Go | This library |
 | --- | --- |
 | `Read` may return bytes and an error together, and every caller is told to handle the count before the error | A read that moved bytes returns them and does not raise, so `EOF` always arrives with a count of zero |
-| A buffer's byte slice is invalidated by the next write, which is a documented hazard | The origin is tracked, so using it afterwards is a compile error |
 | A string builder copied after use panics through a runtime check | Not copyable, so the mistake does not compile |
 | A mutex copied by value is caught by a separate analysis tool | Not copyable, so it does not compile |
 | `io.MultiReader` returns a zero length read when a source in the middle is empty | The loop moves to the next source instead, so a caller never sees a zero without an error |
@@ -69,8 +77,14 @@ These are deviations too, because code written against Go's semantics may not po
 | A file is closed by a finalizer if you forget | Closed by the destructor, a close error is reported rather than lost, and the linter warns on a written file dropped without an explicit close |
 | Struct tags are unchecked strings that fail silently when misspelled | Validated against a grammar by the generator, and a bad one fails the build |
 | The regexp engines are trusted to agree | Every pattern in the corpus runs through all applicable engines and the results have to be identical |
+| `for s.Scan() {}` ends early and silently on a read failure, and `s.Err()` after the loop is what you were supposed to remember | A failure comes out of `has_next` as a raise. There is no `Err`, so there is nothing to forget. |
+| `bufio.ReadSlice` on a full buffer returns the buffered bytes alongside `ErrBufferFull`, and a caller that handled the error first has dropped them | The bytes stay buffered. `read_bytes` on the same reader still returns the whole thing, so the recovery is one call rather than a merge. |
+| `Scanner.Text` and `ReadString` on bytes that are not valid UTF-8 hand back a string containing them, because a Go string is bytes | Both raise. `Scanner.bytes` and `read_bytes` are the versions that never refuse, and they are what a caller reading unknown encodings wants anyway. |
+| A split function returning a token that is not inside the data it was given cannot be checked, because the token is a slice and is inside by construction | The token is a pair of indices the split function chose, so the range is bounds checked and an off by one raises rather than handing out neighbouring bytes |
+| `ErrFinalToken`, an error value that is not a failure and means stop after this token | `Split.last` and `Split.stop_here`, which are data. The error channel only ever carries failures. |
+| `bufio` panics in three places: `Split` after scanning, `Buffer` after scanning, and a split function returning tokens without advancing | All three raise. The last one is `ErrNoProgress` after the same hundred empty tokens Go counts. |
 
-Five of those are the same observation. Go documents a hazard and Mojo's type system removes it.
+Four of those are the same observation. Go documents a hazard and Mojo's type system removes it.
 
 ## Additions Go does not have
 
@@ -120,6 +134,7 @@ Things a Go programmer will look for and not find. This is separate from the 41 
 | Compile time compiled regular expressions | Deferred past 1.0 behind a benchmark gate. The API is shaped so it can be added later without changing anything else. |
 | `io.Pipe`, `io.PipeReader` and `io.PipeWriter` | Deferred to M4. Every method blocks until the other side arrives, which needs `core.sync`. `io.ErrClosedPipe` is already numbered so the sentinel does not move when the pipe lands. |
 | `io.ReadAll` returning the bytes it did read alongside a failure | The failure alone. Copy into a buffer you own if the partial result matters; `errors.partial` still says how far it got. |
+| `bufio.Scanner.Err` | Nothing to call, and nothing to remember. The failure came out of `has_next` at the moment it happened. |
 | `io.CopyN` taking the destination's `read_from` fast path | It does not. Go gets there by wrapping the source in a `LimitReader`, which here would mean holding a borrowed reader in a field. Write `copy(dst, limit_reader(src^, n))` when you own the source. |
 
 ## The abort residue

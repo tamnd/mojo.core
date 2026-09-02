@@ -26,6 +26,8 @@ A closure that captures can be passed down, not kept. So a comparison function i
 
 This is also why `go f(x)` becomes `spawn[f](payload)` with an explicit struct carrying what a closure would have captured, and why template functions have one fixed signature rather than Go's arbitrary ones.
 
+The pointer and the context want to be one thing, and there is a spelling that makes them one: a trait with a single method, implemented by a struct whose fields are what the closure would have captured. The receiver is the context, and it is `mut self` so a stateful one can keep count. That is not just tidier. A function type has to name concrete types in every position, origins included, so `def(Span[Byte, ?], Bool) raises -> R` has a hole in it that only an untracked origin fills, and filling it means laundering through `core.runtime.box` in a package that otherwise needs nothing unsafe. A trait method may be parametric over the origin, exactly as `io.Reader.read` is, so the hole does not exist. `core.bufio.Splitter` is the first of these — Go's `bufio.SplitFunc`, which is a closure there — and comparators, handlers and codecs take the same shape. A thin function pointer is still the right answer when nothing is captured and no argument carries an origin.
+
 ## 4. There is exactly one error type, and it is a string
 
 Mojo's `Error` carries a message. There is no error hierarchy and nothing to type assert against.
@@ -134,7 +136,7 @@ There are no `init` functions and no method promotion through embedding. Registr
 
 Ownership and origins turn several of Go's documented hazards into things that do not compile, and that is the strongest argument for writing this rather than binding Go through a foreign function interface.
 
-A slice returned by a buffer is invalidated by the next write to that buffer. In Go this is a documented hazard you are asked to remember. Here the origin is tracked and using it afterwards is a compile error.
+This section used to open with a claim that a slice handed out by a buffer is invalidated by the next write to that buffer, and that using it afterwards is a compile error here where Go asks you to remember. That was wrong, it had no probe, and it is the reason every claim in this file now has one. A `Span` built from a `List` stays usable across a mutation of that list, including one that reallocates and leaves the span pointing at freed memory, and nothing in the compiler says so; `probes/span_outlives_its_owner.mojo` pins it. So this library returns owned bytes wherever Go returns a view into a buffer that a later call can move — `core.bufio`'s `peek`, `read_slice`, `read_line` and scanner token are all copies, and `deviations.md` records the copy as a cost rather than a win. What origins do buy is the [`ReaderView`](../core/io/erased.mojo) rule and the thread boundary in section 5; what they do not buy is this.
 
 A string builder copied after use panics at run time in Go through a hand rolled check. Here it is not copyable, so the mistake does not compile.
 
