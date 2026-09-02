@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+
+# Least privilege by default. A job that needs more asks for it itself.
+permissions:
+  contents: read
+
+# One run per ref. A new push cancels the old run, except on main where every commit on the branch should have a real result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  PIXI_VERSION: v0.78.0
+
+jobs:
+  format:
+    name: format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: default
+          locked: true
+          cache: true
+      - run: pixi run format-check
+
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: default
+          locked: true
+          cache: true
+      - run: pixi run lint
+      # A lint that has stopped matching anything reports success forever, so the lints are themselves checked against known violations.
+      - run: pixi run lint-selftest
+
+  generated:
+    name: generated code
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: default
+          locked: true
+          cache: true
+      # The Unicode tables, tzdata, the syscall bindings and every generated codec are checked in as well as generated.
+      # This rebuilds them and fails on a diff. It is the most valuable check in the list, because generated code drifting from its source surfaces months later somewhere unrelated.
+      - run: pixi run generated-check
+      # The vendored corpora are checked against the digests recorded for them, so that a test suite cannot quietly start testing different bytes.
+      - run: pixi run vendor-check
+
+  packages:
+    name: package graph
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: default
+          locked: true
+          cache: true
+      # Builds every package against only what its PACKAGE.toml declares.
+      # A library that only ever builds as a whole has a dependency graph nobody has tested, and the promise that you can take core.json without taking core.crypto.tls is exactly the kind of promise that rots without a check.
+      - run: pixi run pkg
+      - run: pixi run parity
+
+  warnings:
+    name: compile time diagnostics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: default
+          locked: true
+          cache: true
+      # A comptime fact cannot be raised as a compile error in Mojo, only as a warning, so every compile time check in this library is a warning that this job promotes to a failure.
+      # That makes the warning mechanism load bearing, and load bearing things get tested: tests/warnings/ holds files that are expected to warn, with the count and the text asserted.
+      - run: pixi run warnings
+
+  test:
+    name: test ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    # Almost all of this is one compile. The runner generates a single main that calls every test and builds it in one go, so the time grows with the size of the library rather than with the number of tests.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            runner: macos-14
+          - name: linux-x86_64
+            runner: ubuntu-24.04
+          # arm64 is not here for coverage. It is the only runner with a weak memory model, so it is the only place a missing acquire barrier in core.sync will ever show up.
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: ${{ env.PIXI_VERSION }}
+          environments: default
+          locked: true
+          cache: true
+      - name: Record the toolchain
+        run: pixi run mojo --version
+      # The errno table, the struct layouts and the syscall numbers are platform specific, and this is the only place they can be checked against the platform that will use them.
+      - run: pixi run baseline
+      - run: pixi run test
+
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+
+  # A single required check, so branch protection does not need updating every time the matrix changes.
+  ci-ok:
+    name: ci ok
+    runs-on: ubuntu-24.04
+    needs: [format, lint, generated, packages, warnings, test]
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Fail if anything upstream failed
+        run: |
+          if echo '${{ toJSON(needs) }}' | grep -q '"result": *"\(failure\|cancelled\)"'; then
+            echo "a required job did not pass"
+            exit 1
+          fi
+          echo "all required jobs passed"

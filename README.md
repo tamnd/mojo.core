@@ -1,0 +1,86 @@
+# mojo.core
+
+The Go standard library, rewritten for Mojo, as one repository of packages you can depend on independently.
+
+Mojo ships a good language and a small standard library. `std` gives you `String`, `List`, `Dict`, `SIMD`, file handles and not much else. There is no JSON, no regular expressions, no compression, no TLS, no `database/sql`, no time zones, no DNS. Every Mojo project that needs one of those either writes it or does not get written. This repository is the other option.
+
+Go's standard library is the model because it is the best worked example we have of what a core library should contain. It has had twenty years of production use, its API surface is documented down to the corner cases, and its test suites encode every bug anybody found in it. We are not guessing at what a core library needs. We are reading a good one and translating it.
+
+## Status
+
+Pre-alpha. Nothing here is finished and the API will move until 1.0. See [docs/roadmap.md](docs/roadmap.md) for what is being built and in what order, and the milestones on this repository for the same thing as tracked work.
+
+## What is in it
+
+135 packages and 11,598 exported symbols, measured from Go's own API manifests rather than from anybody's memory of what Go contains. The manifest is the contract: `tools/parity` reads `$GOROOT/api/go1*.txt` and reports, per package, how much of Go's surface exists here. That number goes in this README and it is generated, not typed.
+
+| Group | Packages |
+| --- | --- |
+| Errors and IO | `core.errors`, `core.io`, `core.io.fs`, `core.bufio` |
+| Text | `core.bytes`, `core.strings`, `core.strconv`, `core.unicode`, `core.unicode.utf8`, `core.unicode.norm` |
+| Formatting | `core.fmt` |
+| Collections | `core.sort`, `core.slices`, `core.maps`, `core.cmp`, `core.container.*`, `core.unique`, `core.weak` |
+| Encoding | `core.encoding.json`, `.xml`, `.csv`, `.gob`, `.asn1`, `.pem`, `.base64`, `.base32`, `.hex`, `.ascii85`, `.binary` |
+| System | `core.os`, `core.os.exec`, `core.os.signal`, `core.path`, `core.path.filepath`, `core.time`, `core.syscall` |
+| Maths | `core.math`, `core.math.big`, `core.math.bits`, `core.math.rand`, `core.math.cmplx` |
+| Networking | `core.net`, `core.net.netip`, `core.net.url`, `core.net.textproto`, `core.net.mail`, `core.net.smtp` |
+| Cryptography | `core.crypto.*`, `core.crypto.tls`, `core.crypto.x509`, `core.hash.*` |
+| Concurrency | `core.sync`, `core.sync.atomic`, `core.sync.chan`, `core.context`, `core.runtime.sched` |
+| Text processing | `core.regexp`, `core.text.template`, `core.html.template`, `core.text.scanner`, `core.text.tabwriter`, `core.mime.*` |
+| Compression | `core.compress.flate`, `.gzip`, `.zlib`, `.bzip2`, `.lzw` |
+| Archives | `core.archive.tar`, `core.archive.zip` |
+| Images | `core.image`, `core.image.png`, `.jpeg`, `.gif`, `.color`, `.draw` |
+| Databases | `core.database.sql`, `core.database.sql.driver` |
+| Testing | `core.testing`, `.quick`, `.iotest`, `.fstest`, `.synctest`, `.sqltest` |
+
+41 of Go's packages are deliberately left out, mostly because they exist to serve the Go language itself. `go/ast`, `go/types`, `reflect`, `plugin`, `runtime/cgo` and the `syscall/js` family have no meaning here. The full list with a reason for each is in [docs/packages.md](docs/packages.md).
+
+## One repository, many packages
+
+You should not have to take a TLS stack to get a JSON parser.
+
+Every directory under `core/` is a package with its own `PACKAGE.toml` declaring exactly what it depends on. `pixi run pkg core.json` builds that package against its declared dependencies and nothing else, and CI does that for every package on every commit, so the dependency graph is tested rather than assumed. The tiers are strict and the linter enforces them: a tier 2 package cannot import a tier 3 one, and an import that is not declared in `PACKAGE.toml` fails the build.
+
+The practical effect is that `core.strings` pulls in `core.unicode` and stops there, and that adding a dependency to a low tier package is a visible act somebody reviews rather than something that happens by accident.
+
+## Design
+
+Mojo is not Go, and pretending otherwise produces a library that fights the language. Ten properties of Mojo shape almost every decision in this repository, and they are written down in [docs/design.md](docs/design.md) with a compiled probe for each one under `tools/probe/`. The short version of the ones that cost the most:
+
+There are no trait objects, so a heterogeneous collection of readers is a hand written vtable of thin function pointers behind an erased struct. There are no storable closures, so a comparison function is a function pointer plus an explicit context. There is exactly one error type and it is a string, so `errors.As` becomes a lookup against a thread local record. There is no reflection, so `json.Unmarshal` into a struct is a decoder generated from `mojo doc` JSON at build time, not a runtime walk over field metadata. Structs cannot hold themselves, so the JSON document, the regexp AST and the template parse tree are arenas of nodes indexed by integer.
+
+Two of them are worth knowing before you read any code. A `for` loop silently drops an error raised out of `__next__`, so everything in this library that can fail while iterating uses an explicit `has_next()` and `next()` pair and the linter rejects a fallible `__next__`. And a fact computed at compile time cannot be turned into a compile error, only a warning, so the format string checking in `core.fmt` and the placeholder checking in `core.database.sql` are warnings that `pixi run lint` promotes to build failures inside this repository.
+
+Where Mojo lets us do better than Go, we do. `bytes.Buffer.Bytes()` returning a slice that the next write invalidates is a documented hazard in Go and a compile error here. A `sync.Mutex` copied by value needs `go vet` to catch in Go and does not compile here. An unclosed `Rows` leaks a connection until a finalizer runs in Go, and here `Rows` is not copyable and returns its connection in `__deinit__`. Every one of those, along with every place we deliberately differ from Go, is in [docs/deviations.md](docs/deviations.md).
+
+## Testing
+
+11,598 symbols cannot be tested by writing tests for them one at a time, so we take Go's tests instead. Go's standard library ships around 400,000 lines of test code under a BSD licence, `tools/testgen` converts the table driven ones mechanically, the `testdata` corpora are vendored with provenance recorded, and the tests that are really programs are translated by hand and reviewed against the original.
+
+On top of that, `tools/differ` runs this library and Go against the same generated input and compares the bytes. That is the check that matters, because a package can report 100% parity and still be wrong. The README carries three generated numbers when there is something to report: parity percentage, test count, and the differential divergence count, which should always be zero.
+
+More in [docs/testing.md](docs/testing.md).
+
+## Building
+
+```
+pixi run test          # the whole suite
+pixi run check         # everything CI runs, in the order a failure is cheapest to read
+pixi run pkg core.json # build one package against only its declared dependencies
+```
+
+Mojo 1.0.0 is pinned in `pixi.toml` and `pixi.lock` is committed. CI also runs against the Mojo nightly as an early warning for language changes, and that job is allowed to fail. Do not develop against nightly.
+
+Supported platforms are macOS arm64, Linux x86-64 and Linux arm64, which is what Mojo supports. Windows is not a Mojo target.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and pick something off the milestones. Issues labelled `good first issue` are self contained and have a Go implementation to read next to them, which makes them much easier than they look.
+
+Two things will get a change sent back regardless of how good it is. A new public function without a test that fails before the change, and a package that imports something its `PACKAGE.toml` does not declare.
+
+## Licence
+
+Apache 2.0. See [LICENSE](LICENSE).
+
+This project is a reimplementation and not a fork. Where test data or test tables are taken from Go they carry Go's BSD licence and are recorded in `NOTICE` and `LICENSE-THIRD-PARTY`. No Go source code is copied into `core/`.

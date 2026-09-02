@@ -1,0 +1,124 @@
+[workspace]
+name = "mojo-core"
+version = "0.0.1"
+description = "Core libraries for Mojo, modelled on the Go standard library"
+authors = ["mojo.core contributors"]
+license = "Apache-2.0"
+license-file = "LICENSE"
+readme = "README.md"
+homepage = "https://github.com/tamnd/mojo.core"
+repository = "https://github.com/tamnd/mojo.core"
+channels = ["https://conda.modular.com/max", "conda-forge"]
+platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
+
+[dependencies]
+mojo = "==1.0.0"
+
+[feature.dev.dependencies]
+python = ">=3.12"
+# The asymmetric stack, TLS and certificate verification are bound rather than
+# written. See docs/design.md for why that line is drawn where it is.
+openssl = ">=3.0"
+
+# The nightly Mojo build. CI runs this as an early warning for language changes
+# and the job is allowed to fail. Do not develop against it.
+[feature.nightly]
+channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
+
+[feature.nightly.dependencies]
+mojo = "*"
+
+# Go is the oracle for the differential suite and the source for the harvested
+# test tables. It is never needed to build or test this library, only to check
+# it against the thing it is modelled on.
+[feature.oracle.dependencies]
+go = ">=1.24"
+
+[environments]
+default = { features = ["dev"] }
+nightly = { features = ["nightly"], no-default-feature = true }
+oracle = { features = ["dev", "oracle"] }
+
+[tasks]
+# The whole suite. The runner generates one main that calls every test, so the
+# build time tracks the size of the library rather than the number of tests.
+test = "python tools/mojotest/run.py"
+
+# Build a single package against only what its PACKAGE.toml declares, so that
+# the dependency graph is tested rather than assumed. Takes a package name:
+# `pixi run pkg core.json`. With no argument it does every package, which is
+# what CI runs.
+pkg = "python tools/pkgbuild/run.py"
+
+format = "mojo format core/ tests/"
+# `mojo format` has no --check flag, so this formats and then asks git whether
+# anything moved.
+format-check = "python tools/fmt/check.py"
+
+# Layering, unsafe operations, the has_next and next iteration rule, and the
+# compile time diagnostics that are warnings until this promotes them. See
+# tools/lint/run.py for why each check exists.
+lint = "python tools/lint/run.py"
+# A lint that has stopped matching anything reports success forever, so the
+# lints are themselves checked against known violations.
+lint-selftest = "python tools/lint/run.py --selftest"
+
+# How much of Go's exported surface exists here, per package, read from Go's own
+# API manifests. Symbols we are not going to implement are listed in
+# waivers.toml with a reason, and that file growing is the signal that the
+# contract is being negotiated away rather than met.
+parity = "python tools/parity/run.py"
+
+# Unicode tables, tzdata, the syscall bindings and every generated codec are
+# checked in as well as generated. This rebuilds them and fails on a diff, which
+# is the single most valuable check in the list, because generated code drifting
+# from its source surfaces months later somewhere unrelated.
+generated-check = "python tools/gen/run.py --check"
+
+# Vendored test corpora are checked against the digests in
+# tests/data/LOCK.toml. Fetching is a separate deliberate step.
+vendor-check = "python tools/vendor/check.py"
+
+# Platform tables that cannot be checked from Mojo, because checking them means
+# asking the host what the right answer is. Everything checkable from Mojo is a
+# test instead, so it runs on every platform on every run.
+baseline = "python tools/baseline/run.py"
+
+# Files that are expected to produce compile time warnings, compiled with
+# warnings on, with the count and the message text asserted. This is what stops
+# every compile time check in the library from silently ceasing to work.
+warnings = "python tools/warnings/run.py"
+
+# Everything, in the order a failure is cheapest to read.
+check = { depends-on = [
+  "format-check",
+  "lint",
+  "lint-selftest",
+  "vendor-check",
+  "generated-check",
+  "baseline",
+  "parity",
+  "warnings",
+  "test",
+] }
+
+# This library and Go against the same generated input, compared byte for byte.
+# Needs Go, so it is `pixi run -e oracle differ`. Not part of `check`, because a
+# second toolchain is a deliberate step rather than something every commit waits
+# for. CI runs it nightly.
+differ = "python tools/differ/run.py"
+
+# Converts Go's table driven tests into Mojo test data. Runs offline, output is
+# checked in, and re-running it against a new Go release is a deliberate act
+# that produces a reviewable diff. That diff is also how we notice Go fixing a
+# bug we have.
+testgen = "python tools/testgen/run.py"
+
+# Every parser that reads bytes it did not produce, over libFuzzer. Not part of
+# `check`, because a fuzzer with a fixed seed and a fixed case count is a slow
+# test and one without them is not something a commit can wait for.
+fuzz = "python tools/fuzz/run.py"
+
+# Tasks below land with the milestone that needs them. See docs/roadmap.md.
+#   bench   M2    the benchmark suite
+#   docs    M13   render the mojo doc JSON into the API reference

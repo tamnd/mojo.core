@@ -1,0 +1,41 @@
+name: CodeQL
+
+# CodeQL has no Mojo support, so this only covers the Python under tools/.
+# That is still worth doing, because tools/ contains the code generators, and a generator is the one place where a bug writes itself into a library that other people then trust.
+# The generated Unicode tables and syscall bindings are only as good as the thing that emitted them.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  analyze:
+    name: analyze python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@6f5948dfacef28e207b48d0905cf90c03365536d # v3.30.8
+        with:
+          languages: python
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@6f5948dfacef28e207b48d0905cf90c03365536d # v3.30.8
+        with:
+          category: /language:python

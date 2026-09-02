@@ -1,0 +1,96 @@
+name: Nightly toolchain
+
+# Mojo is still changing between releases in ways that break real code, and this library is built on ten specific properties of the language that are recorded in docs/design.md with a compiled probe for each one.
+# This job builds against the nightly toolchain every day so that a language change is something we find out about early rather than on the morning a stable release lands. It is allowed to fail and it gates nothing.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: nightly ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    continue-on-error: true
+    outputs:
+      failed: ${{ steps.result.outputs.failed }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            runner: macos-14
+          - name: linux-x86_64
+            runner: ubuntu-24.04
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: v0.78.0
+          environments: nightly
+          locked: false
+          cache: false
+      - name: Record the toolchain
+        run: pixi run -e nightly mojo --version
+      # The probes run first and separately, because a probe failing tells you which language assumption moved, and a test suite failing only tells you that something did.
+      - name: Language probes
+        id: probes
+        run: pixi run -e nightly python tools/probe/run.py 2>&1 | tee nightly-probe-${{ matrix.name }}.log
+      - name: Test
+        id: run
+        if: always()
+        run: pixi run -e nightly python tools/mojotest/run.py 2>&1 | tee nightly-${{ matrix.name }}.log
+      - name: Note the result
+        id: result
+        if: always()
+        run: echo "failed=${{ steps.probes.outcome == 'failure' || steps.run.outcome == 'failure' }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: nightly-log-${{ matrix.name }}
+          path: nightly-*-${{ matrix.name }}.log
+          retention-days: 14
+
+  report:
+    name: open an issue on breakage
+    runs-on: ubuntu-24.04
+    needs: build
+    if: always() && needs.build.outputs.failed == 'true'
+    permissions:
+      contents: read
+      issues: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Write the issue body
+        run: |
+          {
+            echo "The nightly Mojo toolchain broke the build."
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "This does not block anything on main. It means a language change is coming that this project needs to handle."
+            echo
+            echo "Read the probe log first. Each probe pins one property of Mojo that this library is built on, and a failing probe names the section of docs/design.md that has to be rewritten."
+            echo "Two of them would be good news rather than bad: if trait objects arrive, the erased structs in core.io become an implementation detail, and if a static assert arrives, every compile time warning in this library becomes a compile error."
+          } > issue.md
+      - uses: peter-evans/create-issue-from-file@e8ef132d6df98ed982188e460ebb3b5d4ef3a9cd # v5.0.1
+        with:
+          title: "Nightly Mojo build is failing"
+          content-filepath: issue.md
+          labels: toolchain, ci

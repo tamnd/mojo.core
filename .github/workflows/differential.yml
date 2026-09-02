@@ -1,0 +1,141 @@
+name: Differential
+
+# Go's tests check the cases Go's authors thought of. This suite checks the cases nobody thought of, by running this library and Go against the same generated input and comparing the bytes.
+# It is out of the pull request path on purpose. A run long enough to find anything takes longer than a commit should wait, and a run short enough to gate on would only ever re-find what the last one already fixed.
+# A green run today says nothing about tomorrow, because the value is entirely in the cases that have not been generated yet.
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: How many cases to generate per area
+        required: false
+        default: "200000"
+      seed:
+        description: The seed to use, or empty for the run number
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: differential
+  cancel-in-progress: true
+
+jobs:
+  differ:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      # One area finding something says nothing about the others, and the night is worth more with every answer than with the first one.
+      fail-fast: false
+      matrix:
+        include:
+          - name: strconv against Go
+            area: strconv
+          - name: regexp against Go and between engines
+            area: regexp
+          - name: json against Go and JSONTestSuite
+            area: json
+          - name: url against Go and the WPT corpus
+            area: url
+          - name: time parsing and formatting against Go
+            area: time
+          - name: compress against Go, gzip and zlib
+            area: compress
+          # The most important row in the table. A finding here is that both implementations accepted a certificate and disagreed about who it is for, which crashes nothing and is a complete authentication bypass.
+          - name: x509 against OpenSSL
+            area: x509
+          - name: image decoders against Go
+            area: image
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: v0.78.0
+          environments: oracle
+          locked: true
+          cache: true
+      - name: Run
+        env:
+          CASES: ${{ inputs.cases || '200000' }}
+          # The run number rather than the clock, so a failing night can be reproduced exactly by dispatching the same seed by hand.
+          SEED: ${{ inputs.seed || github.run_number }}
+          AREA: ${{ matrix.area }}
+        run: |
+          pixi run -e oracle differ --area "$AREA" --cases "$CASES" --seed "$SEED" --show 20 2>&1 | tee "differ-$AREA.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: differ-${{ matrix.area }}
+          path: differ-*.log
+          retention-days: 30
+
+  fuzz:
+    name: fuzz the parsers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: v0.78.0
+          environments: default
+          locked: true
+          cache: true
+      # Every parser that reads bytes it did not produce is a target, and the assertion for all of them is the same and weaker than it looks: any input either parses or raises.
+      # Never aborts, never allocates without bound, never loops forever. Mojo's bounds checking makes memory safety findings unlikely, which moves the value here to resource exhaustion and to the differential oracle.
+      - name: Run
+        env:
+          SEED: ${{ inputs.seed || github.run_number }}
+        run: pixi run fuzz --seed "$SEED" --minutes 90 2>&1 | tee fuzz.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: fuzz
+          path: |
+            fuzz.log
+            fuzz/crashes/
+          retention-days: 30
+
+  report:
+    name: open an issue on a disagreement
+    runs-on: ubuntu-24.04
+    needs: [differ, fuzz]
+    if: failure()
+    permissions:
+      contents: read
+      issues: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Write the issue body
+        run: |
+          {
+            echo "The differential suite found a case where this library and the reference implementation do not agree, or a fuzzer found an input that did something other than parse or raise."
+            echo "The job name says which area it was."
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "Seed: ${{ github.run_number }}"
+            echo
+            echo "The failing cases are printed in the log and in the uploaded artifact, in hex, in the form the matching harness reads."
+            echo "Reproduce one with the same seed, then turn it into a unit test before changing anything, because the fix belongs next to the rule it is about and not in the harness."
+            echo
+            echo "Accepting something the reference rejects is the direction that matters. Being stricter than the reference is expected and is not on its own a bug, but it still needs a line in docs/deviations.md."
+          } > issue.md
+      - uses: peter-evans/create-issue-from-file@e8ef132d6df98ed982188e460ebb3b5d4ef3a9cd # v5.0.1
+        with:
+          title: "Differential suite found a disagreement"
+          content-filepath: issue.md
+          # Quoted because the area label has a colon in it and YAML would take that as the start of another key.
+          labels: "security, area: testing"

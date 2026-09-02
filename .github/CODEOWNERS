@@ -1,0 +1,35 @@
+# Default owner for everything.
+*                           @tamnd
+
+# Parsers that read bytes an attacker chose. Changes here always get a second look.
+/core/encoding/             @tamnd
+/core/compress/             @tamnd
+/core/archive/              @tamnd
+/core/image/                @tamnd
+/core/regexp/               @tamnd
+/core/net/                  @tamnd
+
+# Cryptography, where a change that looks like a cleanup can be a break.
+/core/crypto/               @tamnd
+/core/hash/                 @tamnd
+
+# The escaper. A gap here is a cross site scripting hole in every program that uses it.
+/core/html/                 @tamnd
+
+# The unsafe boundary and the concurrency primitives.
+/core/syscall/              @tamnd
+/core/sync/                 @tamnd
+/core/runtime/              @tamnd
+
+# The generators. A bug here writes itself into checked in code that then looks reviewed.
+/tools/gen/                 @tamnd
+/tools/codec/               @tamnd
+/tools/testgen/             @tamnd
+
+# Anything that changes how the project is built, released or trusted.
+/.github/workflows/         @tamnd
+/pixi.toml                  @tamnd
+/pixi.lock                  @tamnd
+/LICENSE                    @tamnd
+/NOTICE                     @tamnd
+/SECURITY.md                @tamnd

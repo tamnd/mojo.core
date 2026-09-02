@@ -1,0 +1,30 @@
+name: Feature request
+description: Something that should exist and is not a Go parity gap
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If Go has it and we do not, use the parity gap template instead. This one is for things that are ours to decide.
+
+        The bar is higher here than it looks. Go's standard library is the scope of this project, and everything added beyond it is something we maintain forever with no upstream to check against. The additions that have made it in so far all fix a case where Go's API is a known footgun, and they are listed in docs/deviations.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you cannot do today, or what you can do today that goes wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you want
+      description: The API you have in mind, if you have one.
+      render: mojo
+  - type: textarea
+    id: prior
+    attributes:
+      label: Prior art
+      description: >
+        How Go, Rust, Python or anybody else handles this. Even when the answer
+        is that they do not, that is useful to know.

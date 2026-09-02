@@ -1,0 +1,44 @@
+name: Parity gap
+description: Something Go's standard library has that this one does not
+labels: [parity]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a Go symbol exists and the equivalent here does not, or exists and behaves differently.
+
+        Check `pixi run parity` first. If the symbol is already reported as missing then it is known and probably belongs to a milestone that has not started. If it is reported as present and it does not behave like Go's, that is the interesting case and worth this issue.
+  - type: input
+    id: symbol
+    attributes:
+      label: Go symbol
+      description: The full Go name, for example strconv.AppendQuoteToASCII.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of gap
+      options:
+        - Missing entirely
+        - Present but behaves differently
+        - Present but the signature does not carry the same information
+    validations:
+      required: true
+  - type: textarea
+    id: detail
+    attributes:
+      label: What the difference is
+      description: For a behaviour difference, the input and what each side does with it.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What you were trying to do
+      description: >
+        Not every Go symbol should exist here, and some are deliberately left
+        out. Knowing what you needed it for is what decides whether this is a
+        gap to fill or a line for docs/deviations.md.
+    validations:
+      required: true

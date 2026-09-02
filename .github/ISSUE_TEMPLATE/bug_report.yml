@@ -1,0 +1,63 @@
+name: Bug report
+description: Something does not work the way it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The project is pre-alpha, so a lot of it is simply not built yet. Check docs/roadmap.md and the milestones first to see whether the package you are using has landed.
+
+        If the bug is a parser aborting, looping forever or allocating without bound on input somebody else produced, that is a security issue rather than a bug report. Please use a private advisory instead. SECURITY.md has the details.
+  - type: input
+    id: package
+    attributes:
+      label: Package
+      description: Which package this is about, for example core.encoding.json.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, and what you got instead of what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest piece of code that shows the problem.
+      render: mojo
+    validations:
+      required: true
+  - type: textarea
+    id: go
+    attributes:
+      label: What Go does
+      description: >
+        If there is an equivalent Go program, what it prints. This library is
+        supposed to behave like Go's does, so a difference is usually the whole
+        bug report. Leave it empty if it does not apply.
+      render: go
+  - type: input
+    id: mojo
+    attributes:
+      label: Mojo version
+      description: The output of `mojo --version`.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Operating system and architecture.
+    validations:
+      required: true
+  - type: textarea
+    id: input
+    attributes:
+      label: The input
+      description: >
+        For a parsing bug this is the most useful thing you can attach, in hex
+        if it is not text. Leave it empty otherwise.
+      render: text

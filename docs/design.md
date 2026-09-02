@@ -1,0 +1,103 @@
+# Design
+
+Mojo is not Go. Ten properties of the language shape nearly every decision in this repository, and each one has a compiled probe under `tools/probe/` so that a release which changes it produces a failing test naming the section here that has to be rewritten.
+
+Everything below was established by writing the smallest program that would settle the question and running it against Mojo 1.0.0. Where a probe result contradicted an assumption, the assumption lost.
+
+## 1. There are no trait objects
+
+A trait is a compile time constraint, not a value. `List[Reader]` does not exist, and a struct field cannot have a trait type.
+
+Anywhere Go stores a heterogeneous collection behind an interface, this library builds an erased struct by hand: a type erased box holding the value, plus a table of thin function pointers, plus capability bits for the operations Go would have discovered with a type assertion. `io.Reader`, `io.Writer`, the nine `database/sql` driver interfaces and `net.Conn` are all built this way.
+
+The static path is kept alongside it. A function that knows its reader's concrete type takes a trait bound and gets a direct call, and only code that genuinely does not know the type pays for the indirection.
+
+## 2. `raises` survives a function pointer
+
+`def(Args) raises thin -> Ret` is a concrete, storable type. This is what makes the vtables in the previous section possible at all. Without it every erased call would have to encode failure in the return value and the whole error design would be different.
+
+## 3. There are no closures that can be stored
+
+A closure that captures can be passed down, not kept. So a comparison function is a thin function pointer plus an explicit context struct, and where the function is known at compile time it becomes a parameter instead, which monomorphizes and costs nothing.
+
+This is also why `go f(x)` becomes `spawn[f](payload)` with an explicit struct carrying what a closure would have captured, and why template functions have one fixed signature rather than Go's arbitrary ones.
+
+## 4. There is exactly one error type, and it is a string
+
+Mojo's `Error` carries a message. There is no error hierarchy and nothing to type assert against.
+
+`errors.As` becomes a lookup against a thread local record written at raise time. The record holds the fields Go would have put in a struct, so `os.PathError.of(e)` finds the path and the operation, and it holds the count that Go returns alongside an error in an `(n, err)` pair, which a raise would otherwise drop.
+
+A record lives until the next raise on the same thread. Holding an error for longer than that takes an explicit `errors.capture(e)`, which is a deliberate cost rather than a hidden one.
+
+## 5. Structs cannot hold themselves, and fields cannot expose an unbound origin
+
+No recursive types. The JSON document, the regexp abstract syntax tree, the template parse trees and the linked list are all arenas of nodes addressed by integer index, with generation counters on the handles so that a stale handle raises instead of reading somebody else's node.
+
+A struct field also cannot carry `AnyOrigin`, which is why the type erased box stores its address as an integer.
+
+## 6. Pointers are non-nullable and carry an origin
+
+C's null pointer is `Optional[Ptr[T]]()`. Every foreign function that can return null has that in its signature, which means the check cannot be forgotten.
+
+A pointer crossing a thread boundary has to be laundered to an untracked origin through its integer address, because the borrow checker cannot follow it there. That is a rule with a real cost and it is confined to the concurrency and syscall packages.
+
+## 7. A `for` loop swallows an error raised out of `__next__`
+
+This is the sharpest edge in the language for a library like this one. Write an iterator that can fail, loop over it, and the failure disappears.
+
+So nothing fallible gets an `__iter__`. Fallible iteration is an explicit `has_next()` and `next()` pair, the linter rejects a `__next__` that raises, and a probe pins the compiler behaviour so that we find out if a future release fixes it.
+
+## 8. There is no reflection, and there is not going to be
+
+Go's `encoding/json`, `database/sql`, `fmt` and `text/template` are all built on runtime type information. None of it exists here.
+
+The substitute is `mojo doc`, which emits JSON containing every struct's field names, their resolved types, the traits the struct implements, and the docstring attached to each field. That is enough to generate a decoder, and it is where struct tags live: the backtick tag goes in the field docstring and `tools/codec` reads it from the same JSON.
+
+That generator is infrastructure rather than a JSON detail. JSON, XML, gob, binary, ASN.1, SQL row scanning, `%+v` formatting, template field access and property test generators all read the same output.
+
+The hole this leaves is real and it is not papered over. `json.Marshal(anyValue)` cannot exist, because there is no such thing as a value of unknown type at run time.
+
+## 9. Real OS threads are available through libc
+
+Verified rather than assumed. Thread creation and joining, mutexes, condition variables, atomic add and compare and swap all work through foreign calls into libc, and a probe runs four threads incrementing a shared counter a hundred thousand times each and checks that it lands exactly on four hundred thousand.
+
+That is the whole foundation for the concurrency packages. What is not settled is whether green threads are possible on top of it, which is the M9.4 gate in the roadmap.
+
+## 10. A compile time fact cannot be turned into a compile error
+
+This one cost the most and it is worth stating precisely, because the obvious assumption is wrong.
+
+A user written `def` does fold at compile time. You can parse a format string in a `comptime` block, count the verbs, and branch on the result with `comptime if`. All of that works.
+
+What you cannot do is fail the build on the answer. Mojo 1.0 replaced `constrained` with `where` clauses, and a `where` clause is proof carrying rather than evaluating: its solver handles compiler builtins and parameter attributes, and a call to any function that is not a builtin stops it with a note saying it cannot evaluate the call. That includes functions in Mojo's own standard library, so it is not about our code being unusual.
+
+The only mechanism that emits a diagnostic per instantiation is `@deprecated`, which produces a warning. So the pattern this library uses everywhere is to compute the fact at compile time, call a deprecated stub from inside a `comptime if` when the fact is bad, and have `pixi run lint` fail the build on any warning carrying our marker prefix.
+
+The honest summary, using format strings as the example: this library detects every format error at compile time and reports it as a warning, then behaves exactly like Go at run time. Inside this repository that warning is a build failure. For somebody depending on the library it is a warning, and there is currently no way to make it more than that.
+
+The same shape applies to codec field sets, struct tags, and SQL placeholder counts. If Mojo ever grows a static assert, all of it becomes a compile error and the change is about four lines.
+
+## Smaller facts that change how code is written
+
+There are no zero values that mean anything, so every type has an explicit constructor and `var b bytes.Buffer` becomes `var b = Buffer()`.
+
+There is no `defer`, so cleanup is a `with` block. This turns out better than Go's version, because the scope is visible in the indentation and it runs on a raise as well as a return.
+
+There is no `panic` and `recover` pair. `abort` is final and cannot be caught, so nothing in this library aborts for a condition the caller could have checked. The functions that keep Go's aborting behaviour are the `must_` prefixed ones, where aborting is exactly what the caller asked for by choosing that name, and every one of them has a fallible sibling.
+
+There are no `init` functions and no method promotion through embedding. Registration is explicit and composition is explicit.
+
+## Where this is better than Go
+
+Ownership and origins turn several of Go's documented hazards into things that do not compile, and that is the strongest argument for writing this rather than binding Go through a foreign function interface.
+
+A slice returned by a buffer is invalidated by the next write to that buffer. In Go this is a documented hazard you are asked to remember. Here the origin is tracked and using it afterwards is a compile error.
+
+A string builder copied after use panics at run time in Go through a hand rolled check. Here it is not copyable, so the mistake does not compile.
+
+A mutex copied by value needs a separate static analysis tool to catch in Go. Here it does not compile.
+
+A row set that is never closed leaks a database connection until a finalizer runs. Here it is not copyable and returns the connection in its destructor, and the transaction scope is a `with` block, so the rollback that Go asks you to remember to defer is structural.
+
+The full list, including every place we deliberately differ from Go in the other direction, is in [deviations.md](deviations.md).

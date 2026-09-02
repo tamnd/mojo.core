@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to release
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macos-arm64
+            runner: macos-14
+          - name: linux-x86_64
+            runner: ubuntu-24.04
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@194d461b21b6c5717c722ffc597fa91ed2ff29fa # v0.9.1
+        with:
+          pixi-version: v0.78.0
+          environments: default
+          locked: true
+          cache: true
+      # The full check rather than just the tests, because a release is the one build where the generated code and the parity number being right actually matters to somebody other than us.
+      - run: pixi run check
+
+  source:
+    name: build the source tarball
+    runs-on: ubuntu-24.04
+    needs: verify
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          persist-credentials: false
+      # A .mojopkg is tied to the compiler that produced it and is not a distributable format, so the release artifact is source.
+      - name: Archive
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          git archive --format=tar.gz --prefix="mojo-core-${version}/" \
+            -o "mojo-core-${version}.tar.gz" HEAD
+      - name: Checksum
+        run: sha256sum mojo-core-*.tar.gz | tee SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source
+          path: |
+            mojo-core-*.tar.gz
+            SHA256SUMS
+
+  publish:
+    name: publish
+    runs-on: ubuntu-24.04
+    needs: source
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: source
+      # Signed provenance for the tarball, so somebody who downloads it can check it came from this workflow on this repository and not from a mirror that added a line to core.crypto.
+      - name: Attest the artifact
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: mojo-core-*.tar.gz
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.3.4
+        with:
+          generate_release_notes: true
+          files: |
+            mojo-core-*.tar.gz
+            SHA256SUMS
