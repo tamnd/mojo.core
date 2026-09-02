@@ -1,0 +1,20 @@
+[package]
+name = "core.image.png"
+go = "image/png"
+verdict = "Port"
+tier = 6
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.compress.zlib",
+  "core.encoding.binary",
+  "core.errors",
+  "core.fmt",
+  "core.hash",
+  "core.hash.crc32",
+  "core.image",
+  "core.image.color",
+  "core.io",
+  "core.math",
+  "core.strconv",
+]

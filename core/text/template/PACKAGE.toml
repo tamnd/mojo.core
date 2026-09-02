@@ -1,0 +1,21 @@
+[package]
+name = "core.text.template"
+go = "text/template"
+verdict = "Adapt"
+tier = 7
+unsafe = false
+deps = [
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.io.fs",
+  "core.math.bits",
+  "core.net.url",
+  "core.path",
+  "core.path.filepath",
+  "core.sort",
+  "core.strings",
+  "core.text.template.parse",
+  "core.unicode",
+  "core.unicode.utf8",
+]

@@ -1,0 +1,9 @@
+[package]
+name = "core.maps"
+go = "maps"
+verdict = "Wrap"
+tier = 1
+unsafe = false
+deps = [
+  "core.cmp",
+]

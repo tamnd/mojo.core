@@ -1,0 +1,16 @@
+[package]
+name = "core.compress.zlib"
+go = "compress/zlib"
+verdict = "Port"
+tier = 5
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.compress.flate",
+  "core.encoding.binary",
+  "core.errors",
+  "core.fmt",
+  "core.hash",
+  "core.hash.adler32",
+  "core.io",
+]

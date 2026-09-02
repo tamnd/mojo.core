@@ -1,0 +1,9 @@
+[package]
+name = "core.container.heap"
+go = "container/heap"
+verdict = "Adapt"
+tier = 2
+unsafe = false
+deps = [
+  "core.sort",
+]

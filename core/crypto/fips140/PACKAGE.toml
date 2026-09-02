@@ -1,0 +1,10 @@
+[package]
+name = "core.crypto.fips140"
+go = "crypto/fips140"
+verdict = "Wrap"
+tier = 4
+unsafe = false
+deps = [
+  "core.crypto",
+  "core.errors",
+]

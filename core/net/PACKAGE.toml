@@ -1,0 +1,21 @@
+[package]
+name = "core.net"
+go = "net"
+verdict = "Adapt"
+tier = 6
+unsafe = true
+deps = [
+  "core.context",
+  "core.errors",
+  "core.io",
+  "core.io.fs",
+  "core.math.rand",
+  "core.net.netip",
+  "core.os",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.sync",
+  "core.syscall",
+  "core.time",
+]

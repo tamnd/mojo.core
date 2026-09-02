@@ -50,7 +50,10 @@ def build(pkg: Package, by_name: dict[str, Package]) -> str | None:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
         for dep in needed:
-            shutil.copytree(dep.path, root / dep.path.relative_to(ROOT))
+            # dirs_exist_ok because a package can be the parent directory of
+            # another one, and core.crypto arriving after core.crypto.aes must
+            # not wipe it out.
+            shutil.copytree(dep.path, root / dep.path.relative_to(ROOT), dirs_exist_ok=True)
         out = subprocess.run(
             ["mojo", "package", str(root / pkg.path.relative_to(ROOT)),
              "-I", str(root), "-o", str(root / f"{pkg.name}.mojopkg")],
@@ -79,8 +82,14 @@ def main() -> int:
             print(f"pkg: no package named {args.package}", file=sys.stderr)
             return 1
         pkgs = [by_name[args.package]]
+
+    # A manifest with no code is a plan. There is nothing to build and saying
+    # so is more useful than a build error about an empty directory.
+    planned = [p for p in pkgs if not p.started]
+    pkgs = [p for p in pkgs if p.started]
+    if planned:
+        print(f"pkg: {len(planned)} packages are manifests without code yet")
     if not pkgs:
-        print("pkg: no packages yet")
         return 0
     if not shutil.which("mojo"):
         print("pkg: mojo is not on PATH", file=sys.stderr)

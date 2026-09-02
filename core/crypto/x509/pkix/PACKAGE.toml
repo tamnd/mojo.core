@@ -1,0 +1,14 @@
+[package]
+name = "core.crypto.x509.pkix"
+go = "crypto/x509/pkix"
+verdict = "Port"
+tier = 5
+unsafe = false
+deps = [
+  "core.encoding.asn1",
+  "core.encoding.hex",
+  "core.errors",
+  "core.fmt",
+  "core.math.big",
+  "core.time",
+]

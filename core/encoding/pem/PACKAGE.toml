@@ -1,0 +1,14 @@
+[package]
+name = "core.encoding.pem"
+go = "encoding/pem"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.encoding.base64",
+  "core.errors",
+  "core.io",
+  "core.sort",
+  "core.strings",
+]

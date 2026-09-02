@@ -1,0 +1,11 @@
+[package]
+name = "core.crypto.rc4"
+go = "crypto/rc4"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.crypto",
+  "core.errors",
+  "core.strconv",
+]

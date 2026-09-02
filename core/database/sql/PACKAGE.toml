@@ -1,0 +1,20 @@
+[package]
+name = "core.database.sql"
+go = "database/sql"
+verdict = "Adapt"
+tier = 6
+unsafe = false
+deps = [
+  "core.context",
+  "core.database.sql.driver",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.math.big",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.sync",
+  "core.sync.atomic",
+  "core.time",
+]

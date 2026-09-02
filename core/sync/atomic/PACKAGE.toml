@@ -1,0 +1,7 @@
+[package]
+name = "core.sync.atomic"
+go = "sync/atomic"
+verdict = "Wrap"
+tier = 0
+unsafe = true
+deps = []

@@ -1,0 +1,11 @@
+[package]
+name = "core.time"
+go = "time"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.errors",
+  "core.strconv",
+  "core.syscall",
+]

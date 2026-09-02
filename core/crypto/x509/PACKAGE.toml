@@ -1,0 +1,33 @@
+[package]
+name = "core.crypto.x509"
+go = "crypto/x509"
+verdict = "Wrap"
+tier = 8
+unsafe = true
+deps = [
+  "core.bytes",
+  "core.crypto",
+  "core.crypto.ecdsa",
+  "core.crypto.ed25519",
+  "core.crypto.elliptic",
+  "core.crypto.rsa",
+  "core.crypto.sha1",
+  "core.crypto.sha256",
+  "core.crypto.x509.pkix",
+  "core.encoding.asn1",
+  "core.encoding.hex",
+  "core.encoding.pem",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.math.big",
+  "core.net",
+  "core.net.url",
+  "core.os",
+  "core.path.filepath",
+  "core.strconv",
+  "core.strings",
+  "core.sync",
+  "core.time",
+  "core.unicode.utf8",
+]

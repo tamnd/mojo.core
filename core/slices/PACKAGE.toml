@@ -1,0 +1,9 @@
+[package]
+name = "core.slices"
+go = "slices"
+verdict = "Wrap"
+tier = 1
+unsafe = false
+deps = [
+  "core.cmp",
+]

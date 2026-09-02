@@ -1,0 +1,13 @@
+[package]
+name = "core.crypto.ecdh"
+go = "crypto/ecdh"
+verdict = "Wrap"
+tier = 4
+unsafe = true
+deps = [
+  "core.crypto",
+  "core.crypto.subtle",
+  "core.encoding.binary",
+  "core.errors",
+  "core.io",
+]

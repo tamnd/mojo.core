@@ -1,0 +1,14 @@
+[package]
+name = "core.fmt"
+go = "fmt"
+verdict = "Adapt"
+tier = 3
+unsafe = false
+deps = [
+  "core.errors",
+  "core.io",
+  "core.math",
+  "core.strconv",
+  "core.unicode",
+  "core.unicode.utf8",
+]

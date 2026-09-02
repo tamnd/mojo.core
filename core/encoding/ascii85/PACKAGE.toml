@@ -1,0 +1,10 @@
+[package]
+name = "core.encoding.ascii85"
+go = "encoding/ascii85"
+verdict = "Port"
+tier = 2
+unsafe = false
+deps = [
+  "core.errors",
+  "core.io",
+]

@@ -1,0 +1,18 @@
+[package]
+name = "core.net.smtp"
+go = "net/smtp"
+verdict = "Port"
+tier = 10
+unsafe = false
+deps = [
+  "core.crypto.hmac",
+  "core.crypto.md5",
+  "core.crypto.tls",
+  "core.encoding.base64",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.net",
+  "core.net.textproto",
+  "core.strings",
+]

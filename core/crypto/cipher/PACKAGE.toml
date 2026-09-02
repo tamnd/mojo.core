@@ -1,0 +1,12 @@
+[package]
+name = "core.crypto.cipher"
+go = "crypto/cipher"
+verdict = "Adapt"
+tier = 4
+unsafe = false
+deps = [
+  "core.crypto",
+  "core.crypto.subtle",
+  "core.errors",
+  "core.io",
+]

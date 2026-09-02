@@ -1,0 +1,17 @@
+[package]
+name = "core.encoding.asn1"
+go = "encoding/asn1"
+verdict = "Adapt"
+tier = 4
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.errors",
+  "core.fmt",
+  "core.math.big",
+  "core.strconv",
+  "core.strings",
+  "core.time",
+  "core.unicode.utf16",
+  "core.unicode.utf8",
+]

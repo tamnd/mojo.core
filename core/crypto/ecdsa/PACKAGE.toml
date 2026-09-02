@@ -1,0 +1,17 @@
+[package]
+name = "core.crypto.ecdsa"
+go = "crypto/ecdsa"
+verdict = "Wrap"
+tier = 5
+unsafe = true
+deps = [
+  "core.crypto",
+  "core.crypto.cipher",
+  "core.crypto.elliptic",
+  "core.crypto.sha512",
+  "core.crypto.subtle",
+  "core.encoding.asn1",
+  "core.errors",
+  "core.io",
+  "core.math.big",
+]

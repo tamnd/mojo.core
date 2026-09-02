@@ -1,0 +1,9 @@
+[package]
+name = "core.time.tzdata"
+go = "time/tzdata"
+verdict = "Port"
+tier = 1
+unsafe = false
+deps = [
+  "core.errors",
+]

@@ -1,0 +1,21 @@
+[package]
+name = "core.encoding.json"
+go = "encoding/json"
+verdict = "Adapt"
+tier = 4
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.encoding",
+  "core.encoding.base64",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.math",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.unicode",
+  "core.unicode.utf16",
+  "core.unicode.utf8",
+]

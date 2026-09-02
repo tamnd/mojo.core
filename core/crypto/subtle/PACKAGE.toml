@@ -1,0 +1,7 @@
+[package]
+name = "core.crypto.subtle"
+go = "crypto/subtle"
+verdict = "Port"
+tier = 0
+unsafe = false
+deps = []

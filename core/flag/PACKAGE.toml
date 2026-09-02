@@ -1,0 +1,18 @@
+[package]
+name = "core.flag"
+go = "flag"
+verdict = "Adapt"
+tier = 7
+unsafe = false
+deps = [
+  "core.encoding",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.os",
+  "core.path.filepath",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.time",
+]

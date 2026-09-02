@@ -1,0 +1,14 @@
+[package]
+name = "core.runtime.trace"
+go = "runtime/trace"
+verdict = "Adapt"
+tier = 5
+unsafe = false
+deps = [
+  "core.context",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.runtime.sched",
+  "core.sync",
+]

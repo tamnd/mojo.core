@@ -1,0 +1,11 @@
+[package]
+name = "core.text.tabwriter"
+go = "text/tabwriter"
+verdict = "Port"
+tier = 2
+unsafe = false
+deps = [
+  "core.errors",
+  "core.io",
+  "core.unicode.utf8",
+]

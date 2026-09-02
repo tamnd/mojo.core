@@ -1,0 +1,9 @@
+[package]
+name = "core.io"
+go = "io"
+verdict = "Adapt"
+tier = 1
+unsafe = false
+deps = [
+  "core.errors",
+]

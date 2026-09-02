@@ -1,0 +1,10 @@
+[package]
+name = "core.sync"
+go = "sync"
+verdict = "Adapt"
+tier = 1
+unsafe = true
+deps = [
+  "core.errors",
+  "core.sync.atomic",
+]

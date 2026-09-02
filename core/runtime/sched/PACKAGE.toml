@@ -1,0 +1,12 @@
+[package]
+name = "core.runtime.sched"
+go = "none"
+verdict = "New"
+tier = 2
+unsafe = true
+deps = [
+  "core.errors",
+  "core.sync",
+  "core.sync.atomic",
+  "core.syscall",
+]

@@ -1,0 +1,25 @@
+[package]
+name = "core.archive.zip"
+go = "archive/zip"
+verdict = "Port"
+tier = 7
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.compress.flate",
+  "core.encoding.binary",
+  "core.errors",
+  "core.fmt",
+  "core.hash",
+  "core.hash.crc32",
+  "core.io",
+  "core.io.fs",
+  "core.os",
+  "core.path",
+  "core.path.filepath",
+  "core.sort",
+  "core.strings",
+  "core.time",
+  "core.unicode.utf8",
+]

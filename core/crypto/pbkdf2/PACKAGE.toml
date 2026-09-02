@@ -1,0 +1,12 @@
+[package]
+name = "core.crypto.pbkdf2"
+go = "crypto/pbkdf2"
+verdict = "Port"
+tier = 5
+unsafe = false
+deps = [
+  "core.crypto",
+  "core.crypto.hmac",
+  "core.errors",
+  "core.hash",
+]

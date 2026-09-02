@@ -1,0 +1,13 @@
+[package]
+name = "core.crypto.mlkem"
+go = "crypto/mlkem"
+verdict = "Wrap"
+tier = 7
+unsafe = true
+deps = [
+  "core.crypto",
+  "core.crypto.rand",
+  "core.crypto.sha3",
+  "core.crypto.subtle",
+  "core.errors",
+]

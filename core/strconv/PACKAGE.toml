@@ -1,0 +1,11 @@
+[package]
+name = "core.strconv"
+go = "strconv"
+verdict = "Port"
+tier = 2
+unsafe = false
+deps = [
+  "core.errors",
+  "core.math",
+  "core.unicode.utf8",
+]

@@ -1,0 +1,17 @@
+[package]
+name = "core.compress.gzip"
+go = "compress/gzip"
+verdict = "Port"
+tier = 5
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.compress.flate",
+  "core.encoding.binary",
+  "core.errors",
+  "core.fmt",
+  "core.hash",
+  "core.hash.crc32",
+  "core.io",
+  "core.time",
+]

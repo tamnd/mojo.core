@@ -1,0 +1,15 @@
+[package]
+name = "core.text.template.parse"
+go = "text/template/parse"
+verdict = "Adapt"
+tier = 4
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.errors",
+  "core.fmt",
+  "core.strconv",
+  "core.strings",
+  "core.unicode",
+  "core.unicode.utf8",
+]

@@ -1,0 +1,9 @@
+[package]
+name = "core.sort"
+go = "sort"
+verdict = "Wrap"
+tier = 1
+unsafe = false
+deps = [
+  "core.cmp",
+]

@@ -1,0 +1,23 @@
+[package]
+name = "core.testing"
+go = "testing"
+verdict = "Adapt"
+tier = 8
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.errors",
+  "core.flag",
+  "core.fmt",
+  "core.io",
+  "core.math.rand",
+  "core.os",
+  "core.path.filepath",
+  "core.runtime.sched",
+  "core.sort",
+  "core.strconv",
+  "core.strings",
+  "core.sync",
+  "core.sync.atomic",
+  "core.time",
+]

@@ -1,0 +1,12 @@
+[package]
+name = "core.compress.bzip2"
+go = "compress/bzip2"
+verdict = "Port"
+tier = 4
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.errors",
+  "core.io",
+  "core.sort",
+]

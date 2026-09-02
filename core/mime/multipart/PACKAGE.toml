@@ -1,0 +1,23 @@
+[package]
+name = "core.mime.multipart"
+go = "mime/multipart"
+verdict = "Port"
+tier = 8
+unsafe = false
+deps = [
+  "core.bufio",
+  "core.bytes",
+  "core.crypto.rand",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.io.fs",
+  "core.math",
+  "core.mime",
+  "core.mime.quotedprintable",
+  "core.net.textproto",
+  "core.os",
+  "core.path.filepath",
+  "core.sort",
+  "core.strings",
+]

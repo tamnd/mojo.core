@@ -1,0 +1,16 @@
+[package]
+name = "core.crypto.hpke"
+go = "crypto/hpke"
+verdict = "Wrap"
+tier = 8
+unsafe = true
+deps = [
+  "core.crypto",
+  "core.crypto.aes",
+  "core.crypto.cipher",
+  "core.crypto.ecdh",
+  "core.crypto.hkdf",
+  "core.crypto.mlkem",
+  "core.errors",
+  "core.io",
+]

@@ -1,0 +1,13 @@
+[package]
+name = "core.testing.slogtest"
+go = "testing/slogtest"
+verdict = "Adapt"
+tier = 8
+unsafe = false
+deps = [
+  "core.context",
+  "core.errors",
+  "core.fmt",
+  "core.log.slog",
+  "core.sort",
+]

@@ -1,0 +1,10 @@
+[package]
+name = "core.html"
+go = "html"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.strings",
+  "core.unicode.utf8",
+]

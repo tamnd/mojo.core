@@ -1,0 +1,12 @@
+[package]
+name = "core.bufio"
+go = "bufio"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.errors",
+  "core.io",
+  "core.unicode.utf8",
+]

@@ -1,0 +1,10 @@
+[package]
+name = "core.hash.crc64"
+go = "hash/crc64"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.errors",
+  "core.hash",
+]

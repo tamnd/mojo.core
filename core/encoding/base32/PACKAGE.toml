@@ -1,0 +1,12 @@
+[package]
+name = "core.encoding.base32"
+go = "encoding/base32"
+verdict = "Port"
+tier = 3
+unsafe = false
+deps = [
+  "core.encoding",
+  "core.errors",
+  "core.io",
+  "core.strconv",
+]

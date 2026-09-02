@@ -1,0 +1,9 @@
+[package]
+name = "core.math"
+go = "math"
+verdict = "Wrap"
+tier = 1
+unsafe = false
+deps = [
+  "core.math.bits",
+]

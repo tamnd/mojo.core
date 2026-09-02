@@ -1,0 +1,15 @@
+[package]
+name = "core.testing.cryptotest"
+go = "crypto/internal/cryptotest"
+verdict = "Adapt"
+tier = 9
+unsafe = false
+deps = [
+  "core.bytes",
+  "core.crypto.cipher",
+  "core.crypto.rand",
+  "core.errors",
+  "core.fmt",
+  "core.io",
+  "core.testing",
+]

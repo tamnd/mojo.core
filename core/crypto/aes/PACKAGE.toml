@@ -1,0 +1,13 @@
+[package]
+name = "core.crypto.aes"
+go = "crypto/aes"
+verdict = "Port"
+tier = 5
+unsafe = true
+deps = [
+  "core.crypto",
+  "core.crypto.cipher",
+  "core.crypto.subtle",
+  "core.errors",
+  "core.strconv",
+]

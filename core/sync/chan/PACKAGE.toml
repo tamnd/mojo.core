@@ -1,0 +1,11 @@
+[package]
+name = "core.sync.chan"
+go = "none"
+verdict = "New"
+tier = 2
+unsafe = false
+deps = [
+  "core.errors",
+  "core.sync",
+  "core.sync.atomic",
+]
