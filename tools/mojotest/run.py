@@ -32,6 +32,13 @@ silently matches no tests is how a suite stops running without anybody noticing.
 Pass --short to skip the cases marked slow, which is what a local run wants and
 what CI does not do. A case is marked by a `# slow: why` comment on the line
 above it, so the decision lives in the test rather than in a list here.
+
+Pass --race to build the same suite under the thread sanitiser. Refcounts and
+locks are the two things in this library whose bugs do not show up as a failing
+assertion, and a suite that passes is not evidence about either of them. The
+sanitiser is a build flag rather than a separate suite so that whatever tests
+exist are the tests it runs. It works on macOS and not on Linux, for a reason
+that is somebody else's and is recorded next to RACE_UNAVAILABLE below.
 """
 
 from __future__ import annotations
@@ -52,6 +59,19 @@ from lib.tree import ROOT, report
 
 TESTS = ROOT / "tests"
 MAIN = TESTS / "_generated_main.mojo"
+
+# What the thread sanitiser prints when it finds something. It reports and then
+# lets the program carry on with its exit code untouched, so this string is the
+# only thing standing between a data race and a green suite.
+RACE_FOUND = "WARNING: ThreadSanitizer"
+
+# What a sanitised binary prints on Linux instead of running. The Mojo runtime
+# links tcmalloc, which assumes a 48-bit address space, and the sanitiser takes
+# that range for its shadow memory, so the allocator dies before main. There is
+# no flag to build without tcmalloc. Recognised by name so that `pixi run race`
+# on Linux says what actually happened rather than reporting a suite failure
+# and sending somebody looking for a bug in their own code.
+RACE_UNAVAILABLE = "TCMalloc assumes a 48-bit virtual address space"
 
 # tests/lint holds files that are supposed to fail the linter and tests/mojotest
 # holds files that are supposed to fail this. Neither belongs in the suite.
@@ -190,7 +210,7 @@ def ignored(path: Path) -> bool:
     return out.returncode == 0
 
 
-def build_and_run(scratch: Path, quiet: bool) -> tuple[int, str, list[str]]:
+def build_and_run(scratch: Path, quiet: bool, race: bool = False) -> tuple[int, str, list[str]]:
     """Build the suite, run it, and give back its exit code, output and problems.
 
     Streamed rather than captured and printed at the end, so a suite that takes
@@ -207,14 +227,20 @@ def build_and_run(scratch: Path, quiet: bool) -> tuple[int, str, list[str]]:
     Quiet is for the selftest, whose fixtures are supposed to fail. Printing
     that failure would put the word FAIL in the log of a build that passed,
     and a log nobody can read for real failures is a log nobody reads.
+
+    Race turns on the thread sanitiser. Its report goes to stderr, which is
+    folded into stdout below, and it does not change the exit code on its own,
+    so the caller has to read the output for it. That is deliberate on the
+    sanitiser's part and it is why `suite` looks for the warning by name.
     """
     slot = shim(scratch)
     if isinstance(slot, str):
         return 1, "", [slot]
 
     binary = scratch / "suite"
+    flags = ["--sanitize", "thread"] if race else []
     built = subprocess.run(
-        ["mojo", "build", "-I", str(ROOT), "-o", str(binary), "-Xlinker", str(slot), str(MAIN)],
+        ["mojo", "build", "-I", str(ROOT), *flags, "-o", str(binary), "-Xlinker", str(slot), str(MAIN)],
         capture_output=True,
         text=True,
     )
@@ -237,7 +263,7 @@ def build_and_run(scratch: Path, quiet: bool) -> tuple[int, str, list[str]]:
 
 
 def suite(
-    where: Path, only: str | None, short: bool, quiet: bool = False
+    where: Path, only: str | None, short: bool, quiet: bool = False, race: bool = False
 ) -> tuple[int, int, str, list[str]]:
     """Find, build and run. Returns cases run, skipped, output and problems."""
     found, problems = discover(where, only)
@@ -262,14 +288,30 @@ def suite(
         return 0, 0, "", [f"{MAIN.relative_to(ROOT)} is not ignored by git, fix .gitignore"]
 
     with tempfile.TemporaryDirectory() as scratch:
-        code, output, problems = build_and_run(Path(scratch), quiet)
+        code, output, problems = build_and_run(Path(scratch), quiet, race)
     if problems:
         return 0, 0, "", problems
     if code != 0 and not output:
         return len(found), len(skipped), output, ["the suite did not build"]
+
+    # Both, rather than the first of the two. The sanitiser prints and carries
+    # on with the exit code untouched, so reading the output is the only thing
+    # that promotes a race to a failure, and a run that races usually fails an
+    # assertion as well. Reporting only the assertion would leave the more
+    # interesting half sitting in the log.
+    said = []
+    if RACE_UNAVAILABLE in output:
+        return (
+            len(found),
+            len(skipped),
+            output,
+            ["the thread sanitiser does not work with this runtime's allocator, which is Linux"],
+        )
+    if RACE_FOUND in output:
+        said.append(f"the thread sanitiser reported {output.count(RACE_FOUND)} race(s)")
     if code != 0:
-        return len(found), len(skipped), output, ["the suite reported failures"]
-    return len(found), len(skipped), output, []
+        said.append("the suite reported failures")
+    return len(found), len(skipped), output, said
 
 
 def selftest() -> int:
@@ -310,6 +352,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", nargs="?", help="run one package: `pixi run test core.strings`")
     parser.add_argument("--short", action="store_true", help="skip the cases marked slow")
+    parser.add_argument("--race", action="store_true", help="build under the thread sanitiser")
     parser.add_argument(
         "--selftest", action="store_true", help="check that the runner reports a failure"
     )
@@ -318,7 +361,7 @@ def main() -> int:
     if args.selftest:
         return selftest()
 
-    ran, skipped, _, problems = suite(TESTS, args.package, args.short)
+    ran, skipped, _, problems = suite(TESTS, args.package, args.short, race=args.race)
     if not (ran or skipped or problems or args.package):
         print("test: no tests in the tree yet")
         return 0

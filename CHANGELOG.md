@@ -2,6 +2,22 @@
 
 Notable changes, newest first. This project follows semantic versioning from 1.0. Before then, anything can move.
 
+## Unreleased
+
+The bottom of the erasure design: `core.runtime.box`, a refcounted heap box holding a value whose type has been forgotten. `io.Reader`, `io.Writer`, `net.Conn`, the nine `database/sql` driver interfaces and every value in a JSON document sit on this, because Mojo has no trait objects and each of those has to be built by hand out of a box and a table of function pointers.
+
+It is its own package rather than forty lines inside `core.io`, which is the decision worth explaining. All four of the consumers already depend on `core.io`, so that would have cost nothing in dependency edges. It was rejected because `core.io` would have to declare `unsafe = true`, and that permission then covers every line of the reader, the writer and `copy` rather than the forty that need it, and because erasure is not an IO idea: anything that ever wants a heterogeneous collection would have to depend on `core.io` to get one. That makes 138 packages and 17 unsafe, with `core.io` still safe, which was the point.
+
+The count and the value share one allocation, because erasure sits on the read path of every buffered reader in this library and two allocations per box is a cost that shows up. That means the block is aligned by `posix_memalign` rather than `malloc`, since `malloc` promises sixteen bytes and a SIMD type wants sixty four, and there is a test that boxes one.
+
+The destructor is the part that was not obvious. A parametric `_release[T]` can be materialized into a `def (Int) thin -> None` and stored in a struct field, which is what lets a box that has forgotten its type still run that type's destructor. That is design.md section 2 used for something other than a vtable.
+
+Copying is an atomic increment and it is spelled out at the call site, because Go's interface copy is free and this one is not. `errors.ErrorValue` made the same call for the same reason.
+
+`pixi run race` builds the whole suite under the thread sanitiser. Refcounts and locks are the two things in this library whose bugs do not arrive as a failing assertion, so a green `pixi run test` is not evidence about either of them. The sanitiser reports and then leaves the exit code alone, which would have meant a suite with a data race passing with the report sitting in the log, so the runner reads its output and promotes the report. Making the box's count non atomic produces four race reports and a failing count, and both halves are printed rather than the first of the two.
+
+One trap found on the way and worth knowing about: two packages in the same binary declaring the same foreign symbol with different argument types is a build that fails, and nothing says so until both packages land in one link. `core.errors` frees a pointer, this box was freeing an integer, and the test suite is the first build that contains both.
+
 ## v0.2.0 - 2026-09-03
 
 M1 is complete. `core.errors` is the first package in this library with code in it, and the first at full parity. It is the mechanism every fallible function written here from now on is written against, which is why it comes before anything that could use it.

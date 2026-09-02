@@ -61,7 +61,7 @@ Four things this library has to guarantee that Go's suites say nothing about, be
 
 **Layering.** The linter checks every import against the package's declared dependencies, in both directions, so an undeclared import fails and an unused declaration also fails. CI builds every package with only its transitive dependencies. A library that only ever builds as a whole has a dependency graph nobody has tested.
 
-**Unsafety.** Sixteen packages declare themselves unsafe and the rest may not name a raw pointer, a foreign call or a bitcast. The linter enforces it and reports the count, because that number going up is a thing to notice.
+**Unsafety.** Seventeen packages declare themselves unsafe and the rest may not name a raw pointer, a foreign call or a bitcast. The linter enforces it and reports the count, because that number going up is a thing to notice.
 
 ## The compile time checks
 
@@ -99,6 +99,10 @@ FAIL tests.strings.test_index.test_index_finds
 ```
 
 `pixi run test core.strings` runs one package. It fails rather than passing quietly when the name matches nothing, because a filter that silently matches no tests is how a suite stops running without anybody noticing.
+
+`pixi run race` builds the same suite under the thread sanitiser. Nothing in a refcount or a lock fails an assertion when it is wrong; it corrupts something and the failure arrives later somewhere else, so a green `pixi run test` is not evidence about either. The sanitiser reports and then lets the program carry on with its exit code untouched, which means a suite with a data race in it passes with the report sitting in the log, so the runner reads the output and promotes the report itself. That was proved by making `ErasedBox`'s count non atomic and watching it report four races.
+
+It runs on macOS and not on Linux, which is not a choice. The Mojo runtime links tcmalloc, tcmalloc assumes a 48-bit address space, and the sanitiser has taken that range for its shadow memory, so a sanitised binary dies in the allocator before it reaches main. There is no flag to build without tcmalloc. The runner recognises that message and says what happened rather than reporting a suite failure. The loss is smaller than it looks, because the macOS runner is arm64 and the weak memory model is the thing a missing barrier needs in order to show up at all; what is not covered is anything that only races under glibc.
 
 `--short` skips the cases marked slow, which is what a local run wants and what CI does not do. A case is marked by a `# slow: why` comment on the line above it, so the decision lives with the person who wrote the five minute test rather than in a list somewhere else that goes stale.
 
