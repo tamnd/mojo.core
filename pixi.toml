@@ -107,6 +107,7 @@ check = { depends-on = [
   "baseline",
   "parity",
   "warnings",
+  "probe",
   "test",
 ] }
 

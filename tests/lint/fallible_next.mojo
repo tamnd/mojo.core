@@ -11,7 +11,7 @@
 struct Lines:
     var remaining: Int
 
-    fn __iter__(self) -> Self:
+    def __iter__(self) -> Self:
         return self
 
     def __next__(mut self) raises -> String:
@@ -20,5 +20,5 @@ struct Lines:
         self.remaining -= 1
         return String("line")
 
-    fn __has_next__(self) -> Bool:
+    def __has_next__(self) -> Bool:
         return self.remaining > 0

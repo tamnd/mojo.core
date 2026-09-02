@@ -38,7 +38,7 @@ A struct field also cannot carry `AnyOrigin`, which is why the type erased box s
 
 ## 6. Pointers are non-nullable and carry an origin
 
-C's null pointer is `Optional[Ptr[T]]()`. Every foreign function that can return null has that in its signature, which means the check cannot be forgotten.
+The compiler refuses to build a `Pointer` from the address zero and says so, so C's null pointer is `Optional[Pointer[T, o]]()`. Every foreign function that can return null has that in its signature, which means the check cannot be forgotten.
 
 A pointer crossing a thread boundary has to be laundered to an untracked origin through its integer address, because the borrow checker cannot follow it there. That is a rule with a real cost and it is confined to the concurrency and syscall packages.
 
@@ -60,7 +60,9 @@ The hole this leaves is real and it is not papered over. `json.Marshal(anyValue)
 
 ## 9. Real OS threads are available through libc
 
-Verified rather than assumed. Thread creation and joining, mutexes, condition variables, atomic add and compare and swap all work through foreign calls into libc, and a probe runs four threads incrementing a shared counter a hundred thousand times each and checks that it lands exactly on four hundred thousand.
+Verified rather than assumed. Thread creation and joining, mutexes and condition variables all work through foreign calls into libc, and a probe runs four threads incrementing a shared counter a hundred thousand times each behind a mutex and checks that it lands exactly on four hundred thousand.
+
+Atomics do not come from libc, and the first attempt at this said they did. `__atomic_fetch_add_8` and `__atomic_compare_exchange_8` link on macOS and fail to link on Linux, where they live in libatomic and nothing pulls it in. They come from the language instead, which is the right answer anyway: an atomic the compiler cannot see through a function call is no use for a memory model. The standard library's `Atomic` renamed its parameter from a `DType` to a type between 1.0 and 1.1, so there is one probe for each spelling and the runner picks by the version the compiler reports.
 
 That is the whole foundation for the concurrency packages. What is not settled is whether green threads are possible on top of it, which is the M9.4 gate in the roadmap.
 
@@ -72,13 +74,21 @@ A user written `def` does fold at compile time. You can parse a format string in
 
 What you cannot do is fail the build on the answer. Mojo 1.0 replaced `constrained` with `where` clauses, and a `where` clause is proof carrying rather than evaluating: its solver handles compiler builtins and parameter attributes, and a call to any function that is not a builtin stops it with a note saying it cannot evaluate the call. That includes functions in Mojo's own standard library, so it is not about our code being unusual.
 
-The only mechanism that emits a diagnostic per instantiation is `@deprecated`, which produces a warning. So the pattern this library uses everywhere is to compute the fact at compile time, call a deprecated stub from inside a `comptime if` when the fact is bad, and have `pixi run lint` fail the build on any warning carrying our marker prefix.
+The only mechanism that emits a diagnostic at all is `@deprecated`, which produces a warning. So the pattern this library uses everywhere is to compute the fact at compile time, call a deprecated stub from inside a `comptime if` when the fact is bad, and have `pixi run lint` fail the build on any warning carrying our marker prefix.
 
-The honest summary, using format strings as the example: this library detects every format error at compile time and reports it as a warning, then behaves exactly like Go at run time. Inside this repository that warning is a build failure. For somebody depending on the library it is a warning, and there is currently no way to make it more than that.
+That mechanism is weaker than it first looks, and the probe pins the weakness rather than the hope. The warning belongs to the line the deprecated stub is called on, not to the instantiation that reached it, and it is emitted once. Three separate bad calls produce one warning pointing at the stub, with no note naming any of them and no note naming the caller. Parameterising the stub does not help. So what a user actually gets is that a check fired somewhere in their build, which is enough to tell them to go and look and not enough to tell them where.
+
+The honest summary, using format strings as the example: this library detects every format error at compile time and reports one warning saying so, then behaves exactly like Go at run time. Inside this repository that warning is a build failure. For somebody depending on the library it is a warning that does not name the offending call, and there is currently no way to make it more than that.
 
 The same shape applies to codec field sets, struct tags, and SQL placeholder counts. If Mojo ever grows a static assert, all of it becomes a compile error and the change is about four lines.
 
 ## Smaller facts that change how code is written
+
+`fn` is gone. Mojo 1.0 removed it and every function in this library is a `def`, with `raises` written out where a function can fail. A `def` does not raise unless it says so, so the effect is the same as `fn` had and only the spelling changed.
+
+`alias` is gone the same way, replaced by `comptime`, and `@parameter if` is replaced by `comptime if`. The old spellings still compile and warn, which is exactly the kind of thing the nightly job is there to catch before it stops being a warning.
+
+`UnsafePointer` is now spelled `Pointer`, and `bitcast` is now `unsafe_bitcast`. The linter looks for both spellings of the pointer, because a word boundary match on the short name does not find the long one.
 
 There are no zero values that mean anything, so every type has an explicit constructor and `var b bytes.Buffer` becomes `var b = Buffer()`.
 

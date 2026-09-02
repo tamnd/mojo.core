@@ -45,7 +45,7 @@ The practical effect is that `core.strings` pulls in `core.unicode` and stops th
 
 ## Design
 
-Mojo is not Go, and pretending otherwise produces a library that fights the language. Ten properties of Mojo shape almost every decision in this repository, and they are written down in [docs/design.md](docs/design.md) with a compiled probe for each one under `tools/probe/`. The short version of the ones that cost the most:
+Mojo is not Go, and pretending otherwise produces a library that fights the language. Ten properties of Mojo shape almost every decision in this repository, and they are written down in [docs/design.md](docs/design.md) with a compiled probe for each one under `tools/probe/probes/`. The short version of the ones that cost the most:
 
 There are no trait objects, so a heterogeneous collection of readers is a hand written vtable of thin function pointers behind an erased struct. There are no storable closures, so a comparison function is a function pointer plus an explicit context. There is exactly one error type and it is a string, so `errors.As` becomes a lookup against a thread local record. There is no reflection, so `json.Unmarshal` into a struct is a decoder generated from `mojo doc` JSON at build time, not a runtime walk over field metadata. Structs cannot hold themselves, so the JSON document, the regexp AST and the template parse tree are arenas of nodes indexed by integer.
 

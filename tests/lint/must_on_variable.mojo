@@ -9,11 +9,11 @@
 # error instead. See docs/deviations.md for the eleven `must_` functions.
 
 
-fn compile_pattern(pattern: String) -> Regexp:
+def compile_pattern(pattern: String) -> Regexp:
     return must_compile(pattern)
 
 
-fn known_good() -> Regexp:
+def known_good() -> Regexp:
     # This one is fine, and the linter has to keep accepting it, otherwise the
     # rule is just a ban on the whole family.
     return must_compile("^[a-z]+$")

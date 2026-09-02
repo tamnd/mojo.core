@@ -6,177 +6,217 @@ limitations we work around, and a limitation that gets lifted is good news that
 nobody will notice unless something is watching. Others are behaviours we rely
 on, and one of those changing is a silent correctness problem.
 
-Each probe is a small program plus a statement of what is supposed to happen to
-it. Compiles, does not compile, or runs and prints a particular thing. This is
-run in the nightly job separately from the suite, so that a failure names the
-assumption that moved rather than showing up as a hundred broken tests.
+Each probe is a real Mojo file under probes/ with a header saying what is
+supposed to happen to it. It compiles and prints a particular thing, or the
+compiler refuses it with a particular message. The header also names the
+section of docs/design.md the probe pins, and this checks that the section
+still exists, so a rewrite that drops a heading does not leave a probe pinning
+nothing.
 
-A probe failing is not necessarily bad. It means go and read the entry in
-docs/design.md, because the reasoning there now has a different answer.
+This runs in the nightly job separately from the suite, so that a failure names
+the assumption that moved rather than showing up as a hundred broken tests.
+
+A probe failing is not necessarily bad news. It means go and read the section
+it names, because the reasoning there now has a different answer.
 """
 
 from __future__ import annotations
 
+import argparse
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lib.tree import report
+from lib.tree import ROOT, report
+
+PROBES = Path(__file__).parent / "probes"
+DESIGN = ROOT / "docs" / "design.md"
+
+# The prefix every compile time diagnostic in this library carries, so that the
+# warnings tool can tell ours from the compiler's own. The deprecation probe
+# counts these.
+MARKER = "core:"
+
+HEADER = re.compile(r"^#\s*([A-Z]+):\s?(.*)$")
 
 
 @dataclass
 class Probe:
-    name: str
-    expect: str  # "compiles" or "rejected"
-    why: str
-    source: str
+    """One probe file and what its header says should happen to it."""
+
+    path: Path
+    pins: str = ""
+    expect: str = ""
+    output: str = ""
+    errors: list[str] = field(default_factory=list)
+    warnings: int | None = None
+    why: list[str] = field(default_factory=list)
+    # Set when a probe only applies to some compiler versions, which happens
+    # when the thing it pins is spelled differently across a release. Matched
+    # against what mojo --version prints.
+    toolchain: str = ""
+
+    @property
+    def name(self) -> str:
+        return self.path.stem
 
 
-PROBES = [
-    Probe(
-        name="for_swallows_raise",
-        expect="compiles",
-        why=(
-            "A for loop accepts an iterator whose __next__ raises, and silently ends "
-            "the loop when it does. This compiling is the whole reason for the "
-            "has_next and next rule the linter enforces. If it stops compiling, the "
-            "rule can be relaxed and the linter check should go."
-        ),
-        source="""
-struct Fallible(Copyable, Movable):
-    var n: Int
+def read(path: Path) -> Probe | str:
+    """Parse one probe's header, or say what is wrong with it."""
+    probe = Probe(path=path)
+    for line in path.read_text().splitlines():
+        if not line.startswith("#"):
+            break
+        found = HEADER.match(line)
+        if not found:
+            continue
+        key, value = found.group(1), found.group(2).strip()
+        if key == "PINS":
+            probe.pins = value
+        elif key == "EXPECT":
+            probe.expect = value
+        elif key == "OUTPUT":
+            probe.output = value
+        elif key == "ERROR":
+            probe.errors.append(value)
+        elif key == "WARNINGS":
+            probe.warnings = int(value)
+        elif key == "WHY":
+            probe.why.append(value)
+        elif key == "TOOLCHAIN":
+            probe.toolchain = value
 
-    fn __iter__(self) -> Self:
-        return self
+    if probe.expect not in ("runs", "rejected"):
+        return f"{probe.name} has no EXPECT line saying runs or rejected"
+    if not probe.pins:
+        return f"{probe.name} does not say which section of design.md it pins"
+    if not probe.why:
+        return f"{probe.name} does not say what it means if it fails"
+    if probe.expect == "runs" and not probe.output:
+        return f"{probe.name} is supposed to run and does not say what it prints"
+    if probe.expect == "rejected" and not probe.errors:
+        return f"{probe.name} is supposed to be refused and does not say with what"
+    return probe
 
-    fn __next__(mut self) raises -> Int:
-        if self.n == 0:
-            raise Error("stop")
-        self.n -= 1
-        return self.n
 
-    fn __has_next__(self) -> Bool:
-        return True
-
-def main():
-    for value in Fallible(3):
-        print(value)
-""",
-    ),
-    Probe(
-        name="compile_time_error",
-        expect="rejected",
-        why=(
-            "A compile time fact still cannot be raised as a compile error, which is "
-            "why every compile time check in this library is a deprecation warning "
-            "with a marker prefix instead. If this starts compiling, the checks can "
-            "become real errors and tests/warnings/ can go away."
-        ),
-        source="""
-fn check[n: Int]():
-    @parameter
-    if n < 0:
-        compile_error["n must not be negative"]()
-
-def main():
-    check[1]()
-""",
-    ),
-    Probe(
-        name="raises_through_fn_pointer",
-        expect="compiles",
-        why=(
-            "A raising function survives being stored as a plain function pointer. "
-            "This is what the error mechanism and every callback in this library are "
-            "built on, so it is relied upon rather than merely worked around."
-        ),
-        source="""
-fn might_fail(x: Int) raises -> Int:
-    if x < 0:
-        raise Error("negative")
-    return x
-
-def main():
-    var f: fn (Int) raises -> Int = might_fail
-    print(f(1))
-""",
-    ),
-    Probe(
-        name="storable_closure",
-        expect="rejected",
-        why=(
-            "A closure that captures cannot be stored in a struct field. This is why "
-            "the callback shapes in this library take an explicit context argument "
-            "rather than capturing. If it starts working, a lot of signatures get "
-            "simpler."
-        ),
-        source="""
-struct Holder:
-    var f: fn () escaping -> Int
-
-    fn __init__(out self, owned f: fn () escaping -> Int):
-        self.f = f
-
-def main():
-    var captured = 7
-    var h = Holder(fn () -> Int: return captured)
-    print(h.f())
-""",
-    ),
-    Probe(
-        name="recursive_struct",
-        expect="rejected",
-        why=(
-            "A struct cannot contain itself, even behind a pointer field with an "
-            "origin. Every tree in this library is an arena with integer indices "
-            "because of this, which is a real cost in readability."
-        ),
-        source="""
-struct Node:
-    var value: Int
-    var next: Node
-
-def main():
-    print(1)
-""",
-    ),
-]
+def sections() -> set[str]:
+    """Every heading in docs/design.md, so a probe cannot pin one that is gone."""
+    return {
+        line.lstrip("#").strip()
+        for line in DESIGN.read_text().splitlines()
+        if line.startswith("## ")
+    }
 
 
 def run(probe: Probe, mojo: str) -> str | None:
-    """Build one probe and say whether it did what it was supposed to."""
+    """Build and maybe run one probe. Gives back a problem, or None."""
     with tempfile.TemporaryDirectory() as scratch:
-        path = Path(scratch) / f"{probe.name}.mojo"
-        path.write_text(probe.source.lstrip())
-        out = subprocess.run(
-            [mojo, "build", "-o", str(Path(scratch) / "out"), str(path)],
+        binary = Path(scratch) / probe.name
+        built = subprocess.run(
+            [mojo, "build", "-o", str(binary), str(probe.path)],
             capture_output=True,
             text=True,
         )
-    compiled = out.returncode == 0
-    if compiled and probe.expect == "compiles":
-        return None
-    if not compiled and probe.expect == "rejected":
-        return None
-    became = "compiles now" if compiled else "no longer compiles"
-    return f"{probe.name} {became}. {probe.why}"
+        diagnostics = built.stdout + built.stderr
+
+        if probe.expect == "rejected":
+            if built.returncode == 0:
+                return (
+                    f"{probe.name} compiles now, and it is not supposed to. "
+                    + " ".join(probe.why)
+                )
+            for wanted in probe.errors:
+                if wanted not in diagnostics:
+                    return (
+                        f"{probe.name} is still refused but no longer says "
+                        f"{wanted!r}, so the reason changed"
+                    )
+            return None
+
+        if built.returncode != 0:
+            first = next(
+                (l for l in diagnostics.splitlines() if "error:" in l), "no output"
+            )
+            return f"{probe.name} no longer compiles: {first.strip()}"
+
+        if probe.warnings is not None:
+            seen = sum(1 for line in diagnostics.splitlines() if MARKER in line)
+            if seen != probe.warnings:
+                return (
+                    f"{probe.name} produced {seen} marked warnings and expects "
+                    f"{probe.warnings}. " + " ".join(probe.why)
+                )
+
+        ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=120)
+
+    if ran.returncode != 0:
+        return f"{probe.name} built and then failed at run time: {ran.stderr.strip()}"
+    if probe.output not in ran.stdout:
+        got = ran.stdout.strip().replace("\n", " ")
+        return f"{probe.name} printed {got!r} and expects {probe.output!r}"
+    return None
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("probe", nargs="?", help="run one probe by name")
+    args = parser.parse_args()
+
+    files = sorted(PROBES.glob("*.mojo"))
+    if args.probe:
+        files = [p for p in files if p.stem == args.probe]
+        if not files:
+            print(f"probe: no probe named {args.probe}", file=sys.stderr)
+            return 1
+    if not files:
+        print("probe: there are no probes, which cannot be right", file=sys.stderr)
+        return 1
+
+    problems: list[str] = []
+    probes: list[Probe] = []
+    for path in files:
+        parsed = read(path)
+        if isinstance(parsed, str):
+            problems.append(parsed)
+        else:
+            probes.append(parsed)
+
+    known = sections()
+    for probe in probes:
+        if probe.pins not in known:
+            problems.append(
+                f"{probe.name} pins {probe.pins!r}, which is not a heading in "
+                "docs/design.md any more"
+            )
+
     mojo = shutil.which("mojo")
     if mojo is None:
         print("probe: mojo is not on PATH", file=sys.stderr)
         return 1
-    version = subprocess.run([mojo, "--version"], capture_output=True, text=True)
-    print(f"probe: against {version.stdout.strip() or 'an unknown mojo'}")
+    version = subprocess.run([mojo, "--version"], capture_output=True, text=True).stdout.strip()
+    print(f"probe: against {version or 'an unknown mojo'}")
 
-    problems = [p for p in (run(probe, mojo) for probe in PROBES) if p]
-    return report("probe", len(PROBES), "language assumptions", problems)
+    # A probe pinned to another compiler version is skipped and said out loud.
+    # Silently skipping is how a suite ends up proving nothing, and every skip
+    # here is a spelling that changed and will need cleaning up later.
+    ran = []
+    for probe in probes:
+        if probe.toolchain and probe.toolchain not in version:
+            print(f"probe: {probe.name} is for {probe.toolchain}, skipped")
+            continue
+        ran.append(probe)
+        print(f"probe: {probe.name} pins design.md section {probe.pins}")
+        failure = run(probe, mojo)
+        if failure:
+            problems.append(failure)
+
+    return report("probe", len(ran), "language assumptions", problems)
 
 
 if __name__ == "__main__":
