@@ -9,13 +9,13 @@ plausible, which is the worst way for a thing to be broken.
 
 from std.testing import assert_equal, assert_false, assert_true
 
-from core.errors import Report, code, field, has_record, partial
+from core.errors import NO_CODE, Code, Report, code, field, has_record, partial
 
 
 def _raise_path_error() raises:
     raise (
         Report("open /nope: no such file or directory")
-        .with_code(2)
+        .with_code(Code(2))
         .with_field("op", "open")
         .with_field("path", "/nope")
         .error()
@@ -64,9 +64,9 @@ def test_unknown_field_is_nothing() raises:
 
 def test_code_and_count() raises:
     try:
-        raise Report("short write").with_code(9).with_count(300).error()
+        raise Report("short write").with_code(Code(9)).with_count(300).error()
     except e:
-        assert_equal(code(e), 9)
+        assert_equal(code(e), Code(9))
         assert_equal(partial(e), 300)
 
 
@@ -76,7 +76,7 @@ def test_untagged_error_has_no_code() raises:
         raise Report("plain").error()
     except e:
         assert_true(has_record(e))
-        assert_equal(code(e), 0)
+        assert_equal(code(e), NO_CODE)
         assert_equal(partial(e), 0)
 
 
@@ -102,7 +102,7 @@ def test_foreign_error_has_no_record() raises:
     except e:
         assert_false(has_record(e))
         assert_false(Bool(field(e, "path")))
-        assert_equal(code(e), 0)
+        assert_equal(code(e), NO_CODE)
         assert_equal(partial(e), 0)
 
 

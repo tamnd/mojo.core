@@ -27,3 +27,13 @@
 "CurveParams.IsOnCurve" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
 "CurveParams.ScalarBaseMult" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
 "CurveParams.ScalarMult" = "Deprecated in Go. Custom curve arithmetic, which OpenSSL does not expose."
+
+["errors"]
+# Both are Go's reflection based type assertion, and there is no reflection
+# here, which is design.md section 8. There is also nothing to assert against,
+# because Mojo has one error type carrying a string, which is section 4. The
+# replacement is not a single function: `errors.field` reads the values a Go
+# error struct would have held, `errors.matches` compares a sentinel, and a
+# package that wants Go's shape supplies its own, such as `os.PathError.of(e)`.
+As = "No reflection and no error hierarchy. Use errors.field, errors.matches, or the package's own `of` helper."
+AsType = "No reflection and no error hierarchy. Use errors.field, errors.matches, or the package's own `of` helper."
