@@ -46,6 +46,10 @@ Commit messages say what changed and why, in that order, and the why is the part
 
 The pull request template has a checklist. It is short and all of it is enforced by CI anyway, so ticking it honestly saves you a round trip.
 
+Everything reaches `main` through a pull request with the `ci ok` check passing and the branch up to date. Direct pushes, force pushes and deleting the branch are all refused. `ci ok` is a single job that fails if anything upstream failed, so the required check does not need changing every time the test matrix does.
+
+Approving reviews are not required yet, and that is the one protection deliberately left off. Requiring one deadlocks a single maintainer, who cannot approve their own work. It goes on the day there is a second committer, and if you are reading this as that second committer, turning it on is your first pull request.
+
 ## Design changes
 
 Anything that changes a trait, an error convention, the layering, or how generated code is shaped goes through an issue labelled `design` before code gets written. This is not bureaucracy. These decisions are load bearing across dozens of packages and they are expensive to reverse once things depend on them.

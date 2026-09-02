@@ -18,6 +18,8 @@ Also corrected the symbol count in [docs/testing.md](docs/testing.md), which sti
 
 The tables earn their place immediately. `pthread_mutex_t` is 40 bytes on Linux x86-64, 48 on Linux arm64 and 64 on macOS, and the threads probe had been taking a generous fixed buffer while saying these were the numbers that would pin it down. `sin_family` is at offset 0 on Linux and offset 1 on macOS, because macOS puts a length byte first. `O_CREAT` is 64 on Linux and 512 on macOS. `struct stat` has a different field order on the two Linux architectures, not merely a different size.
 
+Branch protection on `main` now requires a pull request with the `ci ok` check passing and the branch up to date, on top of the force push and deletion rules that were already there. Approving reviews are the one protection deliberately left off, because requiring one deadlocks a single maintainer who cannot approve their own work. [CONTRIBUTING.md](CONTRIBUTING.md) records that, and the trigger for turning it on.
+
 A mismatch now names the structure, the field, what the platform says and what was recorded, rather than printing a key and two numbers. The platform key is the operating system and the architecture and nothing else, spelled the way the CI matrix spells them. It used to come from `sysconfig.get_platform()`, which puts the macOS release in the string, so a runner one point release behind would have looked like a platform nobody had ever recorded and the check would have passed by finding nothing.
 
 ## v0.0.1 - 2026-09-02
