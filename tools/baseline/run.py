@@ -34,7 +34,6 @@ import argparse
 import json
 import platform
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -42,6 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from lib.native import compiler
 from lib.tree import ROOT, report
 
 # Next to the bindings that will assume them, once tools/gen writes those in
@@ -182,7 +182,7 @@ def describe(key: str) -> str:
 
 def ask_the_platform() -> dict[str, int] | None:
     """Compile and run the probe, or give back None when there is no compiler."""
-    cc = shutil.which("cc") or shutil.which("clang") or shutil.which("gcc")
+    cc = compiler()
     if cc is None:
         return None
     with tempfile.TemporaryDirectory() as scratch:

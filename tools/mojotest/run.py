@@ -47,6 +47,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from lib.native import shim
 from lib.tree import ROOT, report
 
 TESTS = ROOT / "tests"
@@ -189,28 +190,38 @@ def ignored(path: Path) -> bool:
     return out.returncode == 0
 
 
-def build_and_run(scratch: Path, quiet: bool) -> tuple[int, str]:
-    """Build the suite, run it, and give back its exit code and output.
+def build_and_run(scratch: Path, quiet: bool) -> tuple[int, str, list[str]]:
+    """Build the suite, run it, and give back its exit code, output and problems.
 
     Streamed rather than captured and printed at the end, so a suite that takes
     a while says what it is doing. Paths are made relative on the way past,
     because Mojo reports the absolute one and nothing in a terminal can be
     clicked when it is prefixed by somebody's home directory.
 
+    The core.errors slot is linked into every suite, whether or not the suite
+    touches core.errors. It is a few hundred bytes and it makes the link line
+    the same everywhere, which is worth more than the bytes: a test that only
+    fails when some other test happens to be in the same build is the kind of
+    thing that costs a day.
+
     Quiet is for the selftest, whose fixtures are supposed to fail. Printing
     that failure would put the word FAIL in the log of a build that passed,
     and a log nobody can read for real failures is a log nobody reads.
     """
+    slot = shim(scratch)
+    if isinstance(slot, str):
+        return 1, "", [slot]
+
     binary = scratch / "suite"
     built = subprocess.run(
-        ["mojo", "build", "-I", str(ROOT), "-o", str(binary), str(MAIN)],
+        ["mojo", "build", "-I", str(ROOT), "-o", str(binary), "-Xlinker", str(slot), str(MAIN)],
         capture_output=True,
         text=True,
     )
     if built.returncode != 0:
         if not quiet:
             sys.stderr.write((built.stdout + built.stderr).replace(f"{ROOT}/", ""))
-        return built.returncode, ""
+        return built.returncode, "", []
 
     collected = []
     process = subprocess.Popen(
@@ -222,7 +233,7 @@ def build_and_run(scratch: Path, quiet: bool) -> tuple[int, str]:
         collected.append(line)
         if not quiet:
             sys.stdout.write(line)
-    return process.wait(), "".join(collected)
+    return process.wait(), "".join(collected), []
 
 
 def suite(
@@ -251,7 +262,9 @@ def suite(
         return 0, 0, "", [f"{MAIN.relative_to(ROOT)} is not ignored by git, fix .gitignore"]
 
     with tempfile.TemporaryDirectory() as scratch:
-        code, output = build_and_run(Path(scratch), quiet)
+        code, output, problems = build_and_run(Path(scratch), quiet)
+    if problems:
+        return 0, 0, "", problems
     if code != 0 and not output:
         return len(found), len(skipped), output, ["the suite did not build"]
     if code != 0:

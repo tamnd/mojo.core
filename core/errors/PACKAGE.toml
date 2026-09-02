@@ -3,5 +3,8 @@ name = "core.errors"
 go = "errors"
 verdict = "Adapt"
 tier = 0
-unsafe = false
+# The thread local slot. Mojo has no global mutable state to build one out of,
+# so the storage is a C object linked into every consumer and reached through
+# external_call. See shim/README.md and issue #8.
+unsafe = true
 deps = []

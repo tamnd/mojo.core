@@ -61,7 +61,7 @@ Four things this library has to guarantee that Go's suites say nothing about, be
 
 **Layering.** The linter checks every import against the package's declared dependencies, in both directions, so an undeclared import fails and an unused declaration also fails. CI builds every package with only its transitive dependencies. A library that only ever builds as a whole has a dependency graph nobody has tested.
 
-**Unsafety.** Fifteen packages declare themselves unsafe and the rest may not name a raw pointer, a foreign call or a bitcast. The linter enforces it and reports the count, because that number going up is a thing to notice.
+**Unsafety.** Sixteen packages declare themselves unsafe and the rest may not name a raw pointer, a foreign call or a bitcast. The linter enforces it and reports the count, because that number going up is a thing to notice.
 
 ## The compile time checks
 
@@ -101,6 +101,8 @@ FAIL tests.strings.test_index.test_index_finds
 `pixi run test core.strings` runs one package. It fails rather than passing quietly when the name matches nothing, because a filter that silently matches no tests is how a suite stops running without anybody noticing.
 
 `--short` skips the cases marked slow, which is what a local run wants and what CI does not do. A case is marked by a `# slow: why` comment on the line above it, so the decision lives with the person who wrote the five minute test rather than in a list somewhere else that goes stale.
+
+Every suite links `core/errors/shim/slot.c`, whether or not it touches `core.errors`, so running the tests needs a C compiler on the host. It is a few hundred bytes and it makes the link line the same for every run, which is worth more than the bytes: a test that only fails when some other test happens to be in the same build is the kind of thing that costs a day to find. The object is compiled fresh into a scratch directory each time rather than cached, because deciding whether a cached copy is stale costs more than compiling fifteen lines of C, and a cache keyed on the wrong thing keeps working while linking an object from a compiler or a platform that is no longer the one in front of you.
 
 The generated main is written to `tests/_generated_main.mojo` and is gitignored. The runner asks git whether it really is ignored and refuses to build if not, because that `.gitignore` line is one tidy up away from being deleted and generated code appearing in a commit is noticed a month later.
 

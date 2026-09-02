@@ -22,7 +22,7 @@ Issues labelled `good first issue` are self contained, have no dependencies that
 
 **No undeclared imports.** Every package has a `PACKAGE.toml` listing what it depends on. The linter checks both directions, so an import you did not declare fails, and a declaration you do not use also fails. If you find yourself wanting to add a dependency to a low tier package, that is a design question and belongs on an issue before it belongs in a diff.
 
-**No `Pointer`, `external_call`, `unsafe_bitcast` or `unsafe_take_allocation` outside a package that declares `unsafe = true`.** Fifteen packages do. The count is reported by the linter and it going up is a thing we want to notice.
+**No `Pointer`, `external_call`, `unsafe_bitcast` or `unsafe_take_allocation` outside a package that declares `unsafe = true`.** Sixteen packages do. The count is reported by the linter and it going up is a thing we want to notice. `core.errors` is the one that will surprise you: it is tier zero and it reaches libc, because the thread local slot the error record lives in cannot be written in Mojo at all.
 
 **Fallible iteration uses `has_next` and `next`.** A `for` loop drops an error raised out of `__next__`, silently, so anything that can fail while iterating does not get an `__iter__`. The linter enforces this and there is a compiled probe pinning the compiler behaviour, so if a Mojo release fixes it we will find out.
 
