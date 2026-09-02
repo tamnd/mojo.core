@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
           persist-credentials: false
-      # A .mojopkg is tied to the compiler that produced it and is not a distributable format, so the release artifact is source.
+      # A .mojoc is tied to the compiler that produced it and is not a distributable format, so the release artifact is source.
       - name: Archive
         run: |
           version="${GITHUB_REF_NAME#v}"

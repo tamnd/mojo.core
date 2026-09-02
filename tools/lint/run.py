@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -48,6 +51,14 @@ UNSAFE_NAMES = (
 # environment file when it is present, so this repository never has to contain
 # the thing it is looking for.
 SECRET_ENV = ROOT / ".fleet.env"
+
+# The prefix every compile time check in this library puts on its message.
+# Mojo cannot turn a compile time fact into an error, only into a deprecation
+# warning, so the checks in fmt, the codecs and database/sql are all warnings
+# carrying this prefix and the linter is what promotes them to build failures
+# inside this repository. tools/warnings proves the same diagnostics still
+# fire; this one proves none of them are left in our own code.
+MARKER = "core:"
 
 IMPORT = re.compile(r"^\s*(?:from|import)\s+(core(?:\.[a-z_0-9]+)*)", re.M)
 FALLIBLE_NEXT = re.compile(r"^\s*def\s+__next__\s*\([^)]*\)[^:]*\braises\b", re.M)
@@ -198,6 +209,52 @@ def check_must_calls(sources: list[Path]) -> list[str]:
     return problems
 
 
+def compile_for_diagnostics(directory: Path, out: Path) -> str:
+    """Compile one package directory and give back everything the compiler said.
+
+    This is a real compile rather than a grep, because the diagnostics being
+    looked for are produced by instantiation and there is no way to see them
+    without instantiating. It costs about what `pixi run pkg` costs, and it is
+    a different question: that one asks whether a package builds against only
+    its declared dependencies, this one asks what the compiler said while it
+    did.
+    """
+    result = subprocess.run(
+        ["mojo", "precompile", str(directory), "-I", str(ROOT), "-o", str(out)],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout + result.stderr
+
+
+def check_diagnostics(pkgs: list[Package]) -> list[str]:
+    """No compile time diagnostic of ours survives in our own code.
+
+    A warning is all Mojo will give us for a compile time fact, so a format
+    string with the wrong number of verbs, a codec field set that does not
+    match, or a query with the wrong placeholder count all come out as
+    warnings. Outside this repository that is all they can be. Inside it they
+    are build failures, and this is the thing that makes them one.
+    """
+    started = [p for p in pkgs if p.started]
+    if not started:
+        print("lint: no package has code yet, so there are no diagnostics to check")
+        return []
+    if not shutil.which("mojo"):
+        return ["mojo is not on PATH, so the diagnostics check cannot run"]
+
+    problems = []
+    with tempfile.TemporaryDirectory() as scratch:
+        for pkg in started:
+            said = compile_for_diagnostics(pkg.path, Path(scratch) / f"{pkg.name}.mojoc")
+            for line in said.splitlines():
+                if MARKER in line:
+                    problems.append(f"{pkg.name}: {line.strip()}")
+    if not problems:
+        print(f"lint: {len(started)} packages compile with no marked diagnostics")
+    return problems
+
+
 def check_no_private_hostnames() -> list[str]:
     """The private machine names are not in the tree.
 
@@ -256,6 +313,28 @@ def selftest() -> int:
         if not check([path]):
             failures.append(f"{name} fixture was accepted, so that check is dead")
 
+    # The diagnostics check compiles a package rather than reading a file, so
+    # its fixture gets assembled into a scratch package and built. This is the
+    # only selftest that needs the compiler, and it says so rather than passing
+    # quietly when the compiler is missing.
+    marked = fixtures / "marked_diagnostic.mojo"
+    if not marked.is_file():
+        failures.append(f"missing fixture {marked.relative_to(ROOT)}")
+    elif not shutil.which("mojo"):
+        failures.append("mojo is not on PATH, so the diagnostics check is unproven")
+    else:
+        with tempfile.TemporaryDirectory() as scratch:
+            package = Path(scratch) / "marked"
+            package.mkdir()
+            (package / "__init__.mojo").write_text("from .marked_diagnostic import use\n")
+            (package / "marked_diagnostic.mojo").write_text(marked.read_text())
+            said = compile_for_diagnostics(package, Path(scratch) / "marked.mojoc")
+        if not [line for line in said.splitlines() if MARKER in line]:
+            failures.append(
+                "the marked_diagnostic fixture compiled without a marked warning, "
+                "so either the diagnostics check or the warning mechanism is dead"
+            )
+
     # The graph checks read manifests rather than source, so they are proved
     # against a graph built here instead of against a file on disk. A tree with
     # a real cycle in it would fail every other run as well.
@@ -280,7 +359,7 @@ def selftest() -> int:
         if not check_graph(pkgs):
             failures.append(f"the graph check accepted {what}, so it is dead")
 
-    return report("lint selftest", len(sources) + len(graphs), "checks", failures)
+    return report("lint selftest", len(sources) + len(graphs) + 1, "checks", failures)
 
 
 def main() -> int:
@@ -301,6 +380,7 @@ def main() -> int:
         + check_unsafe(pkgs)
         + check_iteration(sources)
         + check_must_calls(sources)
+        + check_diagnostics(pkgs)
         + check_no_private_hostnames()
     )
     return report("lint", len(sources), "source files", problems)

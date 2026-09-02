@@ -55,8 +55,8 @@ def build(pkg: Package, by_name: dict[str, Package]) -> str | None:
             # not wipe it out.
             shutil.copytree(dep.path, root / dep.path.relative_to(ROOT), dirs_exist_ok=True)
         out = subprocess.run(
-            ["mojo", "package", str(root / pkg.path.relative_to(ROOT)),
-             "-I", str(root), "-o", str(root / f"{pkg.name}.mojopkg")],
+            ["mojo", "precompile", str(root / pkg.path.relative_to(ROOT)),
+             "-I", str(root), "-o", str(root / f"{pkg.name}.mojoc")],
             capture_output=True,
             text=True,
         )
