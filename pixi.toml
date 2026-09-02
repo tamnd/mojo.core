@@ -103,6 +103,11 @@ vendor-check = "python tools/vendor/check.py"
 # Platform tables that cannot be checked from Mojo, because checking them means
 # asking the host what the right answer is. Everything checkable from Mojo is a
 # test instead, so it runs on every platform on every run.
+#
+# `pixi run baseline --record` writes the table for the platform it runs on,
+# which is a deliberate act on a machine somebody trusts. See
+# core/syscall/baseline/README.md for why recording is not the way to make a
+# red check go green.
 baseline = "python tools/baseline/run.py"
 
 # Files that are expected to produce compile time warnings, compiled with

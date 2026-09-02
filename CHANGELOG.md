@@ -14,6 +14,12 @@ The generated main is gitignored and the runner asks git whether it really is, r
 
 Also corrected the symbol count in [docs/testing.md](docs/testing.md), which still said 11,598 from before the counts were generated.
 
+`pixi run baseline` now has tables to check against, recorded for macOS arm64, Linux x86-64 and Linux arm64 and checked in under [core/syscall/baseline](core/syscall/baseline/README.md). Before this it looked for a file that was never there, said it had nothing to compare and passed, which is a check that reports success forever. A missing table on a platform we support is now a failure rather than a skip.
+
+The tables earn their place immediately. `pthread_mutex_t` is 40 bytes on Linux x86-64, 48 on Linux arm64 and 64 on macOS, and the threads probe had been taking a generous fixed buffer while saying these were the numbers that would pin it down. `sin_family` is at offset 0 on Linux and offset 1 on macOS, because macOS puts a length byte first. `O_CREAT` is 64 on Linux and 512 on macOS. `struct stat` has a different field order on the two Linux architectures, not merely a different size.
+
+A mismatch now names the structure, the field, what the platform says and what was recorded, rather than printing a key and two numbers. The platform key is the operating system and the architecture and nothing else, spelled the way the CI matrix spells them. It used to come from `sysconfig.get_platform()`, which puts the macOS release in the string, so a runner one point release behind would have looked like a platform nobody had ever recorded and the check would have passed by finding nothing.
+
 ## v0.0.1 - 2026-09-02
 
 The repository itself, and the checks everything after this depends on. There is no library code in it yet. What is here is the plan, the documentation, the build, the package tree and the tools, and the work is tracked as milestones and issues.

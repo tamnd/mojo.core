@@ -77,7 +77,7 @@ Correctness on one machine is not correctness, and three specific things need mo
 
 **Memory ordering.** A missing acquire barrier is invisible on x86-64's strong model and shows up on arm64. A concurrency suite that only ran on x86 tested nothing about ordering, which is why the arm64 runner is in the required matrix rather than being a nice extra.
 
-**Struct layouts.** The `stat` structure, the mutex structure and the socket address structures differ per platform, and a wrong offset reads a plausible wrong number rather than failing. Those are checked against the platform's own C headers, on the platform, which is the only place the question can be asked.
+**Struct layouts.** The `stat` structure, the mutex structure and the socket address structures differ per platform, and a wrong offset reads a plausible wrong number rather than failing. Those are checked against the platform's own C headers, on the platform, which is the only place the question can be asked. `pixi run baseline` does it and the recorded tables are in [core/syscall/baseline](../core/syscall/baseline/README.md). They are not a formality: `pthread_mutex_t` is 40 bytes on Linux x86-64, 48 on Linux arm64 and 64 on macOS, and `struct stat` has a different field order on the two Linux architectures rather than merely a different size.
 
 **Real latency.** On loopback both address families win instantly, so the connection racing in the resolver is untested there. It needs two machines with a real network between them.
 
