@@ -38,11 +38,11 @@ jobs:
       - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
         with:
           pixi-version: v0.78.0
-          environments: default
+          environments: oracle
           locked: true
           cache: true
-      # The full check rather than just the tests, because a release is the one build where the generated code and the parity number being right actually matters to somebody other than us.
-      - run: pixi run check
+      # The full check rather than just the tests, because a release is the one build where the generated code and the parity number being right actually matters to somebody other than us. In the oracle environment, because that is the one with the Go the API index is generated from, and anywhere else the generated check skips the index instead of reading it.
+      - run: pixi run -e oracle check
 
   source:
     name: build the source tarball
