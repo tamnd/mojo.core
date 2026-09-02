@@ -30,6 +30,8 @@ Mojo's `Error` carries a message. There is no error hierarchy and nothing to typ
 
 A record lives until the next raise on the same thread. Holding an error for longer than that takes an explicit `errors.capture(e)`, which is a deliberate cost rather than a hidden one.
 
+The record needs somewhere to live that is per thread and outlives the call that wrote it, and Mojo has no process wide mutable state at all to build that out of. So the slot is a `_Thread_local void *` in a three line C object that `core.errors` links, reached from Mojo through `external_call`. The cost is real and worth stating plainly: every binary that uses `core.errors` links a platform specific object file, and `core.errors` is tier one, so that is every binary. The alternative was passing an explicit context down every fallible call in the library, which would have put the mechanism in the signature of every function in it. A probe pins that pthread's own per thread storage really is per thread, because the failure mode here is one thread reading another's fields, which is a wrong answer rather than a crash.
+
 ## 5. Structs cannot hold themselves, and fields cannot expose an unbound origin
 
 No recursive types. The JSON document, the regexp abstract syntax tree, the template parse trees and the linked list are all arenas of nodes addressed by integer index, with generation counters on the handles so that a stale handle raises instead of reading somebody else's node.
@@ -89,6 +91,8 @@ The same shape applies to codec field sets, struct tags, and SQL placeholder cou
 `alias` is gone the same way, replaced by `comptime`, and `@parameter if` is replaced by `comptime if`. The old spellings still compile and warn, which is exactly the kind of thing the nightly job is there to catch before it stops being a warning.
 
 `UnsafePointer` is now spelled `Pointer`, and `bitcast` is now `unsafe_bitcast`. The linter looks for both spellings of the pointer, because a word boundary match on the short name does not find the long one.
+
+There is no global mutable state. A module level `var` is refused outright, with a message telling you to move it into a function or make it a `comptime` constant, so there is nowhere in the language to put a package level counter, cache, registry or default. Go's standard library uses one in a dozen places. Every one of them here becomes either a value the caller owns and passes, or something that lives outside Mojo, which is section 4's thread local slot and the only case where the second answer was the right one.
 
 There are no zero values that mean anything, so every type has an explicit constructor and `var b bytes.Buffer` becomes `var b = Buffer()`.
 

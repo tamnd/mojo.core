@@ -4,7 +4,15 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 ## Unreleased
 
-Nothing since v0.1.0.
+Two language probes and the design facts they pin, ahead of `core.errors` in M1.
+
+Mojo has no global mutable state. A module level `var` is refused outright and the message tells you to move it into a function or make it a `comptime` constant, so there is nowhere in the language to put a package level counter, cache, registry or default. Go's standard library has one in a dozen places. [docs/design.md](docs/design.md) now records that, and that every one of those becomes a value the caller owns and passes.
+
+The one exception is the thread local error record in section 4, which has to outlive the call that wrote it and cannot be passed. It gets its slot from a `_Thread_local void *` in a small C object that `core.errors` links. The cost is stated in the design rather than discovered later: `core.errors` is tier one, so every binary built on this library links a platform specific object file. The alternative was threading an explicit context through every fallible call in the library, which puts the error mechanism in the signature of every function in it.
+
+`tools/probe/probes/thread_local.mojo` pins that pthread's per thread storage really is per thread. Four threads each claim a slot, hand its address to `pthread_setspecific`, wait at a barrier until all four have written, then read the pointer back and write through it, while the main thread holds a different value in the same key across all of it. Without the barrier a shared slot would still look correct, because each thread would set and read before the next arrived. The failure this rules out is one thread reading another thread's error fields, which is a wrong answer rather than a crash.
+
+Both probes were checked against the two ways they can fail: compiling when they should not, and still being refused for a different reason than the one recorded.
 
 ## v0.1.0 - 2026-09-03
 
