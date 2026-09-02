@@ -61,7 +61,7 @@ Four things this library has to guarantee that Go's suites say nothing about, be
 
 **Layering.** The linter checks every import against the package's declared dependencies, in both directions, so an undeclared import fails and an unused declaration also fails. CI builds every package with only its transitive dependencies. A library that only ever builds as a whole has a dependency graph nobody has tested.
 
-**Unsafety.** Seventeen packages declare themselves unsafe and the rest may not name a raw pointer, a foreign call or a bitcast. The linter enforces it and reports the count, because that number going up is a thing to notice.
+**Unsafety.** Seventeen packages declare themselves unsafe and the rest may not name a raw pointer, a foreign call, or anything the standard library prefixes with `unsafe_`. The prefix is matched as a family, so the ones that arrive with the next release are covered without anybody remembering to add them, and so are the ones that hide behind a safe type: `span.unsafe_ptr().as_unsafe_any_origin()` is a raw pointer with its origin erased and does not contain the word `Pointer`. Two fixtures, because the older one names the raw types outright and so cannot prove the family match is still alive. The linter enforces it and reports the count, because that number going up is a thing to notice.
 
 ## The compile time checks
 

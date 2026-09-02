@@ -18,6 +18,8 @@ Copying is an atomic increment and it is spelled out at the call site, because G
 
 One trap found on the way and worth knowing about: two packages in the same binary declaring the same foreign symbol with different argument types is a build that fails, and nothing says so until both packages land in one link. `core.errors` frees a pointer, this box was freeing an integer, and the test suite is the first build that contains both.
 
+The linter's unsafety check had a hole big enough to drive the box through, and now does not. It was a list of eight names, all of them types or free functions, and it never looked at the unsafe operations that hang off a safe type as methods. `span.unsafe_ptr().as_unsafe_any_origin()` is a raw pointer with its origin erased, it is the entire trick `core.runtime.box` exists to contain, and the word `Pointer` does not appear in it. The check now matches the whole `unsafe_` prefix as a family, which covers the fifty odd names that exist today and the ones that arrive with the next release. A second fixture goes with it: the old one names the raw types outright, so it would still be rejected with the family match deleted and therefore cannot prove the family match is alive.
+
 ## v0.2.0 - 2026-09-03
 
 M1 is complete. `core.errors` is the first package in this library with code in it, and the first at full parity. It is the mechanism every fallible function written here from now on is written against, which is why it comes before anything that could use it.

@@ -39,11 +39,23 @@ UNSAFE_NAMES = (
     "UnsafePointer",
     "OpaquePointer",
     "external_call",
-    "unsafe_bitcast",
-    "unsafe_take_allocation",
     "stack_allocation",
     "__mlir_op",
 )
+
+# Everything the standard library spells with an `unsafe_` prefix, matched as a
+# family rather than named one at a time. There are fifty odd of them today and
+# the set grows with the language, so a hand written list is a list that is
+# quietly out of date, and the two that used to be on the list above by name are
+# covered here instead.
+#
+# This is also the only thing that catches an unsafe operation reached through a
+# safe type. `Span.unsafe_ptr` hands out a raw pointer and
+# `as_unsafe_any_origin` forgets which region that pointer came from, and
+# neither of them contains the word Pointer for the list above to find. Between
+# them they are the whole erasure trick core.runtime.box is built out of, so
+# without this a package could do that trick itself and still call itself safe.
+UNSAFE_FAMILY = re.compile(r"\b(?:as_)?unsafe_[a-z_0-9]+\b")
 
 # The machines the longer suites run on are private. Their names live in an
 # environment file that is not checked in, and this is the check that they have
@@ -163,10 +175,11 @@ def check_unsafe(pkgs: list[Package]) -> list[str]:
             continue
         for src in pkg.sources:
             text = src.read_text()
-            for name in UNSAFE_NAMES:
-                if re.search(rf"\b{name}\b", text):
-                    rel = src.relative_to(ROOT)
-                    problems.append(f"{rel} names {name} in a package that is not unsafe")
+            found = [n for n in UNSAFE_NAMES if re.search(rf"\b{n}\b", text)]
+            found += sorted(set(UNSAFE_FAMILY.findall(text)))
+            rel = src.relative_to(ROOT)
+            for name in found:
+                problems.append(f"{rel} names {name} in a package that is not unsafe")
     return problems
 
 
@@ -297,6 +310,7 @@ def selftest() -> int:
         "fallible_next": check_iteration,
         "must_on_variable": check_must_calls,
         "unsafe_in_safe_package": None,
+        "unsafe_family_in_safe_package": None,
     }
     for name, check in sources.items():
         path = fixtures / f"{name}.mojo"
