@@ -2,7 +2,11 @@
 
 Notable changes, newest first. This project follows semantic versioning from 1.0. Before then, anything can move.
 
-## Unreleased
+## v0.2.0 - 2026-09-03
+
+M1 is complete. `core.errors` is the first package in this library with code in it, and the first at full parity. It is the mechanism every fallible function written here from now on is written against, which is why it comes before anything that could use it.
+
+The problem it solves is that Mojo's `Error` carries a string and nothing else, while half of Go's standard library returns a struct with a path, a syscall number or a byte count in it. The answer is a record in thread local storage, matched to the error by the message it was raised with, and `capture` for when the error has to outlive the raise. All three of the ways that can fail silently now have a test that was watched failing.
 
 Two language probes and the design facts they pin, ahead of `core.errors` in M1.
 
