@@ -93,8 +93,9 @@ IMPORT = re.compile(r"^\s*(?:from|import)\s+(core(?:\.[a-z_0-9]+)*)", re.M)
 # spelled as a raise of that one type, and a `for` loop does not swallow it, it
 # is how the loop knows to stop. Anything else after `raises`, including a bare
 # `raises`, is an error the loop would drop on the floor. The lookahead insists
-# `StopIteration` is the whole of the raise specification, so a union that
-# smuggles a real error alongside it is still caught.
+# `StopIteration` is the whole of the raise specification rather than merely
+# its first word, so `raises Error` and every other typed raise stay caught.
+# `tests/lint/typed_fallible_next.mojo` is the fixture for that half.
 FALLIBLE_NEXT = re.compile(
     r"^\s*def\s+__next__\s*(?:\[[^\]]*\])?\s*\([^)]*\)[^:]*"
     r"\braises\b(?!\s+StopIteration\s*(?:->|:))",

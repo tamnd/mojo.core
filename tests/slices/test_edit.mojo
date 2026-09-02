@@ -31,7 +31,7 @@ from core.slices import (
     reverse,
 )
 
-from _fixtures import counted
+from tests.slices._fixtures import counted
 
 
 struct Tracked[c: MutOrigin](Copyable, Deinitable, Equatable, Movable):

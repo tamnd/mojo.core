@@ -18,7 +18,7 @@ from core.slices import (
     sort_stable_func,
 )
 
-from _fixtures import counted, nan
+from tests.slices._fixtures import counted, nan
 
 
 def _by_value(a: Int, b: Int) -> Int:

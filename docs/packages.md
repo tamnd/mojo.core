@@ -36,7 +36,7 @@ Everything else depends on these, and they are the first three milestones.
 | `cmp` | 4 | `core.cmp` | Adapt | Go's `cmp.Ordered` is a type constraint; Mojo's is a trait, which is a better fit. |
 | `sort` | 40 | `core.sort` | Port | Was going to be a wrap over `std.builtin.sort`, and is not, because that sort hands the comparator indices from outside the span it was given when the comparator is inconsistent and Go's does not. Go's pdqsort and SymMerge, ported. `sort.Interface` is a trait taken as a generic parameter and a comparator is a compile time parameter. [deviations](deviations.md). |
 | `slices` | 40 | `core.slices` | Port | Over `Span` and `List`, with the sorting delegated to `core.sort` so that there is one sort in this library and not two. |
-| `maps` | 10 | `core.maps` | Port | Over `Dict`. |
+| `maps` | 10 | `core.maps` | Adapt | Over `Dict`. `keys`, `values` and `all` return a list rather than an iterator, each with an `_into` sibling, and `insert` and `collect` take a span of pairs rather than a `Cursor`. All 10 symbols, no waivers. [deviations](deviations.md). |
 | `iter` | 4 | `core.iter` | Adapt | All four of Go's symbols are range-over-func and need storable closures, so all four are waived. What is here instead is `Cursor`, the fallible-iteration rule in [design](design.md) written as a trait. |
 | `unique` | 3 | `core.unique` | Port | Interning. Needs the atomics from [design](design.md). |
 | `weak` | 3 | `core.weak` | Adapt | Go's weak pointers assume a tracing collector. Here it is a weak count beside the strong one in the shared box. |
