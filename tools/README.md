@@ -8,7 +8,7 @@ Each directory is one job and each entry point prints what it checked even when 
 | --- | --- | --- |
 | `lib` | | The shared model of the tree. Packages, sources, and the reporting shape the others use. |
 | `fmt` | `format-check` | Formats a copy and compares, because `mojo format` has no check mode. |
-| `lint` | `lint`, `lint-selftest` | Layering, unsafe operations, the iteration rule, `must_` calls, and the committed secret check. |
+| `lint` | `lint`, `lint-selftest` | The package graph, layering, unsafe operations, the iteration rule, `must_` calls, marked compile time diagnostics, and the committed secret check. |
 | `parity` | `parity` | How much of Go's exported surface exists here, read from the table in `docs/packages.md`. |
 | `pkgbuild` | `pkg` | Builds each package against only what its manifest declares. |
 | `mojotest` | `test` | Generates one main that calls every test, so build time tracks the size of the library rather than the number of tests. |
