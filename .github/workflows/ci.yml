@@ -64,14 +64,16 @@ jobs:
       - uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
         with:
           pixi-version: ${{ env.PIXI_VERSION }}
-          environments: default
+          # The oracle environment rather than the default one, because it is the only one with Go, and the Go API index is generated from Go's own manifests.
+          # Without Go here the index generator would skip and this job would report success on a check it never ran.
+          environments: oracle
           locked: true
           cache: true
-      # The Unicode tables, tzdata, the syscall bindings and every generated codec are checked in as well as generated.
+      # The Unicode tables, tzdata, the syscall bindings, the Go API index and every generated codec are checked in as well as generated.
       # This rebuilds them and fails on a diff. It is the most valuable check in the list, because generated code drifting from its source surfaces months later somewhere unrelated.
-      - run: pixi run generated-check
+      - run: pixi run -e oracle generated-check
       # The vendored corpora are checked against the digests recorded for them, so that a test suite cannot quietly start testing different bytes.
-      - run: pixi run vendor-check
+      - run: pixi run -e oracle vendor-check
 
   packages:
     name: package graph

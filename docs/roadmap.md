@@ -1,6 +1,6 @@
 # Roadmap
 
-Sequencing for 135 packages and 11,598 symbols. The ordering is not a preference, it is the dependency graph plus one rule: anything that could invalidate the design is done early, even when it is not needed early.
+Sequencing for the 135 packages and the symbols behind them counted in [packages.md](packages.md). The ordering is not a preference, it is the dependency graph plus one rule: anything that could invalidate the design is done early, even when it is not needed early.
 
 Fifteen milestones in four bands. Each one is a GitHub milestone on this repository with the work under it as issues.
 

@@ -1,0 +1,6 @@
+# Generated files are checked in so that a reader can see them and a reviewer
+# can diff them, but they are not what anybody is reviewing. Marking them keeps
+# them out of the language statistics and collapsed by default in a pull
+# request, so the twenty lines somebody wrote are not buried under half a
+# megabyte of Go's API.
+tools/parity/goapi.txt linguist-generated=true
