@@ -60,7 +60,9 @@ The hole this leaves is real and it is not papered over. `json.Marshal(anyValue)
 
 ## 9. Real OS threads are available through libc
 
-Verified rather than assumed. Thread creation and joining, mutexes, condition variables, atomic add and compare and swap all work through foreign calls into libc, and a probe runs four threads incrementing a shared counter a hundred thousand times each and checks that it lands exactly on four hundred thousand.
+Verified rather than assumed. Thread creation and joining, mutexes and condition variables all work through foreign calls into libc, and a probe runs four threads incrementing a shared counter a hundred thousand times each behind a mutex and checks that it lands exactly on four hundred thousand.
+
+Atomics do not come from libc, and the first attempt at this said they did. `__atomic_fetch_add_8` and `__atomic_compare_exchange_8` link on macOS and fail to link on Linux, where they live in libatomic and nothing pulls it in. They come from the language instead, which is the right answer anyway: an atomic the compiler cannot see through a function call is no use for a memory model. The standard library's `Atomic` renamed its parameter from a `DType` to a type between 1.0 and 1.1, so there is one probe for each spelling and the runner picks by the version the compiler reports.
 
 That is the whole foundation for the concurrency packages. What is not settled is whether green threads are possible on top of it, which is the M9.4 gate in the roadmap.
 

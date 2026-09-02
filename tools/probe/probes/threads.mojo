@@ -1,10 +1,11 @@
 # PINS: 9. Real OS threads are available through libc
 # EXPECT: runs
-# OUTPUT: guarded 400000 atomic 400000 and the cas took True
+# OUTPUT: guarded 400000
 # WHY: The whole foundation for the concurrency packages, verified rather than
-# WHY: assumed. Four threads, a mutex, a condition variable, an atomic add and
-# WHY: a compare and swap. If the guarded count comes back under four hundred
-# WHY: thousand the mutex is not doing anything and sync is built on sand.
+# WHY: assumed. Four threads, a mutex and a condition variable. If the guarded
+# WHY: count comes back under four hundred thousand the mutex is not doing
+# WHY: anything and sync is built on sand. The atomics that go with this are in
+# WHY: the atomics probes, because they come from the language and not libc.
 
 from std.ffi import external_call
 
@@ -18,24 +19,17 @@ comptime ROUNDS = 100000
 # tools/baseline measures.
 comptime OPAQUE = 128
 
-# __ATOMIC_SEQ_CST. The atomics go through libc rather than through the
-# standard library's Atomic, because libc is what section 9 claims and because
-# the standard library spelling has already changed once between releases.
-comptime SEQ_CST = Int32(5)
-
 
 struct Shared:
     var mutex: Array[UInt8, OPAQUE]
     var cond: Array[UInt8, OPAQUE]
     var guarded: Int
-    var total: Int64
     var done: Int
 
     def __init__(out self):
         self.mutex = Array[UInt8, OPAQUE](fill=0)
         self.cond = Array[UInt8, OPAQUE](fill=0)
         self.guarded = 0
-        self.total = 0
         self.done = 0
 
 
@@ -48,9 +42,6 @@ def worker(arg: OpaquePointer[Any]) -> OpaquePointer[Any]:
         shared.guarded += 1
         _ = external_call["pthread_mutex_unlock", Int32](
             Pointer(to=shared.mutex)
-        )
-        _ = external_call["__atomic_fetch_add_8", Int64](
-            Pointer(to=shared.total), Int64(1), SEQ_CST
         )
     _ = external_call["pthread_mutex_lock", Int32](Pointer(to=shared.mutex))
     shared.done += 1
@@ -92,20 +83,4 @@ def main() raises:
     for i in range(THREADS):
         _ = external_call["pthread_join", Int32](ids[i], Int(0))
 
-    var counted = shared.total
-    var swapped = external_call["__atomic_compare_exchange_8", Bool](
-        Pointer(to=shared.total),
-        Pointer(to=counted),
-        Int64(0),
-        False,
-        SEQ_CST,
-        SEQ_CST,
-    )
-    print(
-        "guarded",
-        shared.guarded,
-        "atomic",
-        counted,
-        "and the cas took",
-        swapped,
-    )
+    print("guarded", shared.guarded)

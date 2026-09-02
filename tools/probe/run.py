@@ -57,6 +57,10 @@ class Probe:
     errors: list[str] = field(default_factory=list)
     warnings: int | None = None
     why: list[str] = field(default_factory=list)
+    # Set when a probe only applies to some compiler versions, which happens
+    # when the thing it pins is spelled differently across a release. Matched
+    # against what mojo --version prints.
+    toolchain: str = ""
 
     @property
     def name(self) -> str:
@@ -85,6 +89,8 @@ def read(path: Path) -> Probe | str:
             probe.warnings = int(value)
         elif key == "WHY":
             probe.why.append(value)
+        elif key == "TOOLCHAIN":
+            probe.toolchain = value
 
     if probe.expect not in ("runs", "rejected"):
         return f"{probe.name} has no EXPECT line saying runs or rejected"
@@ -193,16 +199,24 @@ def main() -> int:
     if mojo is None:
         print("probe: mojo is not on PATH", file=sys.stderr)
         return 1
-    version = subprocess.run([mojo, "--version"], capture_output=True, text=True)
-    print(f"probe: against {version.stdout.strip() or 'an unknown mojo'}")
+    version = subprocess.run([mojo, "--version"], capture_output=True, text=True).stdout.strip()
+    print(f"probe: against {version or 'an unknown mojo'}")
 
+    # A probe pinned to another compiler version is skipped and said out loud.
+    # Silently skipping is how a suite ends up proving nothing, and every skip
+    # here is a spelling that changed and will need cleaning up later.
+    ran = []
     for probe in probes:
+        if probe.toolchain and probe.toolchain not in version:
+            print(f"probe: {probe.name} is for {probe.toolchain}, skipped")
+            continue
+        ran.append(probe)
         print(f"probe: {probe.name} pins design.md section {probe.pins}")
         failure = run(probe, mojo)
         if failure:
             problems.append(failure)
 
-    return report("probe", len(probes), "language assumptions", problems)
+    return report("probe", len(ran), "language assumptions", problems)
 
 
 if __name__ == "__main__":
