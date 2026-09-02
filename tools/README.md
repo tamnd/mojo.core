@@ -11,7 +11,7 @@ Each directory is one job and each entry point prints what it checked even when 
 | `lint` | `lint`, `lint-selftest` | The package graph, layering, unsafe operations, the iteration rule, `must_` calls, marked compile time diagnostics, and the committed secret check. |
 | `parity` | `parity` | How much of Go's exported surface exists here, read from Go's own API manifests. `goapi.txt` is the condensed index, `rules.py` turns a Go name into the Mojo one, and `waivers.toml` and `renames.toml` are the two escape hatches. |
 | `pkgbuild` | `pkg` | Builds each package against only what its manifest declares. |
-| `mojotest` | `test` | Generates one main that calls every test, so build time tracks the size of the library rather than the number of tests. |
+| `mojotest` | `test`, `test-selftest` | Generates one main that calls every test, so build time tracks the size of the library rather than the number of tests. Takes a package to run one package, and `--short` to skip the cases marked slow. |
 | `warnings` | `warnings` | Files that are expected to produce compile time warnings, with the count and the text asserted. |
 | `baseline` | `baseline` | Struct offsets, errno values and signal numbers, asked of the platform's own headers. |
 | `gen` | `gen`, `generated-check` | The code generators. Output is checked in and regenerated in CI, which fails on a diff. |

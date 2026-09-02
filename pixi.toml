@@ -43,7 +43,15 @@ oracle = { features = ["dev", "oracle"] }
 [tasks]
 # The whole suite. The runner generates one main that calls every test, so the
 # build time tracks the size of the library rather than the number of tests.
+#
+# `pixi run test core.strings` runs one package and fails rather than passing
+# quietly when the name matches nothing. `pixi run test --short` skips the
+# cases marked slow, which is what a local run wants and what CI does not do.
 test = "python tools/mojotest/run.py"
+# A runner that swallows a failing test turns the whole suite into theatre and
+# nothing else here would notice, so the runner is checked against fixtures
+# that are supposed to fail.
+test-selftest = "python tools/mojotest/run.py --selftest"
 
 # Build a single package against only what its PACKAGE.toml declares, so that
 # the dependency graph is tested rather than assumed. Takes a package name:
@@ -113,6 +121,7 @@ check = { depends-on = [
   "parity",
   "warnings",
   "probe",
+  "test-selftest",
   "test",
 ] }
 

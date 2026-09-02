@@ -4,7 +4,15 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 ## Unreleased
 
-Nothing since v0.0.1.
+`pixi run test` is a real test runner now. It finds every `def test_something() raises:` under `tests/`, generates one main that calls all of them, builds it once and runs it, so the build time tracks the size of the library rather than the number of tests. Failures come out with the file, the line and both values, because `std.testing` already reports all three and the runner rewrites the absolute path to a relative one so it can be clicked. The `raises` is required and the runner says so when it is missing, since a test that cannot raise cannot fail an assertion and passes forever while looking like coverage.
+
+`pixi run test core.strings` runs one package and fails rather than passing quietly when the name matches nothing, which is how a suite stops running without anybody noticing. `--short` skips the cases marked slow, and a case is marked with a `# slow: why` comment on the line above it, so the decision sits with the person who wrote the five minute test.
+
+Added `pixi run test-selftest`, which runs the runner against fixtures under `tests/mojotest` that are supposed to fail and checks the failure is reported with the file, the line and both values. A runner that swallows a failing test turns the whole suite into theatre and nothing else here would notice. Breaking the runner on purpose was tried, and the selftest catches it.
+
+The generated main is gitignored and the runner asks git whether it really is, refusing to build if not. That `.gitignore` line is one tidy up away from being deleted, and generated code appearing in a commit is the kind of thing noticed a month later.
+
+Also corrected the symbol count in [docs/testing.md](docs/testing.md), which still said 11,598 from before the counts were generated.
 
 ## v0.0.1 - 2026-09-02
 

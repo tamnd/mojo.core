@@ -83,12 +83,20 @@ def mojo_sources() -> list[Path]:
     tests/lint holds files that are supposed to fail the linter, so linting
     them is not the point and would fail every run. tools/lint --selftest runs
     the checks against them on purpose.
+
+    The test runner's generated main is not ours either. It is gitignored, but
+    it sits in the tree between a test run and the next one, and linting or
+    formatting generated code is how a generator ends up with a style opinion.
     """
     skip = ROOT / "tests" / "lint"
     out: list[Path] = []
     for base in (CORE, ROOT / "tests"):
         if base.is_dir():
-            out.extend(p for p in sorted(base.rglob("*.mojo")) if skip not in p.parents)
+            out.extend(
+                p
+                for p in sorted(base.rglob("*.mojo"))
+                if skip not in p.parents and p.name != "_generated_main.mojo"
+            )
     return out
 
 
