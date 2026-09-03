@@ -17,3 +17,12 @@ def known_good() -> Regexp:
     # This one is fine, and the linter has to keep accepting it, otherwise the
     # rule is just a ban on the whole family.
     return must_compile("^[a-z]+$")
+
+
+@staticmethod
+def must_compile_all(patterns: String) -> Regexp:
+    # Declaring one is not calling one, and the parameters of a declaration are
+    # named rather than quoted, so a linter that read this line as a call would
+    # report every `must_` function in the library at the point it was written.
+    # The selftest checks this line is not reported.
+    return must_compile("^[a-z]+$")

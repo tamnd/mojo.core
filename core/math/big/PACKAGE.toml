@@ -2,13 +2,11 @@
 name = "core.math.big"
 go = "math/big"
 verdict = "Port"
-tier = 4
+tier = 3
 unsafe = false
 deps = [
   "core.errors",
-  "core.io",
   "core.math",
   "core.math.bits",
-  "core.strconv",
-  "core.strings",
+  "core.math.rand",
 ]

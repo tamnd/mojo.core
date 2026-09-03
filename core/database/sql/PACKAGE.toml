@@ -2,7 +2,7 @@
 name = "core.database.sql"
 go = "database/sql"
 verdict = "Adapt"
-tier = 6
+tier = 5
 unsafe = false
 deps = [
   "core.context",

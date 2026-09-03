@@ -182,3 +182,13 @@ UintSize = "UINT_SIZE"
 # and finds two of them, which gives `new_cha_cha8`. `NewPCG` and `NewZipf` in
 # the same package need no help.
 NewChaCha8 = "new_chacha8"
+
+["math/big"]
+# `and`, `or` and `not` are Mojo keywords, so the three methods named after
+# them take the operator names instead. `Xor` follows the other three rather
+# than being the one bit operation spelled out, and `AndNot` stays `and_not`
+# because Mojo has no operator for it.
+"Int.And" = "Int.__and__"
+"Int.Or" = "Int.__or__"
+"Int.Xor" = "Int.__xor__"
+"Int.Not" = "Int.__invert__"
