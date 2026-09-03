@@ -19,11 +19,18 @@ print(p.probably_prime(20))  # True
 var third = big.new_rat(7, 21)
 print(third.rat_string())        # 1/3
 print(third.float_string(5))     # 0.33333
+
+# Two hundred bits of the square root of two.
+var two = big.Float()
+two.set_prec(200)
+two.set_int64(2)
+print(two.sqrt().text(UInt8(ord("g")), 30))
+# 1.41421356237309504880168872421
 ```
 
-Numbers here are as large as memory allows. `Int` is a signed integer and `Rat`
-is a quotient of two of them; `Float` is Go's arbitrary precision floating point
-type and is not written yet.
+Numbers here are as large as memory allows. `Int` is a signed integer, `Rat` is
+a quotient of two of them, and `Float` is a floating point number carried to
+whatever precision was asked for.
 
 Import the package rather than the type, as above and as Go does. `Int` here
 shadows Mojo's own `Int`, and most code that reaches for a big number wants a
@@ -48,11 +55,25 @@ reading either form back out of text, and gob and text codecs. A `Rat` is always
 in lowest terms and its denominator is always one or more, so two values that
 are equal as numbers are equal digit for digit.
 
+`Float` is the whole of Go's `Float`: a precision from two bits to `MaxPrec`,
+six rounding modes, the four arithmetic operations and the square root, an
+accuracy after every one of them saying which way the answer was rounded, the
+signed zeros and infinities, comparison, the mantissa and the exponent as
+separate values, conversion to and from `Float32`, `Float64`, `Int`, `Rat` and
+the machine integers with a flag saying whether the answer is exact, eight text
+formats including the shortest string that reads back as the same number,
+reading any of them back, and gob and text codecs.
+
+An operation is correctly rounded: the answer is the true result rounded once,
+under the mode asked for, not the true result approached by a sequence of
+roundings. `tests/math/big/test_floatarith.mojo` checks that against a second,
+much slower implementation that shares no code with this one.
+
 `Word` is the digit the magnitude is built out of, sixty four bits wide here,
 and `Int.bits` and `Int.set_bits` are the two methods that speak in them.
 
-`Accuracy` and `RoundingMode` belong to `Float`, and `Accuracy` is here early
-because `Int.float64` reports one.
+`Accuracy` and `RoundingMode` belong to `Float`. `Accuracy` appears on `Int` and
+`Rat` too, because their conversions to a machine float report one.
 
 `jacobi` is the Jacobi symbol, which is a free function in Go as well because
 it is symmetric enough that neither argument is the obvious receiver.
@@ -72,6 +93,15 @@ and a borrowed argument, so that spelling cannot exist. Every operation is a
 method on its first operand and returns a new value: `x.add(y)`. Methods that
 take no `Int` at all, such as `set_int64`, stay setters, because there is
 nothing there to alias.
+
+**A `Float`'s precision and mode come from its operands.** Go keeps both on the
+destination, so `new(Float).SetPrec(p).SetMode(m).Add(x, y)` is how either is
+chosen. With no destination, `x.add(y)` works at the wider of the two
+precisions and rounds by `x`'s mode, which is what Go's `new(Float).Add(x, y)`
+does, and `x.add(y, p)` names the precision. To choose a mode, copy the left
+operand and set it: `var z = x.copy(); z.set_mode(big.ToZero)`. `copy` keeps the
+source's precision and mode where `set` rounds to the receiver's, which is Go's
+distinction between `Copy` and `Set`.
 
 **Values, not pointers.** Go's methods all take `*Int` and `*Rat` and its
 documentation warns that shallow copies are not supported. A number here is the
@@ -96,6 +126,18 @@ negative round count for `probably_prime` and a `fill_bytes` buffer too small
 to hold the number all raise where Go ends the process.
 So do the three cases where Go returns a nil `Int`: no modular inverse, no
 modular square root, and a negative power of a number with no inverse.
+
+`Float` raises with the `ErrNaN` code where Go panics with an `ErrNaN` value:
+two infinities of opposite signs added, two of the same sign subtracted, a zero
+times an infinity, a zero over a zero, an infinity over an infinity, the square
+root of a negative number, and a NaN handed to `set_float64` or `new_float`.
+`ErrNaN` is a code here rather than a struct, because that is what errors are in
+this library, so there is no `Error` method to put the message behind. Go's own
+documentation calls that panic a value carrying an error, which is a raise
+written the long way round.
+`Float.int` and `Float.rat` raise for an infinity, where Go returns a nil and an
+accuracy, and a negative precision raises because Go's is unsigned and has no
+such case to answer.
 
 `Rat` adds a zero denominator, the inverse of zero and a division by zero to the
 panics, all with `ErrDivideByZero`, and `set_float64` of a NaN or an infinity to
@@ -141,7 +183,17 @@ running time of nearly everything here depends on the values, so a program that
 must not leak a secret through timing wants a different tool.
 """
 
+from core.errors.codes import ErrNaN
+
 from .arith import Word
+from .float import (
+    Float,
+    MaxExp,
+    MaxPrec,
+    MinExp,
+    new_float,
+    parse_float,
+)
 from .int import Int, jacobi, new_int
 from .natconv import MaxBase
 from .rat import new_rat, Rat

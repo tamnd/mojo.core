@@ -147,3 +147,17 @@ Title = "Deprecated in Go. The word boundary rule breaks on Unicode punctuation;
 "Int.Format" = "fmt.Formatter. Verbs are comptime in core.fmt, so there is no State to hand it. Use Int.text."
 "Int.Scan" = "fmt.Scanner. Same reason, in the other direction. Use Int.set_string."
 "Rat.Scan" = "fmt.Scanner. Same reason as Int.Scan. Use Rat.set_string."
+#
+# `Float.Format` and `Float.Scan` are the same two interfaces again on the
+# floating point type. `Float.text` takes the format letter and the number of
+# digits as ordinary arguments and is what `Format` prints through in Go, and
+# `Float.set_string` is what `Scan` parses through.
+"Float.Format" = "fmt.Formatter. Same reason as Int.Format. Use Float.text."
+"Float.Scan" = "fmt.Scanner. Same reason as Int.Scan. Use Float.set_string."
+#
+# `ErrNaN` is a struct in Go with an `Error` method on it, so that a panic
+# carrying one can be recovered and read. Errors here are `core.errors`
+# reports carrying a code, and `ErrNaN` is one of those codes rather than a
+# type, so there is no method to put the message behind. The message is on the
+# report, which is what a caller reads either way.
+"ErrNaN.Error" = "ErrNaN is an error code here, not a struct, so the message is on the report rather than behind a method."

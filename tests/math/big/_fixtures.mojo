@@ -72,3 +72,42 @@ def parses_rat(s: String) -> Bool:
         return True
     except:
         return False
+
+
+def f(s: String) raises -> big.Float:
+    """The `Float` written in `s`, at a thousand bits. Go's `makeFloat`.
+
+    Go's helper is `ParseFloat(s, 0, 1000, ToNearestEven)`, and the wide
+    precision is the point of it: a table row says what the number is and the
+    test that follows sets the precision it actually wants, so no row is
+    rounded before the test has looked at it.
+    """
+    return big.parse_float(s, 0, 1000, big.ToNearestEven)
+
+
+def alike(x: big.Float, y: big.Float) -> Bool:
+    """Whether these are the same number and the same sign. Go's `alike`.
+
+    `cmp` alone reports the two zeros as equal, which is right for arithmetic
+    and wrong for a test of which zero came out, so the sign bit is compared
+    beside it.
+    """
+    return x.cmp(y) == 0 and x.signbit() == y.signbit()
+
+
+def exact_int64(x: big.Float) raises -> Int64:
+    """`x` as an `Int64`, refusing one that does not fit. Go's `Float.int64`
+    test helper."""
+    var v, acc = x.int64()
+    if acc != big.Exact:
+        raise Error("not an int64: " + x.text(UInt8(ord("g")), 10))
+    return v
+
+
+def exact_uint64(x: big.Float) raises -> UInt64:
+    """`x` as a `UInt64`, refusing one that does not fit. Go's `Float.uint64`
+    test helper."""
+    var v, acc = x.uint64()
+    if acc != big.Exact:
+        raise Error("not a uint64: " + x.text(UInt8(ord("g")), 10))
+    return v
