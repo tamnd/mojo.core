@@ -39,6 +39,17 @@ assertion, and a suite that passes is not evidence about either of them. The
 sanitiser is a build flag rather than a separate suite so that whatever tests
 exist are the tests it runs. It works on macOS and not on Linux, for a reason
 that is somebody else's and is recorded next to RACE_UNAVAILABLE below.
+
+There is one false report to know about before writing a threaded test. The
+Mojo runtime serves every `List`, `String` and `Dict` out of its own allocator,
+which the sanitiser does not intercept, so the sanitiser never learns that a
+block one thread freed is the same block another thread was later handed. A
+worker that allocates and frees in a loop therefore reports a race on recycled
+memory whatever it is doing, and a file with nothing in it but a `List` built
+inside a thread reproduces it. Threaded tests here keep their workers free of
+allocation for that reason; tests/math/rand/test_concurrent.mojo says so where
+it does it. A race reported at an address several threads have allocated at is
+this, and a race on a value the test itself declared is real.
 """
 
 from __future__ import annotations

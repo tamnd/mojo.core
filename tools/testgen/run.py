@@ -115,12 +115,14 @@ def harvest(name: str, entry: dict, src: Path, env: dict[str, str]) -> str | Non
     if not package.is_dir():
         return f"{name}: {entry['go']} is not in this Go tree"
 
-    out = subprocess.run(
-        ["go", "run", str(EXTRACT), "-package", str(package), "-tables", ",".join(entry["tables"])],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    # `skip` is optional and almost always absent. It is there for a package
+    # whose test files declare something that cannot be copied out of them,
+    # which in practice means a declaration calling into export_test.go.
+    command = ["go", "run", str(EXTRACT), "-package", str(package), "-tables", ",".join(entry["tables"])]
+    if entry.get("skip"):
+        command += ["-skip", ",".join(entry["skip"])]
+
+    out = subprocess.run(command, capture_output=True, text=True, env=env)
     if out.returncode != 0:
         detail = out.stderr.strip().splitlines()
         return f"{name}: the extractor failed, {detail[-1] if detail else 'no output'}"

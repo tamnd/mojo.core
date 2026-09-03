@@ -122,3 +122,26 @@ tables = [
   "branchPoints",
   "hugeIn", "tanHuge",
 ]
+
+[harvest.rand]
+go = "math/rand/v2"
+# Three test files' worth. `regressGolden` is the one that matters: 340 values,
+# twenty from each of the seventeen methods of a `Rand` built on `NewPCG(1, 2)`,
+# in the alphabetical order reflect walks methods in. It is a `[]any`, so it
+# comes out here as one list per Go type rather than one list, and the test
+# walks the same seventeen methods in the same order. The chacha8 tables are the
+# generator's own output, its marshalled forms and the hash of a long run of it,
+# which together say whether the block function, the reseed and the encoding
+# are all right rather than merely consistent with each other.
+tables = [
+  "testSeeds",
+  "chacha8seed", "chacha8output", "chacha8hash",
+  "chacha8marshal", "chacha8marshalread",
+  "regressGolden",
+]
+# `var rn, kn, wn, fn = GetNormalDistributionParameters()` and its exponential
+# twin call into export_test.go, which is inside the package and not reachable
+# from a copy of the declarations. Both are the ziggurat tables, which are in
+# core/math/rand/tables.mojo already and are the thing under test rather than
+# something to test against, so there is nothing lost in leaving them behind.
+skip = ["rn", "kn", "wn", "fn", "re", "ke", "we", "fe"]
