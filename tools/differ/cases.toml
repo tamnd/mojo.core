@@ -37,3 +37,43 @@ needs = ["mojo", "go"]
 mojo = ["mojo", "run", "-I", ".", "tools/differ/mojo/unicode_tables.mojo"]
 oracle = ["go", "run", "-C", "tools/differ/go", "./unicodetables"]
 needs = ["mojo", "go"]
+
+[area.strconv-floats]
+# Every way core.strconv writes a float, against Go's, one line per float, and
+# the shortest form read back at the end of the line so that the parser has to
+# agree with the formatter. The floats are generated rather than tabled: both
+# sides run the same splitmix64 and pick between four shapes, because uniformly
+# random bits are almost all enormous exponents and the failures worth finding
+# are near one, near zero and on numbers a person would type.
+#
+# `build` rather than `mojo`, because the driver reaches core.errors and the
+# thread local slot behind that is C that has to be linked in. `cc` is in
+# `needs` for the same reason.
+count = 200000
+build = "tools/differ/mojo/strconv_floats.mojo"
+oracle = ["go", "run", "-C", "tools/differ/go", "./strconvfloats"]
+needs = ["mojo", "go", "cc"]
+
+[area.strconv-parse]
+# Every way core.strconv reads a number, against Go's, one line per string, with
+# the failures named rather than compared as values, since a raise carries none.
+# Eight shapes of input, two of which are the long digit strings and the extreme
+# exponents that reach the exact decimal path behind Eisel-Lemire, which is
+# where a parser that is nearly right stops being right.
+count = 200000
+build = "tools/differ/mojo/strconv_parse.mojo"
+oracle = ["go", "run", "-C", "tools/differ/go", "./strconvparse"]
+needs = ["mojo", "go", "cc"]
+
+[area.strconv-float32]
+# Every float32 there is, written out and read back, one line per block of a
+# million of them holding a hash of the block's output and the number of round
+# trips that did not land back on the bits they started as. 4096 blocks is all
+# 4,294,967,296 floats, which is the exhaustive check issue #21 closes on, and a
+# hash rather than the strings because the strings are two hundred gigabytes.
+# --count narrows a rerun to the block a divergence names, and --seed is
+# accepted and ignored, since an enumeration has nothing random in it.
+count = 4096
+build = "tools/differ/mojo/strconv_float32.mojo"
+oracle = ["go", "run", "-C", "tools/differ/go", "./strconvfloat32"]
+needs = ["mojo", "go", "cc"]

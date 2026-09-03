@@ -19,7 +19,8 @@
 #
 # Keyed by the package that owns the sentinel. Each entry names the Go symbol
 # it answers for and says what it means, in the words the documentation for
-# that package will use.
+# that package will use. A sentinel Go does not have leaves `go` out rather
+# than setting it to nothing.
 
 ["core.errors"]
 ErrUnsupported = { go = "errors.ErrUnsupported", doc = "The operation is not supported. Go's sentinel for a method that exists so a type satisfies an interface and then declines, such as a read only filesystem's write." }
@@ -44,3 +45,9 @@ ErrBadReadCount = { go = "bufio.ErrBadReadCount", doc = "A reader returned more 
 
 ["core.bytes"]
 ErrTooLarge = { go = "bytes.ErrTooLarge", doc = "A `Buffer` was asked to grow past what can be allocated. Go panics with this value; here it is raised, because a buffer that has run out of memory is a condition the caller can report and the caller is the only one who knows whether the input that caused it was theirs or somebody else's." }
+
+["core.strconv"]
+ErrRange = { go = "strconv.ErrRange", doc = "A number was well formed but too big or too small for the type it was asked for. Go returns the clamped value alongside this, the largest magnitude the bit size can hold with the right sign, and a raise cannot carry a value, so the caller computes it from the bit size and the sign if they want it." }
+ErrSyntax = { go = "strconv.ErrSyntax", doc = "A string was not a number of the kind that was asked for. This is the only failure that means the input was wrong rather than merely out of reach, so it is the one to report back to whoever supplied the text." }
+ErrBase = { doc = "A base outside 0 and 2 through 36 was asked for. Go raises this from its internal package and then throws the sentinel away, so a caller cannot tell an impossible base from a malformed number without reading the message. This keeps the number, because the two failures have different culprits: the base came from the program and the digits came from its input." }
+ErrBitSize = { doc = "A bit size below 0 or above 64 was asked for. Kept for the same reason as `ErrBase`, and it means the same thing: the argument is wrong, not the text." }

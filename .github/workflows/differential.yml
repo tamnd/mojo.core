@@ -55,7 +55,8 @@ jobs:
     needs: areas
     if: needs.areas.outputs.any == 'yes'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # Generous because one area is an enumeration rather than a sample. strconv-float32 writes out and reads back all four billion float32 there are, which is hours where every other area is minutes, and the timeout is per area because each one is its own job.
+    timeout-minutes: 300
     strategy:
       # One area finding something says nothing about the others, and the night is worth more with every answer than with the first one.
       fail-fast: false

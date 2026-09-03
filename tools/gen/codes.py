@@ -58,7 +58,9 @@ def entries() -> list[tuple[str, str, str, str]]:
     out = []
     for owner, sentinels in data.items():
         for name, entry in sentinels.items():
-            out.append((owner, name, entry["go"], entry["doc"]))
+            # `go` is optional: a sentinel this library has and Go does not
+            # leaves it out rather than naming a symbol that is not there.
+            out.append((owner, name, entry.get("go", ""), entry["doc"]))
     return out
 
 
@@ -74,6 +76,12 @@ def generate() -> dict[str, str]:
         # reflow a docstring and a generated file that fails format-check is a
         # generated file somebody edits by hand.
         lines.append('"""' + "\n".join(textwrap.wrap(doc, width=79)) + "\n\n")
-        lines.append(f"Owned by `{owner}`, answering for Go's `{go}`.\n")
+        # A sentinel with no `go` is one this library has and Go does not, so
+        # there is nothing to point at and saying so is better than an empty
+        # pair of backticks.
+        if go:
+            lines.append(f"Owned by `{owner}`, answering for Go's `{go}`.\n")
+        else:
+            lines.append(f"Owned by `{owner}`. Go has no sentinel for it.\n")
         lines.append('"""\n')
     return {TARGET: "".join(lines)}

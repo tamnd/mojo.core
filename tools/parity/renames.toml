@@ -132,3 +132,8 @@ Reverse = "Reverse"
 # library spells a constant in capitals for the same reason `bufio`'s token
 # ceiling is above.
 MinRead = "MIN_READ"
+
+["strconv"]
+# The width of an `Int` in bits is a `comptime` value, capitalised for the same
+# reason `bytes.MinRead` above is.
+IntSize = "INT_SIZE"

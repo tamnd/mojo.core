@@ -2,7 +2,7 @@
 name = "core.runtime.trace"
 go = "runtime/trace"
 verdict = "Adapt"
-tier = 5
+tier = 4
 unsafe = false
 deps = [
   "core.context",

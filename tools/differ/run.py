@@ -20,11 +20,13 @@ import argparse
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from lib.native import shim
 from lib.tree import ROOT, report
 
 CASES = Path(__file__).parent / "cases.toml"
@@ -49,32 +51,85 @@ def missing_tools(area: dict) -> list[str]:
     return [name for name in area.get("needs", []) if not shutil.which(name)]
 
 
-def run_area(
-    name: str, area: dict, count: int, seed: int, shown: int
-) -> tuple[int, list[str]]:
-    """Run one area. Gives back how many inputs were compared, and the divergences."""
-    mine = subprocess.run(
-        [*area["mojo"], "--count", str(count), "--seed", str(seed)],
-        capture_output=True,
-        text=True,
-        cwd=ROOT,
-    )
-    theirs = subprocess.run(
-        [*area["oracle"], "--count", str(count), "--seed", str(seed)],
-        capture_output=True,
-        text=True,
-        cwd=ROOT,
-    )
-    if mine.returncode != 0:
-        return 0, [f"{name}: our side exited {mine.returncode}"]
-    if theirs.returncode != 0:
-        return 0, [f"{name}: the oracle exited {theirs.returncode}"]
+def our_command(name: str, area: dict, scratch: Path) -> tuple[list[str], list[str]]:
+    """The command that runs our side. Gives back the command, and the problems.
 
-    ours = mine.stdout.splitlines()
-    other = theirs.stdout.splitlines()
+    An area whose driver touches `core.errors` cannot be `mojo run`, because the
+    thread local slot the error record lives in is fifteen lines of C that have
+    to be linked in. Such an area declares `build` rather than `mojo` and this
+    compiles the slot and the driver into a scratch directory first. The same
+    thing `tools/mojotest/run.py` does for the test suite, for the same reason.
+    """
+    source = area.get("build")
+    if source is None:
+        return area["mojo"], []
+    slot = shim(scratch)
+    if isinstance(slot, str):
+        return [], [f"{name}: {slot}"]
+    binary = scratch / Path(source).stem
+    built = subprocess.run(
+        [
+            "mojo",
+            "build",
+            "-I",
+            str(ROOT),
+            "-o",
+            str(binary),
+            "-Xlinker",
+            str(slot),
+            str(ROOT / source),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    if built.returncode != 0:
+        return [], [f"{name}: our side did not build:\n{built.stderr.strip()}"]
+    return [str(binary)], []
+
+
+def run_area(
+    name: str, area: dict, count: int, seed: int, shown: int, ours: list[str]
+) -> tuple[int, list[str]]:
+    """Run one area. Gives back how many inputs were compared, and the divergences.
+
+    Both sides are started before either is waited on. They do not depend on
+    each other and the exhaustive float32 area takes hours, so running them one
+    after the other would spend a night doing what an evening can do.
+
+    Each side writes to a temporary file rather than a pipe. A pipe holds a page
+    or two and a program whose pipe is full stops until somebody reads it, so
+    the faster side would sit blocked until the slower one finished and the two
+    would be back in step.
+    """
+    sinks = [tempfile.TemporaryFile() for _ in range(4)]
+    try:
+        started = [
+            subprocess.Popen(
+                [*command, "--count", str(count), "--seed", str(seed)],
+                stdout=sinks[index],
+                stderr=sinks[index + 2],
+                cwd=ROOT,
+            )
+            for index, command in enumerate((ours, area["oracle"]))
+        ]
+        codes = [process.wait() for process in started]
+        for sink in sinks:
+            sink.seek(0)
+        written = [sink.read().decode(errors="replace") for sink in sinks]
+    finally:
+        for sink in sinks:
+            sink.close()
+
+    for index, side in enumerate(("our side", "the oracle")):
+        if codes[index] != 0:
+            return 0, [f"{name}: {side} exited {codes[index]}\n{written[index + 2].strip()}"]
+
+    mine = written[0].splitlines()
+    other = written[1].splitlines()
     divergences = []
     found = 0
-    for index, (a, b) in enumerate(zip(ours, other)):
+    for index, (a, b) in enumerate(zip(mine, other)):
         if a != b:
             found += 1
             # One wrong table is a million wrong lines and a scrolled off
@@ -87,9 +142,9 @@ def run_area(
                 )
     if found > shown:
         divergences.append(f"{name}: and {found - shown} more divergences not shown")
-    if len(ours) != len(other):
-        divergences.append(f"{name}: we produced {len(ours)} lines and the oracle {len(other)}")
-    return min(len(ours), len(other)), divergences
+    if len(mine) != len(other):
+        divergences.append(f"{name}: we produced {len(mine)} lines and the oracle {len(other)}")
+    return min(len(mine), len(other)), divergences
 
 
 def main() -> int:
@@ -118,15 +173,21 @@ def main() -> int:
 
     compared = 0
     divergences = []
-    for name, area in sorted(declared.items()):
-        absent = missing_tools(area)
-        if absent:
-            print(f"differ: skipping {name}, this host has no {' or '.join(absent)}")
-            continue
-        wanted = args.count if args.count is not None else area.get("count", COUNT)
-        count, found = run_area(name, area, wanted, args.seed, args.show)
-        compared += count
-        divergences.extend(found)
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp)
+        for name, area in sorted(declared.items()):
+            absent = missing_tools(area)
+            if absent:
+                print(f"differ: skipping {name}, this host has no {' or '.join(absent)}")
+                continue
+            ours, problems = our_command(name, area, scratch)
+            if problems:
+                divergences.extend(problems)
+                continue
+            wanted = args.count if args.count is not None else area.get("count", COUNT)
+            count, found = run_area(name, area, wanted, args.seed, args.show, ours)
+            compared += count
+            divergences.extend(found)
 
     return report("differ", compared, "inputs", divergences)
 

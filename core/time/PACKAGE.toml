@@ -2,7 +2,7 @@
 name = "core.time"
 go = "time"
 verdict = "Port"
-tier = 3
+tier = 2
 unsafe = false
 deps = [
   "core.errors",
