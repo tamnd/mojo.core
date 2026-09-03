@@ -2,7 +2,7 @@
 name = "core.path.filepath"
 go = "path/filepath"
 verdict = "Port"
-tier = 6
+tier = 7
 unsafe = false
 deps = [
   "core.errors",

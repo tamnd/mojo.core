@@ -2,7 +2,7 @@
 name = "core.crypto.ecdsa"
 go = "crypto/ecdsa"
 verdict = "Wrap"
-tier = 5
+tier = 6
 unsafe = true
 deps = [
   "core.crypto",

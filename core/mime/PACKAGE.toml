@@ -2,7 +2,7 @@
 name = "core.mime"
 go = "mime"
 verdict = "Port"
-tier = 7
+tier = 8
 unsafe = false
 deps = [
   "core.bufio",

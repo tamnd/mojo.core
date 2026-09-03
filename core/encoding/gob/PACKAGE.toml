@@ -2,7 +2,7 @@
 name = "core.encoding.gob"
 go = "encoding/gob"
 verdict = "Adapt"
-tier = 6
+tier = 7
 unsafe = false
 deps = [
   "core.bufio",

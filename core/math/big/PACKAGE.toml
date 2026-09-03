@@ -2,7 +2,7 @@
 name = "core.math.big"
 go = "math/big"
 verdict = "Port"
-tier = 3
+tier = 4
 unsafe = false
 deps = [
   "core.errors",

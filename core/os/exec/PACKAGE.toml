@@ -2,7 +2,7 @@
 name = "core.os.exec"
 go = "os/exec"
 verdict = "Adapt"
-tier = 7
+tier = 8
 unsafe = false
 deps = [
   "core.bytes",

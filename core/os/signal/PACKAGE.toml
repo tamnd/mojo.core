@@ -2,7 +2,7 @@
 name = "core.os.signal"
 go = "os/signal"
 verdict = "Adapt"
-tier = 6
+tier = 7
 unsafe = false
 deps = [
   "core.os",

@@ -2,7 +2,7 @@
 name = "core.archive.tar"
 go = "archive/tar"
 verdict = "Port"
-tier = 7
+tier = 8
 unsafe = false
 deps = [
   "core.bytes",

@@ -2,7 +2,7 @@
 name = "core.mime.multipart"
 go = "mime/multipart"
 verdict = "Port"
-tier = 8
+tier = 9
 unsafe = false
 deps = [
   "core.bufio",

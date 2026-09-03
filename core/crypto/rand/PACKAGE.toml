@@ -2,7 +2,7 @@
 name = "core.crypto.rand"
 go = "crypto/rand"
 verdict = "Adapt"
-tier = 6
+tier = 7
 unsafe = false
 deps = [
   "core.errors",

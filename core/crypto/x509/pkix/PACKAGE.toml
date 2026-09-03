@@ -2,7 +2,7 @@
 name = "core.crypto.x509.pkix"
 go = "crypto/x509/pkix"
 verdict = "Port"
-tier = 5
+tier = 6
 unsafe = false
 deps = [
   "core.encoding.asn1",

@@ -2,7 +2,7 @@
 name = "core.text.template"
 go = "text/template"
 verdict = "Adapt"
-tier = 7
+tier = 8
 unsafe = false
 deps = [
   "core.errors",
