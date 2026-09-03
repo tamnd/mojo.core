@@ -28,6 +28,15 @@
 //
 // The Mojo goes to stdout. tools/testgen/run.py is what calls this, and it is
 // where the plan lives and where the output is written.
+//
+// Every top level declaration in the test files is copied, not only the ones
+// asked for, because a table is routinely built out of another one. A few
+// cannot come along: math/rand/v2's test files open the package up through
+// export_test.go and declare `var rn, kn, wn, fn =
+// GetNormalDistributionParameters()`, which is a function that exists only
+// inside the package under test. `-skip` names those, and the plan is where
+// the list lives so that leaving a declaration behind is a change somebody
+// looked at.
 package main
 
 import (
@@ -48,6 +57,7 @@ import (
 func main() {
 	dir := flag.String("package", "", "the Go package directory to read test tables from")
 	list := flag.String("tables", "", "comma separated names of the tables to extract")
+	drop := flag.String("skip", "", "comma separated names of declarations to leave behind")
 	flag.Parse()
 
 	if *dir == "" || *list == "" {
@@ -55,7 +65,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	out, err := extract(*dir, strings.Split(*list, ","))
+	out, err := extract(*dir, strings.Split(*list, ","), split(*drop))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "extract: %v\n", err)
 		os.Exit(1)
@@ -63,14 +73,36 @@ func main() {
 	fmt.Print(out)
 }
 
+// split turns a comma separated flag into names, with an empty flag giving none.
+func split(list string) []string {
+	if strings.TrimSpace(list) == "" {
+		return nil
+	}
+	return strings.Split(list, ",")
+}
+
 // extract reads one package's test files and gives back the Mojo for its tables.
-func extract(dir string, tables []string) (string, error) {
+func extract(dir string, tables, skip []string) (string, error) {
 	decls, imports, err := readDecls(dir)
 	if err != nil {
 		return "", err
 	}
 
 	declared := map[string]bool{}
+	for _, name := range declaredNames(decls) {
+		declared[name] = true
+	}
+	// The skip list is checked before anything is dropped, so an entry that
+	// Go has since renamed or deleted stops the harvest instead of silently
+	// doing nothing.
+	for _, gone := range skip {
+		if !declared[gone] {
+			return "", fmt.Errorf("%s has nothing named %s to skip, so the plan is stale", filepath.Base(dir), gone)
+		}
+	}
+	decls = prune(decls, skip)
+
+	declared = map[string]bool{}
 	for _, name := range declaredNames(decls) {
 		declared[name] = true
 	}
@@ -218,17 +250,148 @@ func declaredNames(decls []ast.Decl) []string {
 			continue
 		}
 		for _, spec := range gen.Specs {
-			switch s := spec.(type) {
-			case *ast.ValueSpec:
-				for _, name := range s.Names {
-					out = append(out, name.Name)
-				}
-			case *ast.TypeSpec:
-				out = append(out, s.Name.Name)
-			}
+			out = append(out, specNames(spec)...)
 		}
 	}
 	return out
+}
+
+// specNames lists what one spec of a declaration declares.
+func specNames(spec ast.Spec) []string {
+	switch s := spec.(type) {
+	case *ast.ValueSpec:
+		var out []string
+		for _, name := range s.Names {
+			out = append(out, name.Name)
+		}
+		return out
+	case *ast.TypeSpec:
+		return []string{s.Name.Name}
+	}
+	return nil
+}
+
+// prune drops the declarations named in skip.
+//
+// One spec at a time rather than one declaration at a time, so that dropping
+// `chacha8hash` out of a `var (...)` group would leave the rest of the group
+// alone. A spec goes if any of the names it declares is named, since `var rn,
+// kn, wn, fn = f()` is one spec and there is no half of it to keep.
+//
+// A `const (...)` group counting with iota is the case to be careful with:
+// removing a spec from the middle of one renumbers everything after it. No
+// plan entry does that today and the harvest would be visibly wrong if one
+// did, which is the sort of wrong a diff catches.
+func prune(decls []ast.Decl, skip []string) []ast.Decl {
+	if len(skip) == 0 {
+		return decls
+	}
+	gone := map[string]bool{}
+	for _, name := range skip {
+		gone[name] = true
+	}
+
+	var kept []ast.Decl
+	for _, decl := range decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			kept = append(kept, decl)
+			continue
+		}
+		var specs []ast.Spec
+		for _, spec := range gen.Specs {
+			drop := false
+			for _, name := range specNames(spec) {
+				if gone[name] {
+					drop = true
+				}
+			}
+			if !drop {
+				specs = append(specs, spec)
+			}
+		}
+		if len(specs) == 0 {
+			continue
+		}
+		shorter := *gen
+		shorter.Specs = specs
+		kept = append(kept, &shorter)
+	}
+	return kept
+}
+
+// predeclared is Go's own universe of names, which a copied declaration can
+// use without anything having been imported for it.
+var predeclared = map[string]bool{
+	"any": true, "bool": true, "byte": true, "comparable": true,
+	"complex64": true, "complex128": true, "error": true,
+	"float32": true, "float64": true,
+	"int": true, "int8": true, "int16": true, "int32": true, "int64": true,
+	"rune": true, "string": true,
+	"uint": true, "uint8": true, "uint16": true, "uint32": true,
+	"uint64": true, "uintptr": true,
+	"true": true, "false": true, "iota": true, "nil": true,
+	"append": true, "cap": true, "clear": true, "close": true,
+	"complex": true, "copy": true, "delete": true, "imag": true,
+	"len": true, "make": true, "max": true, "min": true, "new": true,
+	"panic": true, "print": true, "println": true, "real": true,
+	"recover": true,
+}
+
+// needsDot says whether the copied declarations still need the dot import.
+//
+// A dot import has no qualifier to look for, so what says it is needed is an
+// identifier the declarations use and nothing else explains: not one they
+// declare themselves, not the qualifier of a selector, not a struct field
+// name, not one of Go's own. math/cmplx's tables say `NaN()` and mean cmplx's
+// own, so the import stays. math/rand/v2's say `float64(...)` and nothing
+// else, so it goes, and Go refuses to compile a file that imports a package it
+// does not use.
+//
+// Both ways of getting this wrong are loud. Keeping an import nothing uses is
+// "imported and not used" and dropping one something needs is "undefined",
+// and either stops the harvest with the name in the message.
+func needsDot(decls []ast.Decl) bool {
+	mine := map[string]bool{}
+	for _, name := range declaredNames(decls) {
+		mine[name] = true
+	}
+
+	found := false
+	var look func(ast.Node) bool
+	look = func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.SelectorExpr:
+			// `hex.DecodeString` names a package and a member of it, and
+			// neither half resolves on its own. `f(x).Field` does have
+			// something to look at, so the left of it is still walked.
+			if _, ok := node.X.(*ast.Ident); !ok {
+				ast.Inspect(node.X, look)
+			}
+			return false
+		case *ast.KeyValueExpr:
+			// A bare name on the left of a colon is a struct field.
+			if _, ok := node.Key.(*ast.Ident); !ok {
+				ast.Inspect(node.Key, look)
+			}
+			ast.Inspect(node.Value, look)
+			return false
+		case *ast.Field:
+			// The names of a struct's fields are the struct's, not anyone's
+			// to resolve. The type beside them is another matter.
+			ast.Inspect(node.Type, look)
+			return false
+		case *ast.Ident:
+			if !mine[node.Name] && !predeclared[node.Name] {
+				found = true
+			}
+		}
+		return true
+	}
+	for _, decl := range decls {
+		ast.Inspect(decl, look)
+	}
+	return found
 }
 
 // writeProgram lays out the temporary module the tables are evaluated in.
@@ -240,7 +403,7 @@ func declaredNames(decls []ast.Decl) []string {
 func writeProgram(work string, decls []ast.Decl, imports map[string]string, tables []string) error {
 	var tablesGo bytes.Buffer
 	tablesGo.WriteString("package main\n\n")
-	tablesGo.WriteString(importBlock(imports, qualifiers(decls)))
+	tablesGo.WriteString(importBlock(imports, qualifiers(decls), needsDot(decls)))
 	fset := token.NewFileSet()
 	for _, decl := range decls {
 		if err := printer.Fprint(&tablesGo, fset, decl); err != nil {
@@ -275,11 +438,11 @@ func writeProgram(work string, decls []ast.Decl, imports map[string]string, tabl
 // The dot import is the one that matters: `. "math"` in Go's own test file, or
 // the package under test that readDecls adds when the tables live inside it, is
 // what makes `Pi` and `NaN()` in a table still mean what they meant in Go. It
-// is always kept. A named
-// import is kept only when a copied declaration qualifies something with it,
-// since Go refuses to compile an unused import and most of these came in for
-// the test functions, which did not come along.
-func importBlock(imports map[string]string, used map[string]bool) string {
+// is kept whenever anything the declarations say could have come from it, which
+// `needsDot` decides. A named import is kept only when a copied declaration
+// qualifies something with it, since Go refuses to compile an unused import and
+// most of these came in for the test functions, which did not come along.
+func importBlock(imports map[string]string, used map[string]bool, dot bool) string {
 	paths := make([]string, 0, len(imports))
 	for path := range imports {
 		paths = append(paths, path)
@@ -296,7 +459,9 @@ func importBlock(imports map[string]string, used map[string]bool) string {
 		}
 		switch {
 		case alias == ".":
-			fmt.Fprintf(&out, "\t. %q\n", path)
+			if dot {
+				fmt.Fprintf(&out, "\t. %q\n", path)
+			}
 		case !used[name]:
 		case alias == "":
 			fmt.Fprintf(&out, "\t%q\n", path)
@@ -315,6 +480,7 @@ func importBlock(imports map[string]string, used map[string]bool) string {
 const emitter = `package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math"
 	"os"
@@ -344,6 +510,7 @@ var shapes []shape
 var declared = map[string]bool{}
 var body strings.Builder
 var complexUsed bool
+var stringUsed bool
 
 // emit writes one table.
 func emit(name string, table any) {
@@ -351,33 +518,128 @@ func emit(name string, table any) {
 	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
 		fail(name, "is not a slice, and this tool writes tables")
 	}
+	if v.Type().Elem().Kind() == reflect.Interface {
+		mixed(name, v)
+		return
+	}
 
 	mojo, write, note := shapeOf(name, v.Type().Elem())
-	wide := scalar(v.Type().Elem()) == nil
+	rows := make([]reflect.Value, v.Len())
+	for i := range rows {
+		rows[i] = v.Index(i)
+	}
+	list(tableName(name), fmt.Sprintf("Go's %s%s%s.", tick, name, tick), mojo, write, note, rows, wide(v.Type().Elem()))
+}
 
-	fmt.Fprintf(&body, "\n\ndef %s() -> List[%s]:\n", tableName(name), mojo)
-	fmt.Fprintf(&body, "    \"\"\"Go's %s%s%s.\"\"\"\n", tick, name, tick)
-	if v.Len() == 0 {
+// wide says whether a row's comment belongs on a line of its own rather than
+// on the end of the value. A struct row is most of a line before any comment
+// is added to it, and so is a byte string, whose hex is twice as long as the
+// bytes it stands for.
+func wide(t reflect.Type) bool {
+	return scalar(t) == nil || t.Kind() == reflect.String
+}
+
+// list writes one Mojo function returning one list.
+func list(fn, doc, mojo string, write, note func(reflect.Value) string, rows []reflect.Value, wide bool) {
+	fmt.Fprintf(&body, "\n\ndef %s() -> List[%s]:\n", fn, mojo)
+	fmt.Fprintf(&body, "    \"\"\"%s\"\"\"\n", doc)
+	if len(rows) == 0 {
 		fmt.Fprintf(&body, "    return List[%s]()\n", mojo)
 		return
 	}
 	body.WriteString("    return [\n")
-	for i := 0; i < v.Len(); i++ {
+	for _, row := range rows {
 		// A one column row takes its comment on the end, where it reads as an
 		// annotation. A wider row takes it above, because a whole row of bit
 		// patterns plus a comment is past the line length and the formatter
 		// would break the row across four lines to keep it.
-		said := note(v.Index(i))
+		said := note(row)
 		if wide && said != "" {
 			body.WriteString("        # " + said + "\n")
 		}
-		line := "        " + write(v.Index(i)) + ","
+		line := "        " + write(row) + ","
 		if !wide && said != "" {
 			line += "  # " + said
 		}
 		body.WriteString(line + "\n")
 	}
 	body.WriteString("    ]\n")
+}
+
+// mixed writes a table whose element type is an interface.
+//
+// A golden file recorded call by call is one of these: math/rand/v2's
+// regressGolden is 340 entries holding a float64 here, an int64 there and a
+// []int somewhere else, because the thing being pinned is what seventeen
+// methods return and reflect could put all of them in one slice. Mojo has no
+// such slice, so this comes out as one list per Go type, each holding that
+// type's values in the order they appeared. A test walking the same calls in
+// the same order reads the list its return type went into, which is the same
+// pairing Go's own test makes and does not need the types written down twice.
+//
+// A slice among the values becomes two lists, the values of every slice run
+// together and the length of each, since a list of lists is not something this
+// writes and the lengths are what put them back.
+func mixed(name string, v reflect.Value) {
+	var order []reflect.Type
+	seen := map[reflect.Type]bool{}
+	groups := map[reflect.Type][]reflect.Value{}
+	for i := 0; i < v.Len(); i++ {
+		held := v.Index(i).Elem()
+		if !held.IsValid() {
+			fail(name, "has a nil in it, and a nil has no type to write it as")
+		}
+		t := held.Type()
+		if !seen[t] {
+			seen[t] = true
+			order = append(order, t)
+		}
+		groups[t] = append(groups[t], held)
+	}
+	for _, t := range order {
+		group(name, t, groups[t])
+	}
+}
+
+// group writes the values of one Go type out of an interface table.
+func group(table string, t reflect.Type, values []reflect.Value) {
+	base := snake(table) + "_" + suffix(table, t)
+	where := fmt.Sprintf("of Go's %s%s%s, in the order they appear", tick, table, tick)
+
+	if c := scalar(t); c != nil {
+		list(base+"_rows", fmt.Sprintf("The %s entries %s.", t, where), c.mojo, c.write, c.note, values, wide(t))
+		return
+	}
+	if t.Kind() != reflect.Slice {
+		fail(table, "holds a "+t.String()+", which this tool does not write")
+	}
+	c := scalar(t.Elem())
+	if c == nil {
+		fail(table, "holds a "+t.String()+", and only a slice of single values can be flattened")
+	}
+
+	var flat, sizes []reflect.Value
+	for _, v := range values {
+		for i := 0; i < v.Len(); i++ {
+			flat = append(flat, v.Index(i))
+		}
+		sizes = append(sizes, reflect.ValueOf(v.Len()))
+	}
+	count := scalar(reflect.TypeOf(0))
+	list(base+"_rows", fmt.Sprintf("Every %s entry %s, run together.", t, where), c.mojo, c.write, c.note, flat, wide(t.Elem()))
+	list(base+"_sizes", fmt.Sprintf("How long each of those %s entries was.", t), count.mojo, count.write, count.note, sizes, false)
+}
+
+// suffix is what one Go type is called in the name of the list its values go
+// into. A slice is its element and the word slice, so []int is int_slice.
+func suffix(table string, t reflect.Type) string {
+	if t.Kind() == reflect.Slice {
+		return suffix(table, t.Elem()) + "_slice"
+	}
+	if t.Name() == "" {
+		fail(table, "holds a "+t.String()+", which has no name to build a list name out of")
+	}
+	return snake(t.Name())
 }
 
 // shapeOf works out how one element of a table is written.
@@ -445,10 +707,20 @@ func scalar(t reflect.Type) *column {
 			note: func(reflect.Value) string { return "" },
 		}
 	case reflect.String:
+		// Bytes rather than a Mojo string, and the Go source form beside them
+		// in a comment. A Go string is a byte string and the ones in these
+		// tables are marshalled binary, so chacha8marshalread has a "\xb6" in
+		// it that is not a code point and is not meant to be. Mojo reads a
+		// literal as UTF-8, turns that escape into the two bytes U+00B6 is,
+		// and the golden silently grows: a sixteen byte encoding arrives as
+		// eighteen. Hex has no such opinion.
+		stringUsed = true
 		return &column{
-			mojo:  "String",
-			write: func(v reflect.Value) string { return strconv.Quote(v.String()) },
-			note:  func(reflect.Value) string { return "" },
+			mojo: "List[UInt8]",
+			write: func(v reflect.Value) string {
+				return "_hex(\"" + hex.EncodeToString([]byte(v.String())) + "\")"
+			},
+			note: func(v reflect.Value) string { return strconv.Quote(v.String()) },
 		}
 	}
 	return nil
@@ -659,6 +931,31 @@ func preamble() string {
 			"def _c64(re: UInt64, im: UInt64) -> ComplexFloat64:",
 			"    \"\"\"The complex number those two sets of bits are.\"\"\"",
 			"    return ComplexFloat64(_f64(re), _f64(im))",
+		)
+	}
+	if stringUsed {
+		lines = append(lines,
+			"",
+			"",
+			"def _nibble(digit: UInt8) -> UInt8:",
+			"    \"\"\"The value of one lower case hex digit.\"\"\"",
+			"    return digit - 0x30 if digit <= 0x39 else digit - 0x57",
+			"",
+			"",
+			"def _hex[o: ImmOrigin](text: StringSlice[o]) -> List[UInt8]:",
+			"    \"\"\"The bytes those hex digits are.",
+			"",
+			"    A Go string in these tables is a byte string rather than text. Writing",
+			"    one as a Mojo literal would re-encode every byte above 0x7F as the two",
+			"    or three UTF-8 bytes its code point is, so a sixteen byte marshalled",
+			"    form would arrive as eighteen and the golden would be longer than the",
+			"    thing it checks. Hex has no such opinion.",
+			"    \"\"\"",
+			"    var raw = text.as_bytes()",
+			"    var out = List[UInt8](capacity=len(raw) // 2)",
+			"    for i in range(0, len(raw), 2):",
+			"        out.append(_nibble(raw[i]) << 4 | _nibble(raw[i + 1]))",
+			"    return out^",
 		)
 	}
 	return strings.Join(lines, "\n") + "\n"

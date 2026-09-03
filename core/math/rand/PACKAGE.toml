@@ -1,10 +1,18 @@
 [package]
 name = "core.math.rand"
-go = "math/rand"
+go = "math/rand/v2"
 verdict = "Port"
 tier = 2
-unsafe = false
+# The top level functions need a generator that outlives the call, is not
+# shared between threads, and is seeded by the operating system. Mojo has no
+# global mutable state, so the generator lives in the thread local slot in
+# core/errors/shim/slot.c and is reached through external_call, it is allocated
+# with malloc because the pthread key destructor frees it, and the seed comes
+# from a raw getentropy. All three are in globals.mojo and nowhere else; Rand,
+# PCG, ChaCha8 and Zipf never touch any of them.
+unsafe = true
 deps = [
+  "core.errors",
   "core.math",
   "core.math.bits",
 ]

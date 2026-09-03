@@ -176,3 +176,9 @@ IntSize = "INT_SIZE"
 # The width of a `UInt` in bits, capitalised on the same rule as
 # `strconv.IntSize` above.
 UintSize = "UINT_SIZE"
+
+["math/rand/v2"]
+# ChaCha8 is one name. The rule splits before every capital that starts a word
+# and finds two of them, which gives `new_cha_cha8`. `NewPCG` and `NewZipf` in
+# the same package need no help.
+NewChaCha8 = "new_chacha8"

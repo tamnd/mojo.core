@@ -196,3 +196,25 @@ fits, which is the whole reason Go has `Rem` beside `Div`.
 
 Owned by `core.math.bits`. Go has no sentinel for it.
 """
+
+comptime ErrInvalidArgument = Code(23)
+"""A bound was not a bound. Every `n` function needs a range with something in it,
+so `int64_n` and its siblings want a positive argument and `uint64_n` and its
+siblings want a non zero one, `shuffle` and `perm` want a count that is not
+negative, and `new_zipf` wants `s` above one and `v` at least one. Go panics on
+all of these and returns nil for the last, and this raises, because a library
+at this depth does not get to end the process and a nil no caller checks is
+worse than a raise.
+
+Owned by `core.math.rand`. Go has no sentinel for it.
+"""
+
+comptime ErrInvalidEncoding = Code(24)
+"""A marshalled generator state was not one this can read back. The length is
+wrong, the tag at the front is wrong, or the counter in it is past where a
+counter can be. Go has this as two unexported error values, one per generator,
+and neither is reachable from outside the package, so one sentinel covers both
+here and the message says which generator refused.
+
+Owned by `core.math.rand`. Go has no sentinel for it.
+"""

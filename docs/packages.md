@@ -15,7 +15,7 @@ They are the target, not an estimate of effort: `unicode`'s 309 symbols are most
 | **Wrap** | Mojo's `std`, or a system library, already does the work. `core` supplies Go's API over it and adds only what is missing. Gaps found in `std` are raised upstream rather than forked. |
 | **Excluded** | Not implemented, with a reason about Go rather than about effort. |
 
-Totals: **135 implemented** (8,900 symbols, plus generated `syscall` bindings), **41 excluded** (2,795 symbols).
+Totals: **135 implemented** (8,914 symbols, plus generated `syscall` bindings), **41 excluded** (2,781 symbols).
 
 ## Foundations
 
@@ -52,7 +52,7 @@ Everything else depends on these, and they are the first three milestones.
 | `math/bits` | 50 | `core.math.bits` | Wrap | All 50 symbols. Over `std.bit` for the counting and reversing and `UInt128` for the wide arithmetic, where Go carries byte tables and Knuth's algorithm D because its compiler intrinsifies them only on some architectures. The six division functions raise instead of panicking. [deviations](deviations.md). |
 | `math/cmplx` | 27 | `core.math.cmplx` | Port | All 27 symbols, on `std.complex.ComplexFloat64`, which is Mojo's own type. Was going to be a wrap over that type and is a full port, because the type carries the four operators and a conjugate and none of the functions. Cephes by way of Go, with the C99 Annex G special case switches in front, which are most of the source. [deviations](deviations.md). |
 | `math/big` | 166 | `core.math.big` | Port | `Int`, `Rat`, `Float`. Arbitrary precision, and the one place in `core` where Mojo's SIMD is worth reaching for on the limb loops. |
-| `math/rand/v2` | 59 | `core.math.rand` | Port | PCG and ChaCha8, as Go has. Named without the `/v2` because there is no v1 to disambiguate from. |
+| `math/rand/v2` | 59 | `core.math.rand` | Port | All 59 symbols, no waivers. PCG and ChaCha8, as Go has. Named without the `/v2` because there is no v1 to disambiguate from. Declares `unsafe`, and only `globals.mojo` is: the top level functions need a generator that is per thread and outlives the call, which Mojo has nowhere to put, so it lives in the C slot in `core/errors/shim` and is seeded through a raw `getentropy`. [deviations](deviations.md). |
 | `math/rand` | 45 | none | Excluded | Superseded by v2 in Go itself. |
 | `time` | 145 | `core.time` | Port | `Time`, `Duration`, `Month`, `Location`, monotonic readings, the whole format-layout language. [design](design.md). |
 | `time/tzdata` | 0 | `core.time.tzdata` | Port | The IANA database, embedded. Zero exported symbols in Go; the package is its side effect. |
@@ -217,7 +217,7 @@ The riskiest area in the project, specified in full in [design](design.md).
 
 ## Excluded, in full
 
-Forty-one packages, 2,795 symbols. Each line is a reason, not an apology.
+Forty-one packages, 2,781 symbols. Each line is a reason, not an apology.
 
 **Go's own language and toolchain (18).** `go/ast`, `go/build`, `go/build/constraint`, `go/constant`, `go/doc`, `go/doc/comment`, `go/format`, `go/importer`, `go/parser`, `go/printer`, `go/scanner`, `go/token`, `go/types`, `go/version` parse, typecheck and format Go source. `debug/gosym` and `debug/buildinfo` read metadata a Go linker writes. `plugin` and `runtime/cgo` are Go's linkage model. The Mojo analogue of all of this is the Mojo compiler, and it is Modular's to build. Note that `mojo doc` already emits structured JSON for Mojo source, and `tools/` uses it, so the capability these packages represent is present, just not as a `core` package.
 
