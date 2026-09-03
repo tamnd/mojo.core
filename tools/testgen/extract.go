@@ -10,7 +10,7 @@
 //
 // So this reads the declarations with go/ast and then hands them back to Go to
 // evaluate. It copies the const, var and type declarations out of a package's
-// external test files into a temporary `package main`, writes a dump program
+// test files into a temporary `package main`, writes a dump program
 // beside them, and runs it. Go computes the values, reflection walks them, and
 // the numbers that come out are the ones Go's own tests compare against,
 // because Go is what produced them.
@@ -102,12 +102,19 @@ func extract(dir string, tables []string) (string, error) {
 }
 
 // readDecls collects the top level const, var and type declarations from a
-// package's external test files, and the imports they were written under.
+// package's test files, and the imports they were written under.
 //
-// External test files only, the ones in `package foo_test`. An in-package test
-// file can reach unexported identifiers and those cannot be moved anywhere
-// else, so a table that lives in one is a table this tool cannot harvest, and
-// it says so rather than emitting something that does not compile.
+// The external test files, the ones in `package foo_test`, are where the
+// tables are looked for first, because they were written against the package
+// from outside and they move as they are. A package like math/cmplx tests
+// itself from the inside instead, and its tables are worth just as much, so
+// when the external files declare nothing the in-package ones are read and the
+// package under test is dot imported, which is what keeps `NaN()` in a table
+// meaning what it meant in Go. A table that reaches an unexported identifier
+// cannot survive that move, and the Go compiler says which one it was.
+//
+// Declaring nothing is the test rather than being absent, because a package
+// can have an external test file that is only examples, as math/cmplx does.
 //
 // Every declaration is taken rather than only the requested ones. A table is
 // routinely built out of another, `ceilSC` is `append(ceilBaseSC, ...)`, and
@@ -121,16 +128,36 @@ func readDecls(dir string) ([]ast.Decl, map[string]string, error) {
 	sort.Strings(paths)
 
 	fset := token.NewFileSet()
-	var decls []ast.Decl
-	imports := map[string]string{}
+	files := map[bool][]*ast.File{}
 	for _, path := range paths {
 		file, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
 			return nil, nil, err
 		}
-		if !strings.HasSuffix(file.Name.Name, "_test") {
-			continue
+		external := strings.HasSuffix(file.Name.Name, "_test")
+		files[external] = append(files[external], file)
+	}
+
+	decls, imports := gather(files[true])
+	if len(decls) == 0 {
+		decls, imports = gather(files[false])
+		if len(decls) == 0 {
+			return nil, nil, fmt.Errorf("%s has no test files with tables in them", filepath.Base(dir))
 		}
+		path, err := importPath(dir)
+		if err != nil {
+			return nil, nil, err
+		}
+		imports[path] = "."
+	}
+	return decls, imports, nil
+}
+
+// gather takes the declarations and the imports out of a set of files.
+func gather(files []*ast.File) ([]ast.Decl, map[string]string) {
+	var decls []ast.Decl
+	imports := map[string]string{}
+	for _, file := range files {
 		for _, decl := range file.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if ok && gen.Tok != token.IMPORT {
@@ -145,10 +172,22 @@ func readDecls(dir string) ([]ast.Decl, map[string]string, error) {
 			imports[strings.Trim(spec.Path.Value, `"`)] = alias
 		}
 	}
-	if len(decls) == 0 {
-		return nil, nil, fmt.Errorf("%s has no external test package, so there is nothing here this tool can reach", filepath.Base(dir))
+	return decls, imports
+}
+
+// importPath is what the package under test is called from outside it.
+//
+// Every package this reads is under a Go source tree, so the path after the
+// src directory is the import path. Asking the go tool for it would mean
+// running it inside a read only module cache to learn something the path
+// already says.
+func importPath(dir string) (string, error) {
+	clean := filepath.ToSlash(filepath.Clean(dir))
+	at := strings.LastIndex(clean, "/src/")
+	if at < 0 {
+		return "", fmt.Errorf("%s is not under a Go source tree, so there is no import path to give the dump program", dir)
 	}
-	return decls, imports, nil
+	return clean[at+len("/src/"):], nil
 }
 
 // qualifiers lists the package names the copied declarations name, so that the
@@ -233,9 +272,10 @@ func writeProgram(work string, decls []ast.Decl, imports map[string]string, tabl
 
 // importBlock writes the imports the copied declarations were written under.
 //
-// The dot import is the one that matters and it is why the external test
-// package is the only one this reads: `. "math"` is what makes `Pi` and `NaN()`
-// in a table still mean what they meant in Go. It is always kept. A named
+// The dot import is the one that matters: `. "math"` in Go's own test file, or
+// the package under test that readDecls adds when the tables live inside it, is
+// what makes `Pi` and `NaN()` in a table still mean what they meant in Go. It
+// is always kept. A named
 // import is kept only when a copied declaration qualifies something with it,
 // since Go refuses to compile an unused import and most of these came in for
 // the test functions, which did not come along.
@@ -303,6 +343,7 @@ type shape struct {
 var shapes []shape
 var declared = map[string]bool{}
 var body strings.Builder
+var complexUsed bool
 
 // emit writes one table.
 func emit(name string, table any) {
@@ -361,6 +402,24 @@ func scalar(t reflect.Type) *column {
 			mojo:  "Float32",
 			write: func(v reflect.Value) string { return fmt.Sprintf("_f32(0x%08X)", math.Float32bits(float32(v.Float()))) },
 			note:  func(v reflect.Value) string { return decimal(v.Float(), 32) },
+		}
+	case reflect.Complex128:
+		// Both halves as bits, for the reason every float here is: a table of
+		// expected answers is the last place to find out that a literal was
+		// flushed to zero. The flag set here is what tells the preamble to
+		// import the type and declare the helper, so a package with no complex
+		// table in it carries neither.
+		complexUsed = true
+		return &column{
+			mojo: "ComplexFloat64",
+			write: func(v reflect.Value) string {
+				c := v.Complex()
+				return fmt.Sprintf("_c64(0x%016X, 0x%016X)", math.Float64bits(real(c)), math.Float64bits(imag(c)))
+			},
+			note: func(v reflect.Value) string {
+				c := v.Complex()
+				return decimal(real(c), 64) + " and " + decimal(imag(c), 64) + "i"
+			},
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return &column{
@@ -433,7 +492,7 @@ func structure(table string, t reflect.Type) (string, func(reflect.Value) string
 			if c == nil {
 				fail(table, "has a field that is not a single value")
 			}
-			fields = append(fields, snake(t.Field(i).Name))
+			fields = append(fields, fieldName(t.Field(i).Name))
 			columns = append(columns, c)
 		}
 	default:
@@ -504,6 +563,20 @@ func tableName(name string) string {
 	return snake(name) + "_rows"
 }
 
+// fieldName is what a Go struct field is called here.
+//
+// Go's special case tables are written as an in and a want, and in is a Mojo
+// keyword, so a struct with a field of that name does not parse. The rename is
+// spelled out rather than suffixed, because row.arg reads as what it is and
+// row.in_ reads as a tool having got out of the way of a problem.
+func fieldName(name string) string {
+	switch snake(name) {
+	case "in":
+		return "arg"
+	}
+	return snake(name)
+}
+
 func snake(name string) string {
 	var out []rune
 	runes := []rune(name)
@@ -571,6 +644,22 @@ func preamble() string {
 		"def _f32(bits: UInt32) -> Float32:",
 		"    \"\"\"The float32 those bits are.\"\"\"",
 		"    return bitcast[DType.float32](bits)",
+	}
+	if complexUsed {
+		var with []string
+		for _, line := range lines {
+			if line == "from std.memory import bitcast" {
+				with = append(with, "from std.complex import ComplexFloat64")
+			}
+			with = append(with, line)
+		}
+		lines = append(with,
+			"",
+			"",
+			"def _c64(re: UInt64, im: UInt64) -> ComplexFloat64:",
+			"    \"\"\"The complex number those two sets of bits are.\"\"\"",
+			"    return ComplexFloat64(_f64(re), _f64(im))",
+		)
 	}
 	return strings.Join(lines, "\n") + "\n"
 }

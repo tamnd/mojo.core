@@ -2,10 +2,12 @@
 `hypot.go`, `fma.go`, `remainder.go`, `frexp.go`, `ldexp.go` and
 `nextafter.go`.
 
-Nine functions. `sqrt`, `cbrt`, `hypot`, `fma` and `remainder` come from
-`std.math`, which agrees with Go on every value in Go's tables: they are either
-a machine instruction or a correctly rounded routine with nothing left to
-disagree about.
+Nine functions. `sqrt`, `cbrt`, `fma` and `remainder` come from `std.math`,
+which agrees with Go on every value in Go's tables: they are either a machine
+instruction or a correctly rounded routine with nothing left to disagree
+about. `hypot` was in that list and is not, because the system routine is not
+correctly rounded and the two lines Go writes instead are; the docstring has
+the value that settled it.
 
 `frexp`, `ldexp`, `nextafter` and `nextafter32` are ported. They only move bits
 around, so they are exact and Go's version is the definition; and
@@ -15,7 +17,6 @@ anybody wants to index or shift with.
 
 from std.math import cbrt as _std_cbrt
 from std.math import fma as _std_fma
-from std.math import hypot as _std_hypot
 from std.math import remainder as _std_remainder
 from std.math import sqrt as _std_sqrt
 
@@ -24,6 +25,7 @@ from .ieee import (
     _MASK,
     _SHIFT,
     _normalize,
+    abs,
     copysign,
     float32bits,
     float32frombits,
@@ -60,8 +62,27 @@ def hypot(p: Float64, q: Float64) -> Float64:
     An infinity in either argument gives positive infinity even when the other
     is a not a number, which is the one place this disagrees with computing it
     the written way.
+
+    Ported rather than taken from `std.math`, which is the system routine and
+    is not correctly rounded. On macOS it returns 29.348203997243527 for
+    `hypot(-16.688001947990161, -24.14182405800559)` where the answer is
+    29.348203997243523, and the platform is free to answer either. Go's own
+    two lines are reproducible, which is what everything that divides by this
+    number needs: `core.math.cmplx.sqrt` at that point is a difference of two
+    nearly equal numbers, and one bit here becomes fifty there.
     """
-    return _std_hypot(p, q)
+    var a = abs(p)
+    var b = abs(q)
+    if is_inf(a, 1) or is_inf(b, 1):
+        return inf(1)
+    if is_nan(a) or is_nan(b):
+        return nan()
+    if a < b:
+        a, b = b, a
+    if a == 0:
+        return 0
+    b = b / a
+    return a * _std_sqrt(1 + b * b)
 
 
 def fma(x: Float64, y: Float64, z: Float64) -> Float64:
