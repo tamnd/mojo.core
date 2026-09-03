@@ -1,0 +1,92 @@
+# What to harvest, and from where.
+#
+# A file rather than a flag, so adding a Go package to the harvest is a change
+# somebody looked at. Every table named here has to exist in the Go tree the
+# tool is run against, and the extractor fails rather than skipping when one
+# does not, because a table quietly disappearing after a Go upgrade would take
+# its test coverage with it and say nothing.
+#
+# The names are Go's, exactly. What they are called here is derived: `vfacosSC`
+# becomes `vfacos_sc_rows()`.
+
+[harvest.math]
+go = "math"
+# Go's math tests come in three parts and all of them are here. The ten element
+# tables at the top of all_test.go are the ordinary values, checked to 1e-14 or
+# 4e-16 depending on the function. The `SC` tables are the special cases, the
+# infinities and the zeros and the not a numbers, which is where an
+# implementation that wraps a system library diverges from Go and so is the
+# half that decides whether a function can be a wrapper at all. The `BC`
+# tables are the boundary cases for the three functions that take an exponent.
+tables = [
+  # The inputs every ordinary table is read against, and the ordinary answers.
+  "vf",
+  "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
+  "cbrt", "ceil", "copysign", "cos", "cosLarge", "cosh",
+  "erf", "erfc", "erfinv", "exp", "expm1", "expm1Large", "exp2",
+  "fabs", "fdim", "floor", "fmod", "frexp", "gamma",
+  "j0", "j1", "j2", "jM3", "lgamma",
+  "log", "logb", "log10", "log1p", "log2", "modf",
+  "nextafter32", "nextafter64", "pow", "remainder", "round",
+  "signbit", "sin", "sinLarge", "sinh", "sqrt", "tan", "tanLarge", "tanh",
+  "trunc", "y0", "y1", "y2", "yM3",
+
+  # The special cases, input and answer together.
+  "vfacosSC", "acosSC",
+  "vfacoshSC", "acoshSC",
+  "vfasinSC", "asinSC",
+  "vfasinhSC", "asinhSC",
+  "vfatanSC", "atanSC",
+  "vfatanhSC", "atanhSC",
+  "vfatan2SC", "atan2SC",
+  "vfcbrtSC", "cbrtSC",
+  "vfceilSC", "ceilSC", "floorSC", "truncSC",
+  "vfcopysignSC", "copysignSC",
+  "vfcosSC", "cosSC",
+  "vfcoshSC", "coshSC",
+  "vferfSC", "erfSC",
+  "vferfcSC", "erfcSC",
+  "vferfinvSC", "erfinvSC",
+  "vferfcinvSC", "erfcinvSC",
+  "vfexpSC", "expSC",
+  "vfexp2SC", "exp2SC",
+  "vfexpm1SC", "expm1SC",
+  "vffabsSC", "fabsSC",
+  "vffdimSC", "vffdim2SC", "fdimSC", "fmaxSC", "fminSC",
+  "vffmodSC", "fmodSC",
+  "vffrexpSC", "frexpSC",
+  "vfgamma",
+  "vfhypotSC", "hypotSC",
+  "ilogbSC",
+  "vfj0SC", "j0SC", "j1SC", "j2SC", "jM3SC",
+  "vfldexpSC", "ldexpSC",
+  "vflgammaSC", "lgammaSC",
+  "vflogSC", "logSC",
+  "vflogbSC", "logbSC",
+  "vflog1pSC", "log1pSC",
+  "vfmodfSC", "modfSC",
+  "vfnextafter32SC", "nextafter32SC",
+  "vfnextafter64SC", "nextafter64SC",
+  "vfpowSC", "powSC",
+  "vfpow10SC", "pow10SC",
+  "vfroundSC", "vfroundEvenSC",
+  "vfsignbitSC", "signbitSC",
+  "vfsinSC", "sinSC",
+  "vfsinhSC", "sinhSC",
+  "vfsqrtSC", "sqrtSC",
+  "vftanhSC", "tanhSC",
+  "vfy0SC", "y0SC", "y1SC", "y2SC", "yM3SC",
+
+  # The boundary cases, and the two tables that are neither.
+  "vffrexpBC", "frexpBC",
+  "vfldexpBC", "ldexpBC",
+  "logbBC",
+  "fmaC",
+  "sqrt32",
+
+  # The huge argument reduction tables, from huge_test.go. These are the ones
+  # that say whether the Payne-Hanek reduction behind sin, cos and tan is
+  # there at all, since a naive reduction is right up to about 2**20 and
+  # nowhere near right at 2**500.
+  "trigHuge", "cosHuge", "sinHuge", "tanHuge",
+]

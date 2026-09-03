@@ -16,6 +16,40 @@
 ["math"]
 NaN = "nan"
 IsNaN = "is_nan"
+# Go's constants keep Go's spelling wherever the name is already the shape a
+# Mojo name has, and go into capitals where it is not, which is the rule the
+# `bytes.MinRead` and `strconv.IntSize` entries below follow one line at a
+# time. Go's `math` is thirty constants at once, so here the same rule fills a
+# section.
+Pi = "PI"
+Phi = "PHI"
+Sqrt2 = "SQRT2"
+SqrtE = "SQRT_E"
+SqrtPi = "SQRT_PI"
+SqrtPhi = "SQRT_PHI"
+Ln2 = "LN2"
+Log2E = "LOG2E"
+Ln10 = "LN10"
+Log10E = "LOG10E"
+MaxFloat32 = "MAX_FLOAT32"
+SmallestNonzeroFloat32 = "SMALLEST_NONZERO_FLOAT32"
+MaxFloat64 = "MAX_FLOAT64"
+SmallestNonzeroFloat64 = "SMALLEST_NONZERO_FLOAT64"
+MaxInt = "MAX_INT"
+MinInt = "MIN_INT"
+MaxInt8 = "MAX_INT8"
+MinInt8 = "MIN_INT8"
+MaxInt16 = "MAX_INT16"
+MinInt16 = "MIN_INT16"
+MaxInt32 = "MAX_INT32"
+MinInt32 = "MIN_INT32"
+MaxInt64 = "MAX_INT64"
+MinInt64 = "MIN_INT64"
+MaxUint = "MAX_UINT"
+MaxUint8 = "MAX_UINT8"
+MaxUint16 = "MAX_UINT16"
+MaxUint32 = "MAX_UINT32"
+MaxUint64 = "MAX_UINT64"
 
 ["math/cmplx"]
 NaN = "nan"
