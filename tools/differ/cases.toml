@@ -1,0 +1,39 @@
+# The declared differ areas, one table each. `mojo` is our side, `oracle` is
+# the thing we are checked against, `needs` are the executables that have to be
+# on PATH for the area to run at all. An area whose tools are missing is
+# skipped and says so, because a host without Go is a host that can still run
+# every other check in this repository.
+#
+# Both commands are given `--count` and `--seed`, and both are run from the
+# repository root. What those two mean is the area's business. The unicode
+# areas ignore the seed and start at code point zero every time, because there
+# is nothing random about a character database and because then the case index
+# the differ reports is the code point that diverged.
+#
+# `count` is what the area asks for when nobody says otherwise. `--count` on
+# the command line still wins, which is how a divergence gets narrowed from a
+# million lines to the hundred around it.
+#
+# The table in docs/testing.md says what each area is for.
+
+[area.unicode-runes]
+# Every answer core.unicode gives about a code point, against Go's, one line
+# each. Every code point there is, because the tables here are derived from the
+# Unicode files rather than translated from Go's, so nothing about them is true
+# by construction, and a range table is wrong in one block and right everywhere
+# else. It takes about fifteen seconds and it is the check issue #19 closed on.
+count = 1114112
+mojo = ["mojo", "run", "-I", ".", "tools/differ/mojo/unicode_runes.mojo"]
+oracle = ["go", "run", "-C", "tools/differ/go", "./unicoderunes"]
+needs = ["mojo", "go"]
+
+[area.unicode-tables]
+# The data behind those answers: every range of every one of the 236 tables,
+# every case range and every category alias. Around seven and a half thousand
+# lines, whole every time, so --count and --seed are accepted and ignored by
+# both sides. This is the area that would catch a generator that produced a
+# correct answer from a table that happens to be wrong outside the range the
+# other area sampled.
+mojo = ["mojo", "run", "-I", ".", "tools/differ/mojo/unicode_tables.mojo"]
+oracle = ["go", "run", "-C", "tools/differ/go", "./unicodetables"]
+needs = ["mojo", "go"]

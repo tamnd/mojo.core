@@ -40,6 +40,12 @@ def generators() -> list[tuple[str, object]]:
         if spec is None or spec.loader is None:
             continue
         module = importlib.util.module_from_spec(spec)
+        # Registered before it runs, because a module that defines a dataclass
+        # needs to be able to find itself in sys.modules while the decorator is
+        # running and a module loaded by path is not there unless it is put
+        # there. Without this a generator can hold data classes and nothing
+        # else, which is not a rule anybody would guess from the error.
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         if hasattr(module, "generate"):
             found.append((path.stem, module))

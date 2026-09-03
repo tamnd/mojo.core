@@ -77,6 +77,28 @@ SplitFunc = "Splitter"
 # failure comes out of it instead of being left in `Err`.
 "Scanner.Scan" = "Scanner.has_next"
 
+["unicode"]
+# `is` and `in` are both Mojo keywords, and these two are the pair of questions
+# the package exists to answer, so they had to keep reading as questions.
+# `is_in(unicode.Greek, r)` asks whether one table has a code point and
+# `in_any(r, unicode.L, unicode.N)` asks whether any of several do, which is
+# what Go's one word names mean once you have looked them up.
+Is = "is_in"
+In = "in_any"
+# The constants, in capitals for the same reason `io`'s seek constants are.
+# `MaxRune` under the usual rule would be `max_rune`, which reads as a function
+# that computes one.
+MaxRune = "MAX_RUNE"
+MaxASCII = "MAX_ASCII"
+MaxLatin1 = "MAX_LATIN1"
+MaxCase = "MAX_CASE"
+UpperCase = "UPPER_CASE"
+LowerCase = "LOWER_CASE"
+TitleCase = "TITLE_CASE"
+ReplacementChar = "REPLACEMENT_CHAR"
+UpperLower = "UPPER_LOWER"
+Version = "VERSION"
+
 ["unicode/utf8"]
 # The four constants, in capitals for the same reason `io`'s seek constants are.
 # `RuneError` under the usual rule would be `rune_error`, which reads as a
