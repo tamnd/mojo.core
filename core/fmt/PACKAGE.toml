@@ -2,7 +2,7 @@
 name = "core.fmt"
 go = "fmt"
 verdict = "Adapt"
-tier = 2
+tier = 3
 unsafe = false
 deps = [
   "core.errors",

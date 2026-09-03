@@ -51,3 +51,7 @@ ErrRange = { go = "strconv.ErrRange", doc = "A number was well formed but too bi
 ErrSyntax = { go = "strconv.ErrSyntax", doc = "A string was not a number of the kind that was asked for. This is the only failure that means the input was wrong rather than merely out of reach, so it is the one to report back to whoever supplied the text." }
 ErrBase = { doc = "A base outside 0 and 2 through 36 was asked for. Go raises this from its internal package and then throws the sentinel away, so a caller cannot tell an impossible base from a malformed number without reading the message. This keeps the number, because the two failures have different culprits: the base came from the program and the digits came from its input." }
 ErrBitSize = { doc = "A bit size below 0 or above 64 was asked for. Kept for the same reason as `ErrBase`, and it means the same thing: the argument is wrong, not the text." }
+
+["core.math.bits"]
+ErrDivideByZero = { doc = "A divisor was zero. Go's `Div` and `Rem` panic with the runtime's `integer divide by zero` here, and a package this far down cannot be the one that ends the process, so it raises instead. The three `div` functions and the three `rem` functions are the only places in the package that can fail at all." }
+ErrOverflow = { doc = "A quotient did not fit the width it was asked for. `div64(hi, lo, y)` raises this when `y <= hi`, which is Go's `integer overflow` panic and means the answer needs more than 64 bits. No `rem` raises it, because a remainder always fits, which is the whole reason Go has `Rem` beside `Div`." }

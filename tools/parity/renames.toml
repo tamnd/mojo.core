@@ -137,3 +137,8 @@ MinRead = "MIN_READ"
 # The width of an `Int` in bits is a `comptime` value, capitalised for the same
 # reason `bytes.MinRead` above is.
 IntSize = "INT_SIZE"
+
+["math/bits"]
+# The width of a `UInt` in bits, capitalised on the same rule as
+# `strconv.IntSize` above.
+UintSize = "UINT_SIZE"

@@ -49,7 +49,7 @@ Everything else depends on these, and they are the first three milestones.
 | Go package | Symbols | `core` package | Verdict | Note |
 | --- | --- | --- | --- | --- |
 | `math` | 97 | `core.math` | Wrap | `std.math` covers most of it. `core.math` adds the missing IEEE-754 edges and Go's exact naming. |
-| `math/bits` | 50 | `core.math.bits` | Wrap | Over `std.bit`. |
+| `math/bits` | 50 | `core.math.bits` | Wrap | All 50 symbols. Over `std.bit` for the counting and reversing and `UInt128` for the wide arithmetic, where Go carries byte tables and Knuth's algorithm D because its compiler intrinsifies them only on some architectures. The six division functions raise instead of panicking. [deviations](deviations.md). |
 | `math/cmplx` | 27 | `core.math.cmplx` | Wrap | Over `std.complex`. |
 | `math/big` | 166 | `core.math.big` | Port | `Int`, `Rat`, `Float`. Arbitrary precision, and the one place in `core` where Mojo's SIMD is worth reaching for on the limb loops. |
 | `math/rand/v2` | 59 | `core.math.rand` | Port | PCG and ChaCha8, as Go has. Named without the `/v2` because there is no v1 to disambiguate from. |

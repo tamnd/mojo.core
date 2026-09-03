@@ -2,6 +2,8 @@
 name = "core.math.bits"
 go = "math/bits"
 verdict = "Wrap"
-tier = 0
+tier = 1
 unsafe = false
-deps = []
+deps = [
+  "core.errors",
+]

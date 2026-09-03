@@ -178,3 +178,21 @@ comptime ErrBitSize = Code(20)
 
 Owned by `core.strconv`. Go has no sentinel for it.
 """
+
+comptime ErrDivideByZero = Code(21)
+"""A divisor was zero. Go's `Div` and `Rem` panic with the runtime's `integer
+divide by zero` here, and a package this far down cannot be the one that ends
+the process, so it raises instead. The three `div` functions and the three
+`rem` functions are the only places in the package that can fail at all.
+
+Owned by `core.math.bits`. Go has no sentinel for it.
+"""
+
+comptime ErrOverflow = Code(22)
+"""A quotient did not fit the width it was asked for. `div64(hi, lo, y)` raises
+this when `y <= hi`, which is Go's `integer overflow` panic and means the
+answer needs more than 64 bits. No `rem` raises it, because a remainder always
+fits, which is the whole reason Go has `Rem` beside `Div`.
+
+Owned by `core.math.bits`. Go has no sentinel for it.
+"""
