@@ -41,6 +41,20 @@ def closure(pkg: Package, by_name: dict[str, Package]) -> list[Package] | str:
     return sorted(seen.values(), key=lambda p: p.name)
 
 
+def subpackages(directory: str, names: list[str]) -> set[str]:
+    """The entries in `directory` that are packages of their own.
+
+    A package is its own source files, not everything underneath it. `core.math`
+    is the directory `core/math`, and `core/math/bits` is a different package
+    that a caller taking `core.math` does not take with it. Copying the whole
+    subtree would build the child here as well, so the parent would need every
+    dependency of every package under it and this check would be answering a
+    question nobody asked.
+    """
+    here = Path(directory)
+    return {n for n in names if (here / n / "PACKAGE.toml").is_file()}
+
+
 def build(pkg: Package, by_name: dict[str, Package]) -> str | None:
     """Build one package alone. Gives back a problem, or None."""
     needed = closure(pkg, by_name)
@@ -53,7 +67,12 @@ def build(pkg: Package, by_name: dict[str, Package]) -> str | None:
             # dirs_exist_ok because a package can be the parent directory of
             # another one, and core.crypto arriving after core.crypto.aes must
             # not wipe it out.
-            shutil.copytree(dep.path, root / dep.path.relative_to(ROOT), dirs_exist_ok=True)
+            shutil.copytree(
+                dep.path,
+                root / dep.path.relative_to(ROOT),
+                dirs_exist_ok=True,
+                ignore=subpackages,
+            )
         out = subprocess.run(
             ["mojo", "precompile", str(root / pkg.path.relative_to(ROOT)),
              "-I", str(root), "-o", str(root / f"{pkg.name}.mojoc")],

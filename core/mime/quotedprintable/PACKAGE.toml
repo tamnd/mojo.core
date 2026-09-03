@@ -2,7 +2,7 @@
 name = "core.mime.quotedprintable"
 go = "mime/quotedprintable"
 verdict = "Port"
-tier = 4
+tier = 3
 unsafe = false
 deps = [
   "core.bufio",

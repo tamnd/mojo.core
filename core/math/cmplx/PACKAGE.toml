@@ -2,7 +2,7 @@
 name = "core.math.cmplx"
 go = "math/cmplx"
 verdict = "Port"
-tier = 3
+tier = 1
 unsafe = false
 deps = [
   "core.math",

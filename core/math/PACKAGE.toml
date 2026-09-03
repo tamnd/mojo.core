@@ -1,9 +1,7 @@
 [package]
 name = "core.math"
 go = "math"
-verdict = "Wrap"
-tier = 2
+verdict = "Port"
+tier = 0
 unsafe = false
-deps = [
-  "core.math.bits",
-]
+deps = []

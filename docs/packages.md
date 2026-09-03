@@ -48,7 +48,7 @@ Everything else depends on these, and they are the first three milestones.
 
 | Go package | Symbols | `core` package | Verdict | Note |
 | --- | --- | --- | --- | --- |
-| `math` | 97 | `core.math` | Wrap | `std.math` covers most of it. `core.math` adds the missing IEEE-754 edges and Go's exact naming. |
+| `math` | 97 | `core.math` | Port | All 97 symbols, no waivers, and the thirty constants are renamed one line at a time. Was going to be a wrap over `std.math` and is half a port, because that library trades digits for speed and Go's tests are an accuracy contract: `erf` there is off by a hundred and seventy million parts in the last place where Go's tolerance is forty five. Nine functions are ported for accuracy, `sinh` and `tanh` because the system versions are wrong at a special value, the four Bessel functions keep the system library behind Go's special case switch, and nine had nothing to call. [deviations](deviations.md). |
 | `math/bits` | 50 | `core.math.bits` | Wrap | All 50 symbols. Over `std.bit` for the counting and reversing and `UInt128` for the wide arithmetic, where Go carries byte tables and Knuth's algorithm D because its compiler intrinsifies them only on some architectures. The six division functions raise instead of panicking. [deviations](deviations.md). |
 | `math/cmplx` | 27 | `core.math.cmplx` | Wrap | Over `std.complex`. |
 | `math/big` | 166 | `core.math.big` | Port | `Int`, `Rat`, `Float`. Arbitrary precision, and the one place in `core` where Mojo's SIMD is worth reaching for on the limb loops. |
