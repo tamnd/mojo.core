@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       cases:
-        description: How many cases to generate per area
+        description: How many cases per area, or empty for what each area asks for
         required: false
-        default: "200000"
+        default: ""
       seed:
         description: The seed to use, or empty for the run number
         required: false
@@ -26,32 +26,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The matrix is read out of tools/differ/cases.toml rather than written here, so that an area lands in the nightly run by being declared and there is no second list to forget.
+  # The areas the table in docs/testing.md describes and nobody has written yet are simply not in the file, which is the difference between a plan and a job that fails every night.
+  areas:
+    name: the declared areas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+      any: ${{ steps.list.outputs.any }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+        with:
+          persist-credentials: false
+      # The runner's own python, not pixi's, because reading one TOML file does not need an environment solved for it.
+      - id: list
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, tomllib
+          with open("tools/differ/cases.toml", "rb") as fh:
+              names = sorted(tomllib.load(fh).get("area", {}))
+          print("matrix=" + json.dumps(names))
+          print("any=" + ("yes" if names else "no"))
+          PY
+
   differ:
-    name: ${{ matrix.name }}
+    name: ${{ matrix.area }}
+    needs: areas
+    if: needs.areas.outputs.any == 'yes'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       # One area finding something says nothing about the others, and the night is worth more with every answer than with the first one.
       fail-fast: false
       matrix:
-        include:
-          - name: strconv against Go
-            area: strconv
-          - name: regexp against Go and between engines
-            area: regexp
-          - name: json against Go and JSONTestSuite
-            area: json
-          - name: url against Go and the WPT corpus
-            area: url
-          - name: time parsing and formatting against Go
-            area: time
-          - name: compress against Go, gzip and zlib
-            area: compress
-          # The most important row in the table. A finding here is that both implementations accepted a certificate and disagreed about who it is for, which crashes nothing and is a complete authentication bypass.
-          - name: x509 against OpenSSL
-            area: x509
-          - name: image decoders against Go
-            area: image
+        area: ${{ fromJson(needs.areas.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:
@@ -62,14 +71,15 @@ jobs:
           environments: oracle
           locked: true
           cache: true
+      # No case count unless one was dispatched by hand. Each area declares what it wants in cases.toml, and for the unicode areas that is the whole input rather than a sample of it.
       - name: Run
         env:
-          CASES: ${{ inputs.cases || '200000' }}
+          CASES: ${{ inputs.cases }}
           # The run number rather than the clock, so a failing night can be reproduced exactly by dispatching the same seed by hand.
           SEED: ${{ inputs.seed || github.run_number }}
           AREA: ${{ matrix.area }}
         run: |
-          pixi run -e oracle differ --area "$AREA" --cases "$CASES" --seed "$SEED" --show 20 2>&1 | tee "differ-$AREA.log"
+          pixi run -e oracle differ "$AREA" ${CASES:+--count "$CASES"} --seed "$SEED" --show 20 2>&1 | tee "differ-$AREA.log"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

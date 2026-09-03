@@ -29,6 +29,12 @@ from lib.tree import ROOT, report
 
 CASES = Path(__file__).parent / "cases.toml"
 
+SHOWN = 10
+"""How many divergences an area prints before it only counts them."""
+
+COUNT = 10000
+"""Inputs per area, for an area that does not say what it wants."""
+
 
 def areas() -> dict[str, dict]:
     """The declared areas. See the table in docs/testing.md for what each finds."""
@@ -43,7 +49,9 @@ def missing_tools(area: dict) -> list[str]:
     return [name for name in area.get("needs", []) if not shutil.which(name)]
 
 
-def run_area(name: str, area: dict, count: int, seed: int) -> tuple[int, list[str]]:
+def run_area(
+    name: str, area: dict, count: int, seed: int, shown: int
+) -> tuple[int, list[str]]:
     """Run one area. Gives back how many inputs were compared, and the divergences."""
     mine = subprocess.run(
         [*area["mojo"], "--count", str(count), "--seed", str(seed)],
@@ -65,9 +73,20 @@ def run_area(name: str, area: dict, count: int, seed: int) -> tuple[int, list[st
     ours = mine.stdout.splitlines()
     other = theirs.stdout.splitlines()
     divergences = []
+    found = 0
     for index, (a, b) in enumerate(zip(ours, other)):
         if a != b:
-            divergences.append(f"{name} case {index} with seed {seed}: we say {a!r}, oracle says {b!r}")
+            found += 1
+            # One wrong table is a million wrong lines and a scrolled off
+            # terminal tells you less than ten lines and a count does. The
+            # first ones are the ones worth reading anyway, because a
+            # divergence is usually a boundary and boundaries come in order.
+            if found <= shown:
+                divergences.append(
+                    f"{name} case {index} with seed {seed}: we say {a!r}, oracle says {b!r}"
+                )
+    if found > shown:
+        divergences.append(f"{name}: and {found - shown} more divergences not shown")
     if len(ours) != len(other):
         divergences.append(f"{name}: we produced {len(ours)} lines and the oracle {len(other)}")
     return min(len(ours), len(other)), divergences
@@ -76,8 +95,15 @@ def run_area(name: str, area: dict, count: int, seed: int) -> tuple[int, list[st
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("area", nargs="?", help="run one area")
-    parser.add_argument("--count", type=int, default=10000, help="inputs per area")
+    # No default here, so that an area can declare its own and still be
+    # narrowed by hand. `unicode-runes` wants every code point there is and
+    # would be a much weaker check at ten thousand, but reproducing a
+    # divergence means running a hundred of them.
+    parser.add_argument("--count", type=int, help="inputs, overriding the area's own")
     parser.add_argument("--seed", type=int, default=1, help="the seed, so a finding reproduces")
+    parser.add_argument(
+        "--show", type=int, default=SHOWN, help="divergences to print before counting"
+    )
     args = parser.parse_args()
 
     declared = areas()
@@ -97,7 +123,8 @@ def main() -> int:
         if absent:
             print(f"differ: skipping {name}, this host has no {' or '.join(absent)}")
             continue
-        count, found = run_area(name, area, args.count, args.seed)
+        wanted = args.count if args.count is not None else area.get("count", COUNT)
+        count, found = run_area(name, area, wanted, args.seed, args.show)
         compared += count
         divergences.extend(found)
 

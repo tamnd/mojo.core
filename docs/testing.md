@@ -32,6 +32,7 @@ Go's tests check the cases Go's authors thought of. Differential testing checks 
 
 | Area | Oracle | What it finds |
 | --- | --- | --- |
+| The character database, `unicode-runes` and `unicode-tables` | Go | A derivation that is right where somebody looked and wrong elsewhere |
 | Float formatting and parsing | Go | The last bit rounding cases that enumeration misses |
 | Regular expressions | Go, and the four internal engines against each other | Engine selection bugs and submatch position differences |
 | URL | Go, and the web platform test corpus | Normalisation differences, which are a security boundary |
@@ -40,6 +41,8 @@ Go's tests check the cases Go's authors thought of. Differential testing checks 
 | Compression | The `gzip` tool, zlib and Go | Streams one implementation produces and another cannot read |
 | Certificates | OpenSSL | Certificate confusion, which is the case where both parse and disagree |
 | Images | Go and ImageMagick | Decoder disagreements on unusual but valid files |
+
+The two unicode areas are the ones that show what the rest are for. `core.unicode`'s tables are derived from the Unicode files by `tools/gen/ucd.py` rather than translated from Go's generated source, so nothing about them is true by construction. `unicode-runes` prints every predicate and every case and fold mapping for a run of code points, and the nightly run does all 1,114,112 of them in about fifteen seconds; `unicode-tables` prints all 236 tables range by range, every case range and every category alias, around seven and a half thousand lines. Both are byte identical to Go today. Sampling would have been the wrong instrument here: a range table is wrong in one block and right everywhere else, and the block it is wrong in is the one nobody thought to try.
 
 The certificate row is the one that matters most. A finding there says that both implementations accepted a certificate and disagreed about who it is for, which crashes nothing and is a complete authentication bypass.
 

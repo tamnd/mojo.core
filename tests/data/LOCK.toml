@@ -1,0 +1,41 @@
+# Vendored data, pinned. One table per file, keyed by its path under
+# tests/data.
+#
+# Every entry needs a url, a sha256 and a licence. `pixi run vendor-check`
+# fails on a file that is missing, on a digest that does not match, and on a
+# file under tests/data that nobody pinned, because data vendored without
+# attribution is a legal problem for everybody who ships it.
+#
+# Fetching is `pixi run vendor-check --fetch` and is a deliberate act. The
+# files are checked in, so a build never reaches the network.
+
+[corpus."ucd/UnicodeData.txt"]
+url = "https://www.unicode.org/Public/15.0.0/ucd/UnicodeData.txt"
+sha256 = "806e9aed65037197f1ec85e12be6e8cd870fc5608b4de0fffd990f689f376a73"
+licence = "Unicode-3.0, https://www.unicode.org/license.txt"
+# The general category and the simple case mappings for every assigned code
+# point. `tools/gen/unicode.py` reads it.
+
+[corpus."ucd/Scripts.txt"]
+url = "https://www.unicode.org/Public/15.0.0/ucd/Scripts.txt"
+sha256 = "cca85d830f46aece2e7c1459ef1249993dca8f2e46d51e869255be140d7ea4b0"
+licence = "Unicode-3.0, https://www.unicode.org/license.txt"
+# The 163 script tables.
+
+[corpus."ucd/PropList.txt"]
+url = "https://www.unicode.org/Public/15.0.0/ucd/PropList.txt"
+sha256 = "e05c0a2811d113dae4abd832884199a3ea8d187ee1b872d8240a788a96540bfd"
+licence = "Unicode-3.0, https://www.unicode.org/license.txt"
+# The binary properties, White_Space and Dash and the other 33.
+
+[corpus."ucd/CaseFolding.txt"]
+url = "https://www.unicode.org/Public/15.0.0/ucd/CaseFolding.txt"
+sha256 = "cdd49e55eae3bbf1f0a3f6580c974a0263cb86a6a08daa10fbf705b4808a56f7"
+licence = "Unicode-3.0, https://www.unicode.org/license.txt"
+# The common and simple case foldings, which become the fold orbits.
+
+[corpus."ucd/PropertyValueAliases.txt"]
+url = "https://www.unicode.org/Public/15.0.0/ucd/PropertyValueAliases.txt"
+sha256 = "13a7666843abea5c6b7eb8c057c57ab9bb2ba96cfc936e204224dd67d71cafad"
+licence = "Unicode-3.0, https://www.unicode.org/license.txt"
+# The long names for the general categories, which become CategoryAliases.

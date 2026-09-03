@@ -1,7 +1,7 @@
 [package]
 name = "core.unicode"
 go = "unicode"
-verdict = "Port"
+verdict = "Adapt"
 tier = 0
 unsafe = false
 deps = []
