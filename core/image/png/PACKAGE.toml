@@ -2,7 +2,7 @@
 name = "core.image.png"
 go = "image/png"
 verdict = "Port"
-tier = 5
+tier = 6
 unsafe = false
 deps = [
   "core.bufio",

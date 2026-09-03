@@ -2,7 +2,7 @@
 name = "core.math.rand"
 go = "math/rand"
 verdict = "Port"
-tier = 2
+tier = 3
 unsafe = false
 deps = [
   "core.math",
