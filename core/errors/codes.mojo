@@ -144,3 +144,37 @@ whether the input that caused it was theirs or somebody else's.
 
 Owned by `core.bytes`, answering for Go's `bytes.ErrTooLarge`.
 """
+
+comptime ErrRange = Code(17)
+"""A number was well formed but too big or too small for the type it was asked
+for. Go returns the clamped value alongside this, the largest magnitude the bit
+size can hold with the right sign, and a raise cannot carry a value, so the
+caller computes it from the bit size and the sign if they want it.
+
+Owned by `core.strconv`, answering for Go's `strconv.ErrRange`.
+"""
+
+comptime ErrSyntax = Code(18)
+"""A string was not a number of the kind that was asked for. This is the only
+failure that means the input was wrong rather than merely out of reach, so it
+is the one to report back to whoever supplied the text.
+
+Owned by `core.strconv`, answering for Go's `strconv.ErrSyntax`.
+"""
+
+comptime ErrBase = Code(19)
+"""A base outside 0 and 2 through 36 was asked for. Go raises this from its
+internal package and then throws the sentinel away, so a caller cannot tell an
+impossible base from a malformed number without reading the message. This keeps
+the number, because the two failures have different culprits: the base came
+from the program and the digits came from its input.
+
+Owned by `core.strconv`. Go has no sentinel for it.
+"""
+
+comptime ErrBitSize = Code(20)
+"""A bit size below 0 or above 64 was asked for. Kept for the same reason as
+`ErrBase`, and it means the same thing: the argument is wrong, not the text.
+
+Owned by `core.strconv`. Go has no sentinel for it.
+"""

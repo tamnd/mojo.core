@@ -33,7 +33,7 @@ Go's tests check the cases Go's authors thought of. Differential testing checks 
 | Area | Oracle | What it finds |
 | --- | --- | --- |
 | The character database, `unicode-runes` and `unicode-tables` | Go | A derivation that is right where somebody looked and wrong elsewhere |
-| Float formatting and parsing | Go | The last bit rounding cases that enumeration misses |
+| Float formatting and parsing, `strconv-floats` and `strconv-parse` | Go | The last bit rounding cases that enumeration misses |
 | Regular expressions | Go, and the four internal engines against each other | Engine selection bugs and submatch position differences |
 | URL | Go, and the web platform test corpus | Normalisation differences, which are a security boundary |
 | JSON | Go, and JSONTestSuite | Acceptance differences on malformed input |
@@ -43,6 +43,10 @@ Go's tests check the cases Go's authors thought of. Differential testing checks 
 | Images | Go and ImageMagick | Decoder disagreements on unusual but valid files |
 
 The two unicode areas are the ones that show what the rest are for. `core.unicode`'s tables are derived from the Unicode files by `tools/gen/ucd.py` rather than translated from Go's generated source, so nothing about them is true by construction. `unicode-runes` prints every predicate and every case and fold mapping for a run of code points, and the nightly run does all 1,114,112 of them in about fifteen seconds; `unicode-tables` prints all 236 tables range by range, every case range and every category alias, around seven and a half thousand lines. Both are byte identical to Go today. Sampling would have been the wrong instrument here: a range table is wrong in one block and right everywhere else, and the block it is wrong in is the one nobody thought to try.
+
+The two strconv areas are the other half of the same argument, and they are the reason `core.strconv` can claim to be correctly rounded rather than to pass a table. `strconv-floats` writes each generated float out in fourteen ways at 64 bits and four at 32 and then reads the shortest form back, so a formatter that rounds the last bit differently from Go and a parser that disagrees with its own formatter are both a changed line. `strconv-parse` runs five parsers over eight shapes of generated text, two of which exist to reach the exact decimal path behind Eisel-Lemire, and prints the name of the failure where there is one, so an input Go rejects and this library accepts is a changed line too. Two hundred thousand inputs each per night, and five seeds of that were run before the package landed with nothing to show for it.
+
+Neither side draws its input from a table. Both run the same splitmix64 and make the same choices from it in the same order, which is what lets two programs in two languages agree on a million strings without a file passing between them, and it is also the failure mode to know about: a choice added to one side and not the other shifts every choice after it, so every line diverges at once. That is the loud failure rather than the quiet one, which is the way round it should be.
 
 The certificate row is the one that matters most. A finding there says that both implementations accepted a certificate and disagreed about who it is for, which crashes nothing and is a complete authentication bypass.
 

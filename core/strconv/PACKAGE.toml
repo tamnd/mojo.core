@@ -2,10 +2,10 @@
 name = "core.strconv"
 go = "strconv"
 verdict = "Port"
-tier = 2
+tier = 1
 unsafe = false
 deps = [
   "core.errors",
-  "core.math",
+  "core.unicode",
   "core.unicode.utf8",
 ]
