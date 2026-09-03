@@ -140,5 +140,10 @@ Title = "Deprecated in Go. The word boundary rule breaks on Unicode punctuation;
 # and `write_to`, which is what printing a value goes through. What stands in
 # for `Scan` is `set_string`, which is the same parsing and reports a bad input
 # by raising rather than through a scan state.
+#
+# `Rat.Scan` is the same interface on the rational type and goes the same way,
+# with `Rat.set_string` in its place. `Rat` has no `Format`, because Go prints
+# one through `String` alone.
 "Int.Format" = "fmt.Formatter. Verbs are comptime in core.fmt, so there is no State to hand it. Use Int.text."
 "Int.Scan" = "fmt.Scanner. Same reason, in the other direction. Use Int.set_string."
+"Rat.Scan" = "fmt.Scanner. Same reason as Int.Scan. Use Rat.set_string."

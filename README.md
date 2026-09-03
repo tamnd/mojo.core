@@ -21,10 +21,10 @@ Go's own API manifests are the contract, not anybody's memory of what Go contain
 | --- | --- |
 | Go packages with a row | 176 |
 | Being implemented here | 135 |
-| Symbols owed | 8,878 |
-| Symbols present | 1,124 |
+| Symbols owed | 8,877 |
+| Symbols present | 1,157 |
 | Packages started | 18 |
-| Parity | 12.7 percent |
+| Parity | 13.0 percent |
 
 <!-- parity:end -->
 

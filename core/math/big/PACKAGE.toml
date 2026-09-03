@@ -9,4 +9,5 @@ deps = [
   "core.math",
   "core.math.bits",
   "core.math.rand",
+  "core.strconv",
 ]
