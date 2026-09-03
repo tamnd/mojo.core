@@ -2,7 +2,7 @@
 name = "core.database.sql.driver"
 go = "database/sql/driver"
 verdict = "Adapt"
-tier = 5
+tier = 4
 unsafe = false
 deps = [
   "core.context",

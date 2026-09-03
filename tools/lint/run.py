@@ -102,6 +102,7 @@ FALLIBLE_NEXT = re.compile(
     re.M,
 )
 MUST_CALL = re.compile(r"\b(must_[a-z_0-9]+)\s*\(\s*([^)]*)\)")
+MUST_DEF = re.compile(r"^\s*def\s+must_[a-z_0-9]+\s*[\[(]")
 
 
 def check_graph(pkgs: list[Package]) -> list[str]:
@@ -239,10 +240,16 @@ def check_must_calls(sources: list[Path]) -> list[str]:
     A must_ function aborts, and a Mojo program cannot catch an abort. On a
     literal that is a constant the programmer has asserted. On a variable it is
     a crash waiting for the right input, and there is a fallible sibling.
+
+    The line that declares one is not a call to it, and its parameters are
+    named rather than quoted, so a declaration would otherwise be reported the
+    moment somebody wrote one.
     """
     problems = []
     for src in sources:
         for line_no, line in enumerate(src.read_text().splitlines(), 1):
+            if MUST_DEF.match(line):
+                continue
             for name, arg in MUST_CALL.findall(line):
                 arg = arg.strip()
                 if arg and not (arg.startswith('"') or arg.startswith("'")):
@@ -360,6 +367,18 @@ def selftest() -> int:
             continue
         if not check([path]):
             failures.append(f"{name} fixture was accepted, so that check is dead")
+
+    # The must_ fixture carries a declaration as well as the two calls, and a
+    # declaration has to stay accepted, so this asks which lines were reported
+    # rather than only whether any were.
+    must = fixtures / "must_on_variable.mojo"
+    if must.is_file():
+        reported = check_must_calls([must])
+        if len(reported) != 1:
+            failures.append(
+                f"the must_ check reported {len(reported)} problems in its fixture, "
+                "where the call on a variable is the only one that is wrong"
+            )
 
     # The diagnostics check compiles a package rather than reading a file, so
     # its fixture gets assembled into a scratch package and built. This is the
