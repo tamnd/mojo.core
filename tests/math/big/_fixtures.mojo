@@ -34,6 +34,18 @@ def pb(s: String, base: Int) raises -> big.Int:
     return z^
 
 
+def q(s: String) raises -> big.Rat:
+    """The rational written in `s`. Go's `new(Rat).SetString(s)`.
+
+    Everything `Rat.set_string` takes, which is the `a/b` form and the floating
+    point one. A string that is not a rational raises rather than coming back
+    with a flag, which in a test is the same thing as failing.
+    """
+    var z = big.Rat()
+    z.set_string(s)
+    return z^
+
+
 def parses(s: String, base: Int) -> Bool:
     """Whether `s` is a whole number in the given base.
 
@@ -44,6 +56,19 @@ def parses(s: String, base: Int) -> Bool:
     try:
         var z = big.Int()
         z.set_string(s, base)
+        return True
+    except:
+        return False
+
+
+def parses_rat(s: String) -> Bool:
+    """Whether `s` is a rational number.
+
+    `parses` above, for `Rat` rather than for `Int`.
+    """
+    try:
+        var z = big.Rat()
+        z.set_string(s)
         return True
     except:
         return False
