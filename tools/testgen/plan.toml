@@ -90,3 +90,35 @@ tables = [
   # nowhere near right at 2**500.
   "trigHuge", "cosHuge", "sinHuge", "tanHuge",
 ]
+
+[harvest.cmplx]
+go = "math/cmplx"
+# Go tests this package from the inside, so `NaN()` in a table is cmplx's own
+# NaN and the extractor dot imports the package to keep it meaning that. The
+# shape is the same as math: `vc` is the ten inputs every ordinary table is
+# read against, the `SC` tables are the special cases with their own inputs
+# beside them, and `branchPoints` is the pair of points either side of every
+# branch cut, which is the table that says whether the sign of a zero survived.
+tables = [
+  # The inputs every ordinary table is read against, and the ordinary answers.
+  "vc",
+  "abs", "acos", "acosh", "asin", "asinh", "atan", "atanh",
+  "conj", "cos", "cosh", "exp", "log", "log10", "polar", "pow",
+  "sin", "sinh", "sqrt", "tan", "tanh",
+
+  # The special cases, input and answer together.
+  "vcAbsSC", "absSC",
+  "acosSC", "acoshSC", "asinSC", "asinhSC", "atanSC", "atanhSC",
+  "vcConjSC", "conjSC",
+  "cosSC", "coshSC", "expSC",
+  "vcIsNaNSC", "isNaNSC",
+  "logSC", "log10SC",
+  "vcPolarSC", "polarSC",
+  "vcPowSC", "powSC",
+  "sinSC", "sinhSC", "sqrtSC", "tanSC", "tanhSC",
+
+  # The branch cuts, and the huge arguments from huge_test.go, which are what
+  # say whether tan reduces its argument the way Go does.
+  "branchPoints",
+  "hugeIn", "tanHuge",
+]
