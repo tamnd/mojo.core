@@ -2,7 +2,7 @@
 name = "core.encoding.asn1"
 go = "encoding/asn1"
 verdict = "Adapt"
-tier = 4
+tier = 5
 unsafe = false
 deps = [
   "core.bytes",

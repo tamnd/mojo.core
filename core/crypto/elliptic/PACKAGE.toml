@@ -2,7 +2,7 @@
 name = "core.crypto.elliptic"
 go = "crypto/elliptic"
 verdict = "Wrap"
-tier = 4
+tier = 5
 unsafe = false
 deps = [
   "core.errors",

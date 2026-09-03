@@ -2,7 +2,7 @@
 name = "core.regexp.syntax"
 go = "regexp/syntax"
 verdict = "Port"
-tier = 3
+tier = 4
 unsafe = false
 deps = [
   "core.errors",

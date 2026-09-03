@@ -2,7 +2,7 @@
 name = "core.crypto.ed25519"
 go = "crypto/ed25519"
 verdict = "Wrap"
-tier = 7
+tier = 8
 unsafe = true
 deps = [
   "core.crypto",

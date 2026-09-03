@@ -2,7 +2,7 @@
 name = "core.index.suffixarray"
 go = "index/suffixarray"
 verdict = "Port"
-tier = 5
+tier = 6
 unsafe = false
 deps = [
   "core.bytes",

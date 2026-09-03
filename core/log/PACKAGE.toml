@@ -2,7 +2,7 @@
 name = "core.log"
 go = "log"
 verdict = "Port"
-tier = 6
+tier = 7
 unsafe = false
 deps = [
   "core.fmt",

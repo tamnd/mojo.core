@@ -2,7 +2,7 @@
 name = "core.debug.macho"
 go = "debug/macho"
 verdict = "Port"
-tier = 6
+tier = 7
 unsafe = false
 deps = [
   "core.bytes",

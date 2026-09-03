@@ -2,7 +2,7 @@
 name = "core.flag"
 go = "flag"
 verdict = "Adapt"
-tier = 7
+tier = 8
 unsafe = false
 deps = [
   "core.encoding",

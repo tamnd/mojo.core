@@ -2,7 +2,7 @@
 name = "core.testing.cryptotest"
 go = "testing/cryptotest"
 verdict = "Adapt"
-tier = 9
+tier = 10
 unsafe = false
 deps = [
   "core.bytes",

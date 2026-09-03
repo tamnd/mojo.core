@@ -2,7 +2,7 @@
 name = "core.os"
 go = "os"
 verdict = "Adapt"
-tier = 5
+tier = 6
 unsafe = true
 deps = [
   "core.errors",

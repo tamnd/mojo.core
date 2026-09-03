@@ -4,6 +4,26 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 ## Unreleased
 
+`core.strings`, 82 of Go's 82 symbols with one waived. The waiver is `Title`, the same one `core.bytes` took, deprecated in Go itself because the word boundary rule turns "they're" into "They'Re". `to_title` is here and is the rune wise mapping, which was never the broken part.
+
+The whole package is built on one decision: nothing here reimplements a search. Every function that looks for something calls `core.bytes` over the string's own bytes and turns the byte offset it gets back into a slice. Go has two packages with the same twenty functions in them because `[]byte(s)` copies the string, so calling one from the other would cost an allocation per call. A Mojo `String` already holds UTF-8 and `as_bytes()` lends those bytes without copying, so the reason for the second copy of the code is gone. `index`, `split`, `trim`, `fields` and the rest are thin, and the Rabin-Karp and the cutset bitmap that they run on live in one place and are tested in one place.
+
+Turning a byte offset back into a string is where the safety comes from. `s[byte=a:b]` aborts if either bound is not a code point boundary, so every slice this package hands out is one that a search found, and a bug in an offset is a stopped program rather than a `String` holding half a rune. That is a language guarantee this library did not have to build.
+
+There is no `len`. `count_bytes`, `count_runes` and `count_graphemes` are three names for the three answers, and which one a caller wants is a question that has a different answer for every one of them: "a👩‍👩‍👧‍👦é" is 28 bytes, 9 runes and 3 graphemes. Mojo makes `len(s)` a compile error and it is right to.
+
+Every signature binds its origin as `ImmOrigin` rather than as a plain `Origin`. That is not a detail. Two spans over the same mutable origin cannot be passed as two arguments of one call, so with the plain bound `trim(s, s)` and `has_prefix(s, s)` would not compile, and a caller would meet the exclusivity checker while doing something obviously harmless. Declaring the bound immutable removes the restriction, and nothing in the package writes through a span anyway.
+
+`Builder` is not copyable, so the mistake Go catches with a runtime panic does not compile here. `string()` raises when what was written is not valid UTF-8 and `bytes()` is the accessor that never refuses, the same split `bufio.Scanner` uses. `reset()` keeps the allocation, unlike Go's, which drops it, because the builder is not copyable and hands out nothing that views its storage, so there is no way to read the old bytes and no reason to give them back. What it costs is that `string()` copies: Go's reinterprets the accumulated bytes in place through `unsafe`, and here the `String` has to own what it holds.
+
+`Replacer` is one trie rather than Go's four implementations. Go picks between a single byte table, a byte to string table, a single string search and a generic trie by inspecting the pairs, which is four bodies of code to keep in agreement about a subtle rule: replacements happen in the order they appear in the target, matches do not overlap, and at the same position the pair that came first in the argument list wins, which is priority and not longest match. One trie answers all of that once. The nodes are `Int` indices into a list rather than pointers, since a recursive struct cannot be written. Two visible differences from Go: the constructor takes a list of pairs, so the odd argument count Go panics on cannot be written down, and the trie is built by the constructor rather than on first use behind a `sync.Once`, because `replace` takes `self` by borrow and there is no interior mutability to build through. `write_string` builds the whole result and writes it once instead of streaming each piece, so a writer that fails sees one call rather than a half written result.
+
+`Reader` carries its origin in the type, so `reset` takes a slice from the same string the reader was built over, exactly as `bytes.Reader` and `bufio.Reader` do. All eleven of Go's methods are there.
+
+78 tests, ported from `strings_test.go`, `builder_test.go`, `replace_test.go` and `reader_test.go`. The tables that Go writes with invisible characters in them are built with `chr(0x85)`, `chr(0xA0)`, `chr(0x3000)` and `chr(0x200B)` instead of pasted literals, which keeps a source file that no editor and no tool can silently rewrite. `test_trimming_the_same_string_twice` exists only to prove the `ImmOrigin` bound does what the paragraph above says.
+
+Adding `core.bytes` to this package's dependencies moved it from tier 2 to tier 3, and the lint computes a package's tier from the graph rather than trusting what it records, so 49 other manifests move up by one behind it. None of them changed in any other way.
+
 ## v0.3.0 - 2026-09-03
 
 M2 is complete. Reading and writing, buffering, ordering, and the two packages that everything textual is built on. Eight pull requests, seven issues, and the parity count goes from 6.7 percent to 7.8 percent, which is 691 of Go's symbols across eleven packages.

@@ -2,7 +2,7 @@
 name = "core.crypto.rsa"
 go = "crypto/rsa"
 verdict = "Wrap"
-tier = 7
+tier = 8
 unsafe = true
 deps = [
   "core.crypto",

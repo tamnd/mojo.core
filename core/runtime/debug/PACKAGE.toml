@@ -2,7 +2,7 @@
 name = "core.runtime.debug"
 go = "runtime/debug"
 verdict = "Adapt"
-tier = 6
+tier = 7
 unsafe = false
 deps = [
   "core.errors",

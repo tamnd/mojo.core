@@ -2,7 +2,7 @@
 name = "core.log.slog"
 go = "log/slog"
 verdict = "Adapt"
-tier = 7
+tier = 8
 unsafe = false
 deps = [
   "core.context",
