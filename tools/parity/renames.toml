@@ -126,3 +126,9 @@ Or = "first_non_zero"
 # is a struct that points at the data, and `Reverse(view)` still reads the
 # same at the call site.
 Reverse = "Reverse"
+
+["bytes"]
+# The minimum a `read_from` chunk is sized at is a `comptime` value, and this
+# library spells a constant in capitals for the same reason `bufio`'s token
+# ceiling is above.
+MinRead = "MIN_READ"

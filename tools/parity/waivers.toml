@@ -99,3 +99,16 @@ ErrFinalToken = "Not an error. `Split.last` and `Split.stop_here` carry it as da
 # Go's embedding, not a symbol. `ReadWriter` here has a `reader` and a `writer`
 # field and forwards by hand, `design.md` on method promotion.
 "ReadWriter.embedded" = "Go's embedding. The two halves are named fields and the forwarding is written out."
+
+["bytes"]
+# Go's own documentation deprecates it: the rule it applies does not handle
+# Unicode punctuation, so it upper cases the letter after an apostrophe and
+# turns "they're" into "They'Re". Go points at golang.org/x/text/cases, and
+# `to_title` here is the rune wise mapping that `unicode.to_title` names, which
+# is the part that was never wrong.
+Title = "Deprecated in Go. The word boundary rule breaks on Unicode punctuation; x/text/cases replaces it."
+# The same as `bufio.Writer.AvailableBuffer` above, and a second reason on top
+# of it: this package's rule is that no method hands out a view into the
+# buffer's own storage, because the next write can reallocate and in Mojo that
+# view would then be reading freed memory rather than stale bytes.
+"Buffer.AvailableBuffer" = "Appending into the buffer's own memory. A Span has no capacity and the next write can reallocate."

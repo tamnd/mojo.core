@@ -135,3 +135,12 @@ they do not belong, and believing the count would read past the buffer.
 
 Owned by `core.bufio`, answering for Go's `bufio.ErrBadReadCount`.
 """
+
+comptime ErrTooLarge = Code(16)
+"""A `Buffer` was asked to grow past what can be allocated. Go panics with this
+value; here it is raised, because a buffer that has run out of memory is a
+condition the caller can report and the caller is the only one who knows
+whether the input that caused it was theirs or somebody else's.
+
+Owned by `core.bytes`, answering for Go's `bytes.ErrTooLarge`.
+"""
