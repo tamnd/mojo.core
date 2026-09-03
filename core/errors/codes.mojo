@@ -218,3 +218,15 @@ here and the message says which generator refused.
 
 Owned by `core.math.rand`. Go has no sentinel for it.
 """
+
+comptime ErrNaN = Code(25)
+"""An operation on `Float` values has no answer: adding infinities of opposite
+signs, subtracting two infinities of the same sign, multiplying an infinity by
+a zero, dividing zero by zero or infinity by infinity, or taking the square
+root of a negative number. Go panics with an `ErrNaN` value and documents that
+`Float` has no NaN, so that a program which wants one has to catch the panic;
+this raises with the same meaning, and nothing here ever produces a NaN by
+returning it.
+
+Owned by `core.math.big`, answering for Go's `big.ErrNaN`.
+"""
