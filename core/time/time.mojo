@@ -42,10 +42,9 @@ a location to is exactly as cheap as it was before locations existed.
 
 ## What is not here yet
 
-`parse`, which is the layout language read backwards: `format` writes an
-instant out by an example of the answer and there is nothing yet that takes one
-apart the same way. The timers and the marshalling methods are also still to
-come.
+The timers, which want somewhere to run a callback and so want `core.sync`
+first, and the marshalling methods, which are `format` and `parse` over RFC 3339
+with a pair of quotes around the outside and are next.
 """
 
 from core.syscall import CLOCK_MONOTONIC, CLOCK_REALTIME, clock_gettime
