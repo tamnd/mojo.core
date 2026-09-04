@@ -2,8 +2,9 @@
 name = "core.time.tzdata"
 go = "time/tzdata"
 verdict = "Port"
-tier = 1
+tier = 3
 unsafe = false
 deps = [
   "core.errors",
+  "core.time",
 ]

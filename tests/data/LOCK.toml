@@ -70,3 +70,14 @@ licence = "BSD-3-Clause, https://go.googlesource.com/go/+/refs/tags/go1.26.7/LIC
 # Ireland, the one location whose daylight flag runs backwards: its summer time
 # is the standard clock and its winter is the saving one, so `is_dst` is true in
 # January and false in July.
+
+[corpus."go-time/zoneinfo.zip"]
+url = "https://raw.githubusercontent.com/golang/go/go1.26.7/lib/time/zoneinfo.zip"
+sha256 = "8f55634d05f8bca1f7bc7c69c5933428c69357e0bdf565e5ba224e3f88ff12e8"
+licence = "BSD-3-Clause, https://go.googlesource.com/go/+/refs/tags/go1.26.7/LICENSE, and the database inside it is the IANA one, which its maintainers place in the public domain, https://www.iana.org/time-zones"
+# The whole IANA zone database as Go ships it, 598 zones. `tools/gen/tzdata.py`
+# unzips it into the one source file `core.time.tzdata` is. Not test data,
+# unlike everything else here: it is the package. It is pinned here anyway
+# because this is where a vendored file gets a digest and a licence, and a
+# database vendored without either is the problem this lock file exists to
+# prevent.
