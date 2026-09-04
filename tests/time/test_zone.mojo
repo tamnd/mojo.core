@@ -42,9 +42,10 @@ def test_a_location_with_nothing_in_it_is_utc() raises:
 def test_utc_is_the_empty_location() raises:
     """`utc()` is a function rather than a constant.
 
-    A `Location` holds two lists and a list cannot live at module scope, so
-    there is no `UTC` to import. Go has one because its locations are pointers
-    to shared immutable tables and this language has neither.
+    A `Location` holds a counted handle, and nothing with a destructor can live
+    at module scope, so there is no `UTC` to import. Go has one because its
+    locations are pointers into a table that is never freed and there is no
+    freeing to schedule.
     """
     var loc = utc()
     assert_equal(String(loc), "UTC")
@@ -193,19 +194,17 @@ def test_lookup_name_finds_a_zone_by_its_abbreviation() raises:
 
 
 def test_a_copied_location_answers_the_same_way() raises:
-    """A `Location` is a value here, not a pointer.
+    """A `Location` is a counted pointer, so a copy is the same table.
 
-    Copying one copies its two lists, which is the cost of the design and is
-    worth a row saying it works. The copy has to be asked for: `Location` is
-    `Copyable` and not `ImplicitlyCopyable`, because a `List` is, so the two
-    allocations never happen by accident in the way a passed pointer never
-    allocates in Go. The copy is independent, and the cache carried across it
-    is still valid because it describes an instant rather than a position in a
-    list.
+    Copying one is an atomic increment rather than two allocations, which is
+    the whole reason a `Time` can hold one. The copy is not independent and is
+    not meant to be: the table is built once and never written to again, so
+    there is no version of it the two holders could disagree about.
     """
     var original = fixed_zone("CET", 3600)
-    var copy = original.copy()
+    var copy = original
     assert_equal(String(copy), "CET")
+    assert_true(_same_table(original, copy))
 
     var name, off, _s, _e, _d = copy.lookup(1_700_000_000)
     assert_equal(name, "CET")
@@ -214,6 +213,31 @@ def test_a_copied_location_answers_the_same_way() raises:
     var oname, ooff, _os, _oe, _od = original.lookup(1_700_000_000)
     assert_equal(oname, "CET")
     assert_equal(ooff, 3600)
+
+    # Two locations built separately are two tables, which is the other half of
+    # the claim: this shares what was copied and does not intern by name.
+    assert_true(not _same_table(original, fixed_zone("CET", 3600)))
+
+
+def test_utc_points_at_no_table_at_all() raises:
+    """The default `Location` allocates nothing, which is why it is the default.
+
+    Every `Time` that nobody gave a location to carries one of these, so it has
+    to cost nothing to build and nothing to copy. An empty table would answer
+    the same way and would allocate.
+    """
+    assert_true(not Location().table)
+    assert_true(not utc().table)
+    assert_true(Bool(fixed_zone("CET", 3600).table))
+
+
+def _same_table(a: Location, b: Location) -> Bool:
+    """Whether these two locations point at one table."""
+    if not a.table or not b.table:
+        return False
+    return Int(Pointer(to=a.table.value()[])) == Int(
+        Pointer(to=b.table.value()[])
+    )
 
 
 def test_two_zones_are_equal_when_all_three_fields_match() raises:
