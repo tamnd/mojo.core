@@ -242,7 +242,38 @@ pattern is wrong rather than that the name failed to match, which is why
 Owned by `core.path`, answering for Go's `path.ErrBadPattern`.
 """
 
-comptime ErrBadZoneData = Code(27)
+comptime ErrBadLocationName = Code(27)
+"""A name handed to `load_location` is not one it will look up. No IANA zone name
+contains two dots in a row and none begins with a slash or a backslash, so a
+name that does is a path someone assembled rather than a zone, and the lookup
+would turn it into a read of a file nobody meant to name. Refused before any
+source is consulted, which is what Go does with the same three tests and its
+unexported `errLocation`.
+
+Owned by `core.time`. Go has no sentinel for it.
+"""
+
+comptime ErrUnknownZone = Code(28)
+"""No source had a zone by that name. Every directory in the search was consulted
+and every one of them said the file was not there, which is the ordinary answer
+for a misspelt name and for a host with no zone database at all. A source that
+failed for some other reason raises that failure instead, so this one means the
+search finished and found nothing.
+
+Owned by `core.time`. Go has no sentinel for it.
+"""
+
+comptime ErrZoneFileTooLarge = Code(29)
+"""A file in the zone search was larger than ten megabytes and was abandoned
+rather than read into memory. No real zone file is within three orders of
+magnitude of that, so this means the name resolved to something that is not
+one: a directory of the same name, a device, or a path assembled from the wrong
+pieces. Go stops at the same size with an unexported error type.
+
+Owned by `core.time`. Go has no sentinel for it.
+"""
+
+comptime ErrBadZoneData = Code(30)
 """The bytes handed to `load_location_from_tz_data` are not a compiled zone file
 this can read. The magic is wrong, the version byte is one this does not know,
 a count in the header runs past the end of the data, an index names a zone the

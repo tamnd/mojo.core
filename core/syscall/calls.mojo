@@ -45,7 +45,7 @@ from std.ffi import external_call
 from core.errors import Report
 
 from .abi import PATH_MAX, SIZEOF_TIMESPEC
-from .dir import Dirent
+from .dir import Dirent, _Foreign
 from .errno import Errno, errno, set_errno
 from .stat import Stat, Timespec
 
@@ -475,6 +475,75 @@ def fchmod(fd: Int, mode: Int) raises:
 def getpid() -> Int:
     """This process. It cannot fail, which is why it does not raise."""
     return Int(external_call["getpid", Int32]())
+
+
+def getenv(name: String) -> Optional[String]:
+    """The value of an environment variable, or nothing if it is not set.
+
+    Go's `syscall.Getenv`, which reports the same two cases with a second
+    return value. A variable set to the empty string is set, and telling that
+    apart from unset is the whole reason this is an `Optional` rather than a
+    `String` that comes back empty either way: `TZ=""` means UTC and no `TZ` at
+    all means the host's own zone.
+
+    The environment is process wide and libc reuses one buffer per name, so the
+    value is copied out before this returns, exactly as `readdir` copies an
+    entry out. Nothing here locks: a program calling `setenv` from one thread
+    while another reads is a data race in C and stays one here.
+    """
+    var raw = _cstr(name)
+    var value = external_call["getenv", Int](raw.unsafe_ptr())
+    if value == 0:
+        return None
+    return _from_cstr(value)
+
+
+def setenv(name: String, value: String) raises:
+    """Set an environment variable, replacing any value it already had.
+
+    Go's `syscall.Setenv`. Process wide and not thread safe, which is C's rule
+    and not one this layer can improve on: the strings libc hands out of
+    `getenv` are the ones this overwrites.
+    """
+    var raw_name = _cstr(name)
+    var raw_value = _cstr(value)
+    var failed = external_call["setenv", Int32](
+        raw_name.unsafe_ptr(), raw_value.unsafe_ptr(), Int32(1)
+    )
+    if failed < 0:
+        _fail("setenv", errno())
+
+
+def unsetenv(name: String) raises:
+    """Remove an environment variable. Go's `syscall.Unsetenv`.
+
+    Removing one that was never there succeeds, which is what C does and what
+    makes this safe to call in a test's cleanup without checking first.
+    """
+    var raw = _cstr(name)
+    if external_call["unsetenv", Int32](raw.unsafe_ptr()) < 0:
+        _fail("unsetenv", errno())
+
+
+def _from_cstr(address: Int) -> String:
+    """The zero terminated string at this address, copied.
+
+    Read a byte at a time to the terminator, because a C string carries no
+    length and there is nothing to ask. Built lossily from the bytes rather
+    than a character at a time, so a value that is not UTF-8 arrives with a
+    replacement character instead of being re-encoded into something longer
+    than what was there.
+    """
+    var raw = Pointer[Byte, _Foreign](unsafe_from_address=address)
+    var bytes = List[Byte]()
+    var i = 0
+    while True:
+        var byte = raw[unsafe_offset=i]
+        if byte == 0:
+            break
+        bytes.append(byte)
+        i += 1
+    return String(from_utf8_lossy=Span(bytes))
 
 
 def clock_gettime(clock: Int) raises -> Timespec:

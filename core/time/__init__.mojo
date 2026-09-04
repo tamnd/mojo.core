@@ -18,22 +18,29 @@ print(t + 3 * HOUR)  # => 2024-03-09 17:05:00 +0000 UTC
 
 ## What is here and what is not
 
-This is the first part of the package. Instants, durations, the Gregorian
-calendar and the arithmetic over all three, which is enough to measure how long
-something took, to say what day a date falls on, and to move about the calendar.
+Instants, durations, the Gregorian calendar and the arithmetic over all three,
+which is enough to measure how long something took, to say what day a date falls
+on, and to move about the calendar.
 
-`Location` is here as a type, along with `fixed_zone` and the reader that turns
-a compiled zone file into one, so a program that has the bytes of a zone file
-can ask a location what the offset was at a given instant. What is not here is
-the other half of that: a `Time` does not carry a location, and there is no
-registry to look one up by name, so every method on `Time` still reads UTC.
-That is the one thing to know before using this, and `time.mojo` says why the
-join is harder here than in Go.
+The zones are here too. A `Time` carries a `Location` and reads every field
+against it, `load_location` finds one in the host's database by name,
+`local()` is the zone the host is set to, `fixed_zone` builds one that never
+changes, and `utc()` is the one every `Time` that nobody gave a location to
+already has.
 
-Also not here yet, and each its own piece of work: the layout language and with
-it `format` and `parse`, and the timers. The two places where what is here
-behaves differently from Go rather than not being here at all are both in
-`docs/deviations.md`.
+```mojo
+from core.time import OCTOBER, date, load_location
+
+var berlin = load_location("Europe/Berlin")
+print(date(2020, OCTOBER, 29, 15, 30, 0, 0, berlin))
+# => 2020-10-29 15:30:00 +0100 CET
+```
+
+Not here yet, and each its own piece of work: the layout language and with it
+`format` and `parse`, the timers, and `core.time.tzdata`, which is the copy of
+the zone database a program can compile into itself so that it does not need the
+host to have one. Where what is here behaves differently from Go rather than not
+being here at all, `docs/deviations.md` has the row.
 
 ## Where the divisions are
 
@@ -93,5 +100,6 @@ from .time import (
     unix_milli,
     until,
 )
+from .load import load_location, local
 from .tzif import load_location_from_tz_data
 from .zone import Location, Zone, fixed_zone, utc

@@ -242,6 +242,11 @@ Saturday = "SATURDAY"
 # instead of staying in capitals.
 "Location.String" = "Location.write_to"
 UTC = "utc"
+# `Local` is a function here for the same reason `UTC` is, and the rule that
+# lowercases a name does not run on a Go variable, so both have to be written
+# down. It is also the only one of the two that reads a file, and calling it
+# twice reads it twice, which `docs/deviations.md` has a row about.
+Local = "local"
 # `in` is a Mojo keyword, so `Time.In` says what it does instead. The rule
 # would give `Time.in`, which does not parse.
 "Time.In" = "Time.in_location"
