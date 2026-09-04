@@ -44,10 +44,10 @@ from std.ffi import external_call
 
 from core.errors import Report
 
-from .abi import PATH_MAX
+from .abi import PATH_MAX, SIZEOF_TIMESPEC
 from .dir import Dirent
 from .errno import Errno, errno, set_errno
-from .stat import Stat
+from .stat import Stat, Timespec
 
 comptime Byte = UInt8
 """What a buffer is made of, spelled as `core.io` spells it."""
@@ -245,8 +245,10 @@ def fsync(fd: Int) raises:
 
     On macOS this is weaker than it sounds. `fsync` gets the data to the drive
     and does not make the drive commit it, and `fcntl` with `F_FULLFSYNC` is
-    what does. That needs the variadic call from issue #139, so the stronger
-    form is not here yet and this paragraph is the warning.
+    what does. `fcntl` is bound now, and `F_FULLFSYNC` is not recorded in the
+    baseline, because it exists on macOS alone and nothing has asked for it
+    yet. Go reaches for it in `os.File.Sync`, so `core.os` is where that gets
+    recorded and used, and until then this paragraph is the warning.
     """
     if external_call["fsync", Int32](Int32(fd)) < 0:
         _fail("fsync", errno())
@@ -473,3 +475,31 @@ def fchmod(fd: Int, mode: Int) raises:
 def getpid() -> Int:
     """This process. It cannot fail, which is why it does not raise."""
     return Int(external_call["getpid", Int32]())
+
+
+def clock_gettime(clock: Int) raises -> Timespec:
+    """Read one of the platform's clocks. `clock` is a `CLOCK_` constant.
+
+    `CLOCK_REALTIME` counts from the epoch and is what a file timestamp or a
+    date is measured against. It can be set, and it can go backwards, so an
+    interval measured with it is only as good as whatever last adjusted it.
+    `CLOCK_MONOTONIC` counts from a start the platform does not describe and
+    cannot be set, so it is the one an elapsed time is measured with and the
+    one whose readings mean nothing on their own.
+
+    Neither number is converted here. The pair is exactly what the kernel
+    wrote, and what a wall clock reading and a monotonic reading add up to is
+    `core.time`'s decision rather than this layer's.
+
+    This is `clock_gettime` on all three platforms rather than `mach_absolute_time`
+    on macOS, which needs `mach_timebase_info` and a multiply to become
+    nanoseconds and has been the slower of the two since macOS 10.12 gained
+    this one.
+    """
+    var raw = Array[Byte, SIZEOF_TIMESPEC](fill=0)
+    var failed = external_call["clock_gettime", Int32](
+        Int32(clock), Pointer(to=raw[0])
+    )
+    if failed < 0:
+        _fail("clock_gettime", errno())
+    return Timespec(platform_bytes=Span(raw))

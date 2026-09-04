@@ -117,6 +117,7 @@ int main(void) {
     SIZE(size_t);
     SIZE(ssize_t);
     SIZE(socklen_t);
+    SIZE(clockid_t);
 
     SIZE(struct stat);
     OFFSET(struct stat, st_dev);
@@ -143,6 +144,13 @@ int main(void) {
     SIZE(struct timeval);
     OFFSET(struct timeval, tv_sec);
     OFFSET(struct timeval, tv_usec);
+
+    /* The two clocks anything here reads. One counts from an epoch and can
+       be set backwards, the other counts from an unspecified start and
+       cannot, and telling them apart is a number that disagrees: monotonic
+       is 6 on macOS and 1 on Linux, and 6 on Linux is a CPU time clock. */
+    VALUE(CLOCK_REALTIME);
+    VALUE(CLOCK_MONOTONIC);
 
     /* A directory entry is read out of a buffer the kernel filled, so
        every one of these is a pointer into somebody else's memory. */

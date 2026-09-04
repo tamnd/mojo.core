@@ -8,7 +8,8 @@ decide what to do next. Everything above this needs the real thing.
 
 Start with `open`, `read`, `write` and `close` for descriptors, `stat` and its
 two siblings for what the platform knows about a path, `opendir` and `readdir`
-for what is in a directory, and `Errno` for what a failure was.
+for what is in a directory, `clock_gettime` for what time it is, and `Errno`
+for what a failure was.
 
 Every constant the platform defines comes out of here, because a caller
 comparing an errno against `ENOENT` should not have to know that the number
@@ -59,6 +60,8 @@ from .abi import (
     AT_FDCWD,
     AT_REMOVEDIR,
     AT_SYMLINK_NOFOLLOW,
+    CLOCK_MONOTONIC,
+    CLOCK_REALTIME,
     DT_BLK,
     DT_CHR,
     DT_DIR,
@@ -217,6 +220,7 @@ from .abi import (
 from .calls import (
     chdir,
     chmod,
+    clock_gettime,
     close,
     closedir,
     create,

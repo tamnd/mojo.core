@@ -139,6 +139,13 @@ FAMILIES: list[tuple[tuple[str, ...], str]] = [
         "Options for `waitpid`.",
     ),
     (
+        ("CLOCK_",),
+        "Which clock `clock_gettime` is being asked about. `CLOCK_MONOTONIC` "
+        "is 6 on macOS and 1 on Linux, and 6 on Linux is a CPU time clock, so "
+        "the wrong constant here reads a clock that answers and means "
+        "something else.",
+    ),
+    (
         ("E",),
         "The errno table. These are the numbers a failing call leaves behind, "
         "and around half of them disagree across platforms in a way that is "

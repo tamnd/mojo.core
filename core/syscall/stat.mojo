@@ -68,6 +68,41 @@ big the whole structure is, and the field is the last one in it.
 """
 
 
+def _unsigned[
+    o: Origin
+](raw: Span[UInt8, o], offset: Int, width: Int) -> UInt64:
+    """`width` bytes at `offset`, least significant first.
+
+    Byte at a time rather than through a cast, for two reasons. The offsets the
+    platform reports are not all aligned for the width of the field there, and
+    a misaligned load is undefined rather than merely slow. And every platform
+    this library supports is little endian, so assembling the number here is
+    the same work the cast would have done.
+    """
+    var out = UInt64(0)
+    for i in range(width):
+        out |= UInt64(raw[offset + i]) << UInt64(8 * i)
+    return out
+
+
+def _signed[o: Origin](raw: Span[UInt8, o], offset: Int, width: Int) -> Int:
+    """The same, for a field whose C type is signed.
+
+    `off_t`, `time_t` and `blkcnt_t` are all signed, and a size or a timestamp
+    that came back negative is a real answer worth being able to see rather
+    than an enormous positive one.
+
+    A field narrower than the machine word has its sign bit spread over the
+    rest by hand. One the same width needs nothing done to it, and must not
+    have this arithmetic applied, because the mask it would need does not fit
+    in the type the mask is built in.
+    """
+    var out = _unsigned(raw, offset, width)
+    if width < 8 and out & (UInt64(1) << UInt64(8 * width - 1)) != 0:
+        out |= ~UInt64(0) << UInt64(8 * width)
+    return Int(out)
+
+
 struct Timespec(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
     """A time, as the file system keeps it: whole seconds and nanoseconds."""
 
@@ -81,6 +116,21 @@ struct Timespec(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         """Hold a time the platform gave us."""
         self.sec = sec
         self.nsec = nsec
+
+    def __init__[o: Origin](out self, *, platform_bytes: Span[UInt8, o]):
+        """Read one out of a `struct timespec` the platform filled in.
+
+        For a buffer that holds nothing but the structure, which is what a
+        clock reading is. The three inside a `struct stat` are read by `Stat`
+        instead, because there the structure is at an offset in a larger one
+        and the whole point of `Stat` is that nothing outside it knows where.
+        """
+        self.sec = _signed(
+            platform_bytes, OFFSET_TIMESPEC_TV_SEC, SIZEOF_TIME_T
+        )
+        self.nsec = _signed(
+            platform_bytes, OFFSET_TIMESPEC_TV_NSEC, _NSEC_WIDTH
+        )
 
     def __eq__(self, other: Self) -> Bool:
         """Whether these are the same instant."""
@@ -123,35 +173,12 @@ struct Stat(Copyable, Movable):
         self.raw = Array[UInt8, SIZEOF_STAT](fill=0)
 
     def _unsigned(self, offset: Int, width: Int) -> UInt64:
-        """`width` bytes at `offset`, least significant first.
-
-        Byte at a time rather than through a cast, for two reasons. The offsets
-        the platform reports are not all aligned for the width of the field
-        there, and a misaligned load is undefined rather than merely slow. And
-        every platform this library supports is little endian, so assembling
-        the number here is the same work the cast would have done.
-        """
-        var out = UInt64(0)
-        for i in range(width):
-            out |= UInt64(self.raw[offset + i]) << UInt64(8 * i)
-        return out
+        """`width` bytes of this buffer at `offset`, unsigned."""
+        return _unsigned(Span(self.raw), offset, width)
 
     def _signed(self, offset: Int, width: Int) -> Int:
-        """The same, for a field whose C type is signed.
-
-        `off_t`, `time_t` and `blkcnt_t` are all signed, and a size or a
-        timestamp that came back negative is a real answer worth being able to
-        see rather than an enormous positive one.
-
-        A field narrower than the machine word has its sign bit spread over the
-        rest by hand. One the same width needs nothing done to it, and must not
-        have this arithmetic applied, because the mask it would need does not
-        fit in the type the mask is built in.
-        """
-        var raw = self._unsigned(offset, width)
-        if width < 8 and raw & (UInt64(1) << UInt64(8 * width - 1)) != 0:
-            raw |= ~UInt64(0) << UInt64(8 * width)
-        return Int(raw)
+        """`width` bytes of this buffer at `offset`, signed."""
+        return _signed(Span(self.raw), offset, width)
 
     def _time(self, offset: Int) -> Timespec:
         """The `struct timespec` at `offset`.
