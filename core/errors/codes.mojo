@@ -284,3 +284,27 @@ out, and a caller who passed the right bytes never sees it.
 
 Owned by `core.time`. Go has no sentinel for it.
 """
+
+comptime ErrParseTime = Code(31)
+"""A string did not say what the layout it was read with said it would. The text
+between the pieces was not there, a piece was not a number where a number was
+wanted, a name was not a month or a weekday, a field was outside its range, the
+date does not exist, or there was text left over at the end. Go returns a
+`*ParseError` naming which piece of the layout and which characters of the
+value, and that record is here as `ParseError` and is read back with
+`ParseError.of`, so this code is the question `errors.matches` answers and the
+record is the detail behind it.
+
+Owned by `core.time`. Go has no sentinel for it.
+"""
+
+comptime ErrParseDuration = Code(32)
+"""A string handed to `parse_duration` was not a duration. It was empty, it had a
+number with no unit after it, it had a unit this does not know, or the total
+did not fit. Go has this as an unexported error type whose message says which
+of those it was, and the message here says the same. It is separate from
+`ErrParseTime` because a duration and an instant are read by different rules,
+and a caller who asked for one never wanted the other.
+
+Owned by `core.time`. Go has no sentinel for it.
+"""

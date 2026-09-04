@@ -36,10 +36,11 @@ print(date(2020, OCTOBER, 29, 15, 30, 0, 0, berlin))
 # => 2020-10-29 15:30:00 +0100 CET
 ```
 
-Writing an instant out is here as well. A layout is not a pattern of letters
-standing for fields, it is the reference instant `01/02 03:04:05PM '06 -0700`
-written the way the answer should be written, and `format` writes the instant it
-is given the same way. The nineteen layouts everybody uses already have names.
+The layout language is here as well, in both directions. A layout is not a
+pattern of letters standing for fields, it is the reference instant
+`01/02 03:04:05PM '06 -0700` written the way the answer should be written.
+`format` writes an instant that way and `parse` reads one back, and the nineteen
+layouts everybody uses already have names.
 
 ```mojo
 from core.time import DATE_TIME, MARCH, date
@@ -48,11 +49,14 @@ print(date(2024, MARCH, 9, 14, 5, 6, 0).format(DATE_TIME))
 # => 2024-03-09 14:05:06
 ```
 
-Not here yet, and each its own piece of work: `parse`, which is that same layout
-language read backwards, the timers, and `core.time.tzdata`, which is the copy of
-the zone database a program can compile into itself so that it does not need the
-host to have one. Where what is here behaves differently from Go rather than not
-being here at all, `docs/deviations.md` has the row.
+`parse(DATE_TIME, "2024-03-09 14:05:06")` is the same instant read back, and
+`parse_duration("2h45m")` is how a length of time arrives from a configuration
+file or a command line.
+
+Not here yet, and each its own piece of work: the timers, and `core.time.tzdata`,
+which is the copy of the zone database a program can compile into itself so that
+it does not need the host to have one. Where what is here behaves differently
+from Go rather than not being here at all, `docs/deviations.md` has the row.
 
 ## Where the divisions are
 
@@ -134,5 +138,6 @@ from .format import (
     UNIX_DATE,
 )
 from .load import load_location, local
+from .parse import ParseError, parse, parse_duration, parse_in_location
 from .tzif import load_location_from_tz_data
 from .zone import Location, Zone, fixed_zone, utc
