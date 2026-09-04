@@ -230,9 +230,26 @@ Wednesday = "WEDNESDAY"
 Thursday = "THURSDAY"
 Friday = "FRIDAY"
 Saturday = "SATURDAY"
+# The named layouts, in capitals on the same rule as the twenty five above.
+# The seven whose Go name is already capitals throughout are not here, because
+# the rule leaves a name that is already the right shape alone and `RFC3339`
+# spells itself.
+Layout = "LAYOUT"
+UnixDate = "UNIX_DATE"
+RubyDate = "RUBY_DATE"
+RFC3339Nano = "RFC3339_NANO"
+Kitchen = "KITCHEN"
+Stamp = "STAMP"
+StampMilli = "STAMP_MILLI"
+StampMicro = "STAMP_MICRO"
+StampNano = "STAMP_NANO"
+DateTime = "DATE_TIME"
+DateOnly = "DATE_ONLY"
+TimeOnly = "TIME_ONLY"
 # `write_to` is what a `String` method is here, the same as everywhere else in
 # this library.
 "Duration.String" = "Duration.write_to"
+"Time.String" = "Time.write_to"
 "Month.String" = "Month.write_to"
 "Weekday.String" = "Weekday.write_to"
 # The location half. `String` becomes `write_to` on the same rule as the three
