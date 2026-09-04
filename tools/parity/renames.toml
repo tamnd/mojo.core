@@ -192,3 +192,9 @@ NewChaCha8 = "new_chacha8"
 "Int.Or" = "Int.__or__"
 "Int.Xor" = "Int.__xor__"
 "Int.Not" = "Int.__invert__"
+
+["path"]
+# `match` is a Mojo keyword. `is_match` is the name instead, beside `is_abs` in
+# the same package, and the file it lives in is `pattern.mojo` because the
+# module name is a keyword too.
+Match = "is_match"

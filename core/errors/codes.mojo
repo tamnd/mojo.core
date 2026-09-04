@@ -230,3 +230,14 @@ returning it.
 
 Owned by `core.math.big`, answering for Go's `big.ErrNaN`.
 """
+
+comptime ErrBadPattern = Code(26)
+"""A pattern handed to `match` was malformed: a character class with nothing in
+it, one that was never closed, a backslash at the very end with nothing to
+escape, or a byte in a class that is not the start of a character. It says the
+pattern is wrong rather than that the name failed to match, which is why
+`match` reports it even when the name had already stopped agreeing. Go's
+`path/filepath` shares this value, and so does `core.path.filepath`.
+
+Owned by `core.path`, answering for Go's `path.ErrBadPattern`.
+"""

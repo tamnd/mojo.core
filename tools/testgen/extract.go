@@ -488,6 +488,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
+	"unsafe"
 )
 
 var tick = string(rune(96))
@@ -507,10 +509,63 @@ type shape struct {
 }
 
 var shapes []shape
-var declared = map[string]bool{}
+var declared = map[string]string{}
 var body strings.Builder
+var floatUsed bool
 var complexUsed bool
 var stringUsed bool
+
+// asText says whether the table being written now holds text rather than
+// bytes. Set by emit from the values themselves and read by scalar, which is
+// handed a type and never sees them.
+//
+// A global rather than an argument because scalar is called from six places
+// and five of them have no opinion about it, and this program already keeps
+// what it has emitted so far the same way.
+var asText bool
+
+// text says whether every Go string anywhere in this table is printable text,
+// in which case writing it as a Mojo string literal cannot change it.
+//
+// The default is bytes, for the reason scalar's String case gives: a Go string
+// is a byte string, Mojo reads a literal as UTF-8, and a marshalled generator
+// state written as a literal comes back two bytes longer than it went in.
+//
+// Valid UTF-8 with every rune printable is the condition, and it is exactly
+// the condition strconv.Quote needs to produce a literal with no numeric
+// escape in it. What comes out is then the same bytes Go's own source file
+// has, including a pattern like [a-ζ], which is text in both languages and
+// hex in neither. A table with one byte outside that keeps the hex, since
+// that is the table the hex was written for.
+//
+// Decided per table rather than per package, so a package with one binary
+// table in it does not lose the readable form for all its others.
+func text(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.String:
+		if !utf8.ValidString(v.String()) {
+			return false
+		}
+		for _, r := range v.String() {
+			if !strconv.IsPrint(r) {
+				return false
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			if !text(v.Index(i)) {
+				return false
+			}
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if !text(v.Field(i)) {
+				return false
+			}
+		}
+	}
+	return true
+}
 
 // emit writes one table.
 func emit(name string, table any) {
@@ -523,6 +578,8 @@ func emit(name string, table any) {
 		return
 	}
 
+	asText = text(v)
+	defer func() { asText = false }()
 	mojo, write, note := shapeOf(name, v.Type().Elem())
 	rows := make([]reflect.Value, v.Len())
 	for i := range rows {
@@ -654,12 +711,14 @@ func shapeOf(table string, t reflect.Type) (string, func(reflect.Value) string, 
 func scalar(t reflect.Type) *column {
 	switch t.Kind() {
 	case reflect.Float64:
+		floatUsed = true
 		return &column{
 			mojo:  "Float64",
 			write: func(v reflect.Value) string { return fmt.Sprintf("_f64(0x%016X)", math.Float64bits(v.Float())) },
 			note:  func(v reflect.Value) string { return decimal(v.Float(), 64) },
 		}
 	case reflect.Float32:
+		floatUsed = true
 		return &column{
 			mojo:  "Float32",
 			write: func(v reflect.Value) string { return fmt.Sprintf("_f32(0x%08X)", math.Float32bits(float32(v.Float()))) },
@@ -707,13 +766,24 @@ func scalar(t reflect.Type) *column {
 			note: func(reflect.Value) string { return "" },
 		}
 	case reflect.String:
-		// Bytes rather than a Mojo string, and the Go source form beside them
-		// in a comment. A Go string is a byte string and the ones in these
-		// tables are marshalled binary, so chacha8marshalread has a "\xb6" in
-		// it that is not a code point and is not meant to be. Mojo reads a
-		// literal as UTF-8, turns that escape into the two bytes U+00B6 is,
-		// and the golden silently grows: a sixteen byte encoding arrives as
-		// eighteen. Hex has no such opinion.
+		// A table whose strings are all printable ASCII is text, and text is
+		// written as text. Go's quoting and Mojo's agree over that range, so
+		// the literal in the generated file is the literal in Go's source and
+		// a reviewer can read one against the other.
+		if asText {
+			return &column{
+				mojo:  "String",
+				write: func(v reflect.Value) string { return strconv.Quote(v.String()) },
+				note:  func(v reflect.Value) string { return "" },
+			}
+		}
+		// Otherwise bytes, with the Go source form beside them in a comment. A
+		// Go string is a byte string and some of these tables are marshalled
+		// binary, so chacha8marshalread has a "\xb6" in it that is not a code
+		// point and is not meant to be. Mojo reads a literal as UTF-8, turns
+		// that escape into the two bytes U+00B6 is, and the golden silently
+		// grows: a sixteen byte encoding arrives as eighteen. Hex has no such
+		// opinion.
 		stringUsed = true
 		return &column{
 			mojo: "List[UInt8]",
@@ -721,6 +791,88 @@ func scalar(t reflect.Type) *column {
 				return "_hex(\"" + hex.EncodeToString([]byte(v.String())) + "\")"
 			},
 			note: func(v reflect.Value) string { return strconv.Quote(v.String()) },
+		}
+	}
+	return nil
+}
+
+// mojoTypes is the Mojo type of every column, for comparing two declarations
+// that want the same struct name.
+func mojoTypes(columns []*column) []string {
+	out := make([]string, len(columns))
+	for i, c := range columns {
+		out[i] = c.mojo
+	}
+	return out
+}
+
+// errType is what a field has to implement to be written as its message.
+var errType = reflect.TypeOf((*error)(nil)).Elem()
+
+// reachable gives back a value that Interface can be called on.
+//
+// Go's test tables are rows of unexported fields, and reflect refuses to hand
+// out a value it read from one, so that a program cannot use reflection to get
+// at what the package it is reading kept private. Reading a number or a string
+// out of such a field is allowed, which is why every other column here works
+// without this; calling a method on one is not, and an error is only useful
+// through its Error method.
+//
+// A row comes out of a slice, so it is addressable, and this reads the same
+// bytes back through an address rather than through the field. That is the
+// documented way round the rule and it is sound here for the reason the rule
+// exists: this program is not the package's caller, it is a code generator
+// reading a table that was written to be read.
+func reachable(v reflect.Value) reflect.Value {
+	if !v.CanAddr() {
+		return v
+	}
+	return reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem()
+}
+
+// field describes one column of a row struct, which is a wider question than
+// scalar answers.
+//
+// Two shapes turn up inside a row that never turn up as a whole row. A list,
+// as in Go's jointests, whose rows are the arguments to a variadic call and
+// the answer. And an error, as in matchTests, where the row says both what the
+// call gives back and whether it fails at all.
+//
+// An error becomes its message rather than a boolean, because that is what the
+// value is. A row whose error is nil gets the empty string, which no failure
+// produces. Turning it into "this fails" would be this tool deciding what the
+// test means, and the tests are supposed to be Go's rather than ours.
+func field(t reflect.Type) *column {
+	if c := scalar(t); c != nil {
+		return c
+	}
+	if t.Kind() == reflect.Interface && t.Implements(errType) {
+		return &column{
+			mojo: "String",
+			write: func(v reflect.Value) string {
+				if v.IsNil() {
+					return strconv.Quote("")
+				}
+				return strconv.Quote(reachable(v).Interface().(error).Error())
+			},
+			note: func(v reflect.Value) string { return "" },
+		}
+	}
+	if t.Kind() == reflect.Slice {
+		inner := scalar(t.Elem())
+		if inner == nil {
+			return nil
+		}
+		return &column{
+			mojo: "List[" + inner.mojo + "]",
+			write: func(v reflect.Value) string {
+				parts := make([]string, v.Len())
+				for i := range parts {
+					parts[i] = inner.write(v.Index(i))
+				}
+				return "[" + strings.Join(parts, ", ") + "]"
+			},
+			note: func(v reflect.Value) string { return "" },
 		}
 	}
 	return nil
@@ -760,9 +912,9 @@ func structure(table string, t reflect.Type) (string, func(reflect.Value) string
 			name = camel(table) + "Row"
 		}
 		for i := 0; i < t.NumField(); i++ {
-			c := scalar(t.Field(i).Type)
+			c := field(t.Field(i).Type)
 			if c == nil {
-				fail(table, "has a field that is not a single value")
+				fail(table, "has a field that is not a single value, a list of them, or an error")
 			}
 			fields = append(fields, fieldName(t.Field(i).Name))
 			columns = append(columns, c)
@@ -771,8 +923,16 @@ func structure(table string, t reflect.Type) (string, func(reflect.Value) string
 		fail(table, "holds a "+t.Kind().String()+", which this tool does not write")
 	}
 
-	if !declared[name] {
-		declared[name] = true
+	// One struct per name, shared by every table shaped like it. Two tables
+	// wanting the same name and different columns would otherwise write rows of
+	// the second against the declaration of the first, which compiles when the
+	// widths happen to line up.
+	made := name + "(" + strings.Join(mojoTypes(columns), ", ") + ")"
+	if was, seen := declared[name]; seen && was != made {
+		fail(table, "wants "+made+" and an earlier table declared "+was)
+	}
+	if _, seen := declared[name]; !seen {
+		declared[name] = made
 		var out strings.Builder
 		fmt.Fprintf(&out, "struct %s(Copyable, Movable):\n", name)
 		fmt.Fprintf(&out, "    \"\"\"One row of Go's %s%s%s and of the tables shaped like it.\"\"\"\n\n", tick, table, tick)
@@ -784,7 +944,16 @@ func structure(table string, t reflect.Type) (string, func(reflect.Value) string
 			fmt.Fprintf(&out, ", %s: %s", f, columns[i].mojo)
 		}
 		out.WriteString("):\n")
-		for _, f := range fields {
+		for i, f := range fields {
+			// A List is not implicitly copyable, so the copy is asked for. It
+			// happens once per row when the table is built and the rows are
+			// what the tests read, so the alternative of taking the argument
+			// by value and moving out of it would save one copy of a handful
+			// of strings and cost a var on every field of every struct here.
+			if strings.HasPrefix(columns[i].mojo, "List[") {
+				fmt.Fprintf(&out, "        self.%s = %s.copy()\n", f, f)
+				continue
+			}
 			fmt.Fprintf(&out, "        self.%s = %s\n", f, f)
 		}
 		shapes = append(shapes, shape{name: name, body: out.String()})
@@ -838,13 +1007,18 @@ func tableName(name string) string {
 // fieldName is what a Go struct field is called here.
 //
 // Go's special case tables are written as an in and a want, and in is a Mojo
-// keyword, so a struct with a field of that name does not parse. The rename is
-// spelled out rather than suffixed, because row.arg reads as what it is and
-// row.in_ reads as a tool having got out of the way of a problem.
+// keyword, so a struct with a field of that name does not parse. So is match,
+// which is what path's own table calls the answer it expects. Each rename is
+// spelled out rather than suffixed, because row.arg and row.matched read as
+// what they are and row.in_ reads as a tool having got out of the way of a
+// problem. Both words are the ones Go's own documentation uses for the field,
+// so neither is invented here.
 func fieldName(name string) string {
 	switch snake(name) {
 	case "in":
 		return "arg"
+	case "match":
+		return "matched"
 	}
 	return snake(name)
 }
@@ -893,6 +1067,24 @@ func flush() {
 }
 
 func preamble() string {
+	// A package with no float and no complex number in any of its tables gets
+	// neither the paragraph about floats nor the two helpers that read bits
+	// back, because a file of paths carrying an explanation of subnormal
+	// literals and a pair of functions nothing calls is a file that reads as if
+	// it had been copied from somewhere else. The hex helpers are a separate
+	// question with a separate flag, and a package can want either, both or
+	// neither.
+	if !floatUsed && !complexUsed {
+		lines := []string{
+			"\"\"\"Go's test tables, as data.",
+			"",
+			"Each one is what Go's own tests are read against, taken out of the Go tree by",
+			"tools/testgen rather than typed, so that a row here is a row there and a table",
+			"Go changes shows up as a diff.",
+			"\"\"\"",
+		}
+		return strings.Join(append(lines, hexHelpers()...), "\n") + "\n"
+	}
 	lines := []string{
 		"\"\"\"Go's test tables, as data.",
 		"",
@@ -933,31 +1125,37 @@ func preamble() string {
 			"    return ComplexFloat64(_f64(re), _f64(im))",
 		)
 	}
-	if stringUsed {
-		lines = append(lines,
-			"",
-			"",
-			"def _nibble(digit: UInt8) -> UInt8:",
-			"    \"\"\"The value of one lower case hex digit.\"\"\"",
-			"    return digit - 0x30 if digit <= 0x39 else digit - 0x57",
-			"",
-			"",
-			"def _hex[o: ImmOrigin](text: StringSlice[o]) -> List[UInt8]:",
-			"    \"\"\"The bytes those hex digits are.",
-			"",
-			"    A Go string in these tables is a byte string rather than text. Writing",
-			"    one as a Mojo literal would re-encode every byte above 0x7F as the two",
-			"    or three UTF-8 bytes its code point is, so a sixteen byte marshalled",
-			"    form would arrive as eighteen and the golden would be longer than the",
-			"    thing it checks. Hex has no such opinion.",
-			"    \"\"\"",
-			"    var raw = text.as_bytes()",
-			"    var out = List[UInt8](capacity=len(raw) // 2)",
-			"    for i in range(0, len(raw), 2):",
-			"        out.append(_nibble(raw[i]) << 4 | _nibble(raw[i + 1]))",
-			"    return out^",
-		)
+	return strings.Join(append(lines, hexHelpers()...), "\n") + "\n"
+}
+
+// hexHelpers is what reads a hex column back, or nothing at all for a package
+// whose tables held no bytes.
+func hexHelpers() []string {
+	if !stringUsed {
+		return nil
 	}
-	return strings.Join(lines, "\n") + "\n"
+	return []string{
+		"",
+		"",
+		"def _nibble(digit: UInt8) -> UInt8:",
+		"    \"\"\"The value of one lower case hex digit.\"\"\"",
+		"    return digit - 0x30 if digit <= 0x39 else digit - 0x57",
+		"",
+		"",
+		"def _hex[o: ImmOrigin](text: StringSlice[o]) -> List[UInt8]:",
+		"    \"\"\"The bytes those hex digits are.",
+		"",
+		"    A Go string in these tables is a byte string rather than text. Writing",
+		"    one as a Mojo literal would re-encode every byte above 0x7F as the two",
+		"    or three UTF-8 bytes its code point is, so a sixteen byte marshalled",
+		"    form would arrive as eighteen and the golden would be longer than the",
+		"    thing it checks. Hex has no such opinion.",
+		"    \"\"\"",
+		"    var raw = text.as_bytes()",
+		"    var out = List[UInt8](capacity=len(raw) // 2)",
+		"    for i in range(0, len(raw), 2):",
+		"        out.append(_nibble(raw[i]) << 4 | _nibble(raw[i + 1]))",
+		"    return out^",
+	}
 }
 `

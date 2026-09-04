@@ -5,7 +5,9 @@ verdict = "Port"
 tier = 4
 unsafe = false
 deps = [
+  "core.bytes",
   "core.errors",
+  "core.io",
   "core.strings",
   "core.unicode.utf8",
 ]
