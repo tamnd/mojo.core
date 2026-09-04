@@ -16,11 +16,14 @@ Each directory is one job and each entry point prints what it checked even when 
 | `baseline` | `baseline` | Struct sizes and offsets, open flags, errno values and signal numbers, asked of the platform's own headers and compared to the tables in `core/syscall/baseline`. |
 | `gen` | `gen`, `generated-check` | The code generators. Output is checked in and regenerated in CI, which fails on a diff. `codes.py` is the one that is not about volume: it numbers the library's sentinel errors so that no two packages can pick the same constant. |
 | `docjson` | `docjson`, `docjson-selftest` | Reads the JSON `mojo doc` emits and answers questions about structs: fields, resolved types, conformances and the struct tags in field docstrings. This is the reflection substitute the generators are built on. The selftest compiles a fixture package in `testdata` on every run, because every fact the reader depends on is a fact about a compiler that is still changing. |
+| `codec` | `codec`, `codec-selftest` | Writes a JSON encoder and decoder for every struct in a package whose docstring says `codec:"json"`, into one `json_codec.mojo` beside them. Runs on any package anywhere, not only on this library's. It refuses rather than guesses: a misspelled struct tag, an option only Go has, two fields that would collide under one JSON name and a field type with no JSON to be all stop the run. The selftest generates a codec for a fixture package outside this repository, builds it with warnings on and runs it. |
 | `vendor` | `vendor-check` | The vendored corpora against their recorded digests and licences. |
 | `probe` | `probe` | The language assumptions in `docs/design.md`, one Mojo file each under `probes/` with a header naming the section it pins and saying what is supposed to happen to it. |
 | `differ` | `differ` | This library and an oracle against the same input, compared byte for byte. |
 | `fuzz` | `fuzz` | Every parser that reads bytes it did not produce. |
 | `testgen` | `testgen` | Converts Go's table driven tests into Mojo test data. Runs offline, output is checked in. |
+
+`codec` is not in `check` either, because running it writes files. What runs on every commit is `codec-selftest`, and `generated-check` is what says the codecs that are checked in still match the emitter.
 
 `docjson`, `differ`, `fuzz` and `testgen` are not part of `pixi run check`. They need a second toolchain or a lot of time, and neither is something a commit should wait for. CI runs the last three nightly, and `docjson-selftest` runs on every commit, which is the part of `docjson` that can go quietly wrong.
 
