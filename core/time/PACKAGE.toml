@@ -5,7 +5,5 @@ verdict = "Port"
 tier = 2
 unsafe = false
 deps = [
-  "core.errors",
-  "core.strconv",
   "core.syscall",
 ]
