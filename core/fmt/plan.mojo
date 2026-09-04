@@ -1,16 +1,22 @@
-"""A format string, taken apart while the program is being compiled.
+"""A format string, taken apart.
 
-Go reads the format string every time `Printf` runs. Here the format is a
-`comptime` parameter, so it is read once, when the program is built, and what
+Go reads the format string every time `Printf` runs. Here the format is usually
+a `comptime` parameter, so it is read once, when the program is built, and what
 comes out is this: a list of `Piece`, each one a run of literal text followed by
 at most one verb. The call that used to carry a format string carries a
 concatenation instead, and the string itself is not in the binary.
 
-Everything in this file runs at compile time. That is the whole reason it is
-written the way it is: no raising, no allocation the interpreter cannot follow,
-and a hand written decoder for the one rune it has to read, because a verb is a
-rune in Go and `%☺` has to come out as `%!☺(...)` rather than as three bytes of
-nonsense.
+`vsprintf` has a format string that is not known until the program runs, and it
+calls the same parser. That is why `Piece` carries an origin rather than a
+`StaticString`: a piece cut out of a `String` the caller built borrows from that
+`String`, and a piece cut out of a literal borrows from the binary, and neither
+copies. One parser for both paths is not a tidiness argument, it is most of what
+makes the two paths agree on the bytes they produce.
+
+Everything in this file is written so that it can run in the compile time
+interpreter: no raising, no allocation the interpreter cannot follow, and a hand
+written decoder for the one rune it has to read, because a verb is a rune in Go
+and `%☺` has to come out as `%!☺(...)` rather than as three bytes of nonsense.
 
 The pieces are the plan. Checking them against the arguments they will consume
 happens in `check.mojo`, and writing the values out happens in `write.mojo`.
@@ -48,7 +54,7 @@ comptime _RUNE_ERROR = 0xFFFD
 
 
 @fieldwise_init
-struct Piece(Copyable, ImplicitlyCopyable, Movable):
+struct Piece[o: ImmOrigin](Copyable, ImplicitlyCopyable, Movable):
     """A run of literal text and the verb that follows it.
 
     The literal is a slice of the format string, so it costs nothing to carry
@@ -60,7 +66,7 @@ struct Piece(Copyable, ImplicitlyCopyable, Movable):
     arguments the format consumes, and `flags` holds `REORDERED`.
     """
 
-    var literal: StaticString
+    var literal: StringSlice[Self.o]
     """The text before the verb, written out as it stands."""
 
     var verb: Int
@@ -135,7 +141,7 @@ def rune_at(b: Span[Byte, _], at: Int) -> Tuple[Int, Int]:
     return (value, size)
 
 
-def pieces(format: StaticString) -> List[Piece]:
+def pieces[o: ImmOrigin](format: StringSlice[o]) -> List[Piece[o]]:
     """The format string as a plan.
 
     Follows Go's `doPrintf` in what it accepts and in what order it consumes
@@ -143,7 +149,7 @@ def pieces(format: StaticString) -> List[Piece]:
     of `%.*f`, and both come before the value. An explicit index moves the
     counter, so `%[3]d%d` reads the third argument and then the fourth.
     """
-    var out = List[Piece]()
+    var out = List[Piece[o]]()
     var b = format.as_bytes()
     var n = len(b)
     var start = 0

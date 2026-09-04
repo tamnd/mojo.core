@@ -30,6 +30,12 @@ parameter. There is no loop to write here, and the compiler walks every one of
 these format strings while this file is built, which is also the largest test
 this library has of the compile time parser itself.
 
+Every row goes down both paths. `sprintf` reads the format while the program is
+built and `vsprintf` reads it while the program runs, and the promise this
+library makes is that they print the same bytes. A promise made in a docstring
+is worth nothing, so it is checked on every row below, before the row is
+checked against Go.
+
 The function names and the order are Go's, taken from the section comments in
 its table, so a failure names the part of Go's table it came from.
 """
@@ -37,7 +43,7 @@ its table, so a failure names the part of Go's table it came from.
 from std.memory import bitcast
 from std.testing import assert_equal
 
-from core.fmt import sprintf
+from core.fmt import Arg, sprintf, vsprintf
 
 
 def _f64(bits: UInt64) -> Float64:
@@ -50,512 +56,495 @@ def _f32(bits: UInt32) -> Float32:
     return bitcast[DType.float32](bits)
 
 
+def _both[format: StaticString, T: AnyType](value: T, want: String) raises:
+    """One row of Go's table, down both paths.
+
+    The two paths are compared to each other before either is compared to Go,
+    because when they disagree that is the thing worth being told. A failure
+    that only says one of them is not Go leaves the reader to work out which.
+    """
+    var fast = sprintf[format](value)
+    var slow = vsprintf(String(format), [Arg(value)])
+    assert_equal(
+        slow,
+        fast,
+        String(
+            "the two paths disagree on ",
+            format,
+            ": compile time gave ",
+            fast,
+            " and run time gave ",
+            slow,
+        ),
+    )
+    assert_equal(fast, want)
+
+
 def test_the_first_three() raises:
     """Go's `the first three`, 3 rows."""
-    assert_equal(sprintf["%d"](Int(12345)), "12345")
-    assert_equal(sprintf["%v"](Int(12345)), "12345")
-    assert_equal(sprintf["%t"](True), "true")
+    _both["%d"](Int(12345), "12345")
+    _both["%v"](Int(12345), "12345")
+    _both["%t"](True, "true")
 
 
 def test_basic_string() raises:
     """Go's `basic string`, 15 rows."""
-    assert_equal(sprintf["%s"](String("abc")), "abc")
-    assert_equal(sprintf["%q"](String("abc")), '"abc"')
-    assert_equal(sprintf["%x"](String("abc")), "616263")
-    assert_equal(sprintf["%x"](String("")), "")
-    assert_equal(sprintf["% x"](String("")), "")
-    assert_equal(sprintf["%#x"](String("")), "")
-    assert_equal(sprintf["%# x"](String("")), "")
-    assert_equal(sprintf["%x"](String("xyz")), "78797a")
-    assert_equal(sprintf["%X"](String("xyz")), "78797A")
-    assert_equal(sprintf["% x"](String("xyz")), "78 79 7a")
-    assert_equal(sprintf["% X"](String("xyz")), "78 79 7A")
-    assert_equal(sprintf["%#x"](String("xyz")), "0x78797a")
-    assert_equal(sprintf["%#X"](String("xyz")), "0X78797A")
-    assert_equal(sprintf["%# x"](String("xyz")), "0x78 0x79 0x7a")
-    assert_equal(sprintf["%# X"](String("xyz")), "0X78 0X79 0X7A")
+    _both["%s"](String("abc"), "abc")
+    _both["%q"](String("abc"), '"abc"')
+    _both["%x"](String("abc"), "616263")
+    _both["%x"](String(""), "")
+    _both["% x"](String(""), "")
+    _both["%#x"](String(""), "")
+    _both["%# x"](String(""), "")
+    _both["%x"](String("xyz"), "78797a")
+    _both["%X"](String("xyz"), "78797A")
+    _both["% x"](String("xyz"), "78 79 7a")
+    _both["% X"](String("xyz"), "78 79 7A")
+    _both["%#x"](String("xyz"), "0x78797a")
+    _both["%#X"](String("xyz"), "0X78797A")
+    _both["%# x"](String("xyz"), "0x78 0x79 0x7a")
+    _both["%# X"](String("xyz"), "0X78 0X79 0X7A")
 
 
 def test_escaped_strings() raises:
     """Go's `escaped strings`, 20 rows."""
-    assert_equal(sprintf["%q"](String("")), '""')
-    assert_equal(sprintf["%#q"](String("")), "``")
-    assert_equal(sprintf["%q"](String('"')), '"\\""')
-    assert_equal(sprintf["%#q"](String('"')), '`"`')
-    assert_equal(sprintf["%q"](String("\n")), '"\\n"')
-    assert_equal(sprintf["%#q"](String("\n")), '"\\n"')
-    assert_equal(sprintf["%q"](String("\\n")), '"\\\\n"')
-    assert_equal(sprintf["%#q"](String("\\n")), "`\\n`")
-    assert_equal(sprintf["%q"](String("abc")), '"abc"')
-    assert_equal(sprintf["%#q"](String("abc")), "`abc`")
-    assert_equal(sprintf["%q"](String("日本語")), '"日本語"')
-    assert_equal(sprintf["%+q"](String("日本語")), '"\\u65e5\\u672c\\u8a9e"')
-    assert_equal(sprintf["%#q"](String("日本語")), "`日本語`")
-    assert_equal(sprintf["%#+q"](String("日本語")), "`日本語`")
-    assert_equal(
-        sprintf["%q"](String('\x07\x08\x0c\n\r\t\x0b"\\')),
-        '"\\a\\b\\f\\n\\r\\t\\v\\"\\\\"',
+    _both["%q"](String(""), '""')
+    _both["%#q"](String(""), "``")
+    _both["%q"](String('"'), '"\\""')
+    _both["%#q"](String('"'), '`"`')
+    _both["%q"](String("\n"), '"\\n"')
+    _both["%#q"](String("\n"), '"\\n"')
+    _both["%q"](String("\\n"), '"\\\\n"')
+    _both["%#q"](String("\\n"), "`\\n`")
+    _both["%q"](String("abc"), '"abc"')
+    _both["%#q"](String("abc"), "`abc`")
+    _both["%q"](String("日本語"), '"日本語"')
+    _both["%+q"](String("日本語"), '"\\u65e5\\u672c\\u8a9e"')
+    _both["%#q"](String("日本語"), "`日本語`")
+    _both["%#+q"](String("日本語"), "`日本語`")
+    _both["%q"](
+        String('\x07\x08\x0c\n\r\t\x0b"\\'), '"\\a\\b\\f\\n\\r\\t\\v\\"\\\\"'
     )
-    assert_equal(
-        sprintf["%+q"](String('\x07\x08\x0c\n\r\t\x0b"\\')),
-        '"\\a\\b\\f\\n\\r\\t\\v\\"\\\\"',
+    _both["%+q"](
+        String('\x07\x08\x0c\n\r\t\x0b"\\'), '"\\a\\b\\f\\n\\r\\t\\v\\"\\\\"'
     )
-    assert_equal(
-        sprintf["%#q"](String('\x07\x08\x0c\n\r\t\x0b"\\')),
-        '"\\a\\b\\f\\n\\r\\t\\v\\"\\\\"',
+    _both["%#q"](
+        String('\x07\x08\x0c\n\r\t\x0b"\\'), '"\\a\\b\\f\\n\\r\\t\\v\\"\\\\"'
     )
-    assert_equal(
-        sprintf["%#+q"](String('\x07\x08\x0c\n\r\t\x0b"\\')),
-        '"\\a\\b\\f\\n\\r\\t\\v\\"\\\\"',
+    _both["%#+q"](
+        String('\x07\x08\x0c\n\r\t\x0b"\\'), '"\\a\\b\\f\\n\\r\\t\\v\\"\\\\"'
     )
-    assert_equal(sprintf["%q"](String("☺")), '"☺"')
-    assert_equal(sprintf["% q"](String("☺")), '"☺"')
+    _both["%q"](String("☺"), '"☺"')
+    _both["% q"](String("☺"), '"☺"')
 
 
 def test_the_space_modifier_should_have_no_effect() raises:
     """Go's `The space modifier should have no effect.`, 10 rows."""
-    assert_equal(sprintf["%+q"](String("☺")), '"\\u263a"')
-    assert_equal(sprintf["%#q"](String("☺")), "`☺`")
-    assert_equal(sprintf["%#+q"](String("☺")), "`☺`")
-    assert_equal(sprintf["%10q"](String("⌘")), '       "⌘"')
-    assert_equal(sprintf["%+10q"](String("⌘")), '  "\\u2318"')
-    assert_equal(sprintf["%-10q"](String("⌘")), '"⌘"       ')
-    assert_equal(sprintf["%+-10q"](String("⌘")), '"\\u2318"  ')
-    assert_equal(sprintf["%010q"](String("⌘")), '0000000"⌘"')
-    assert_equal(sprintf["%+010q"](String("⌘")), '00"\\u2318"')
-    assert_equal(sprintf["%-010q"](String("⌘")), '"⌘"       ')
+    _both["%+q"](String("☺"), '"\\u263a"')
+    _both["%#q"](String("☺"), "`☺`")
+    _both["%#+q"](String("☺"), "`☺`")
+    _both["%10q"](String("⌘"), '       "⌘"')
+    _both["%+10q"](String("⌘"), '  "\\u2318"')
+    _both["%-10q"](String("⌘"), '"⌘"       ')
+    _both["%+-10q"](String("⌘"), '"\\u2318"  ')
+    _both["%010q"](String("⌘"), '0000000"⌘"')
+    _both["%+010q"](String("⌘"), '00"\\u2318"')
+    _both["%-010q"](String("⌘"), '"⌘"       ')
 
 
 def test_0_has_no_effect_when_is_present() raises:
     """Go's `0 has no effect when - is present.`, 5 rows."""
-    assert_equal(sprintf["%+-010q"](String("⌘")), '"\\u2318"  ')
-    assert_equal(sprintf["%#8q"](String("\n")), '    "\\n"')
-    assert_equal(sprintf["%#+8q"](String("\r")), '    "\\r"')
-    assert_equal(sprintf["%#-8q"](String("\t")), "`\t`     ")
-    assert_equal(sprintf["%#+-8q"](String("\x08")), '"\\b"    ')
+    _both["%+-010q"](String("⌘"), '"\\u2318"  ')
+    _both["%#8q"](String("\n"), '    "\\n"')
+    _both["%#+8q"](String("\r"), '    "\\r"')
+    _both["%#-8q"](String("\t"), "`\t`     ")
+    _both["%#+-8q"](String("\x08"), '"\\b"    ')
 
 
 def test_runes_that_are_not_printable() raises:
     """Go's `Runes that are not printable.`, 4 rows."""
-    assert_equal(sprintf["%q"](String("􏿿")), '"\\U0010ffff"')
-    assert_equal(sprintf["%+q"](String("􏿿")), '"\\U0010ffff"')
-    assert_equal(sprintf["%#q"](String("􏿿")), "`􏿿`")
-    assert_equal(sprintf["%#+q"](String("􏿿")), "`􏿿`")
+    _both["%q"](String("􏿿"), '"\\U0010ffff"')
+    _both["%+q"](String("􏿿"), '"\\U0010ffff"')
+    _both["%#q"](String("􏿿"), "`􏿿`")
+    _both["%#+q"](String("􏿿"), "`􏿿`")
 
 
 def test_characters() raises:
     """Go's `characters`, 5 rows."""
-    assert_equal(sprintf["%c"](UInt(120)), "x")
-    assert_equal(sprintf["%c"](Int(228)), "ä")
-    assert_equal(sprintf["%c"](Int(26412)), "本")
-    assert_equal(sprintf["%c"](Int32(26085)), "日")
-    assert_equal(sprintf["%.0c"](Int32(8984)), "⌘")
+    _both["%c"](UInt(120), "x")
+    _both["%c"](Int(228), "ä")
+    _both["%c"](Int(26412), "本")
+    _both["%c"](Int32(26085), "日")
+    _both["%.0c"](Int32(8984), "⌘")
 
 
 def test_specifying_precision_should_have_no_effect() raises:
     """Go's `Specifying precision should have no effect.`, 3 rows."""
-    assert_equal(sprintf["%3c"](Int32(8984)), "  ⌘")
-    assert_equal(sprintf["%-3c"](Int32(8984)), "⌘  ")
-    assert_equal(sprintf["%c"](UInt64(4294967296)), "�")
+    _both["%3c"](Int32(8984), "  ⌘")
+    _both["%-3c"](Int32(8984), "⌘  ")
+    _both["%c"](UInt64(4294967296), "�")
 
 
 def test_runes_that_are_not_printable_2() raises:
     """Go's `Runes that are not printable.`, 2 rows."""
-    assert_equal(sprintf["%c"](Int32(3584)), "฀")
-    assert_equal(sprintf["%c"](Int32(1114111)), "􏿿")
+    _both["%c"](Int32(3584), "฀")
+    _both["%c"](Int32(1114111), "􏿿")
 
 
 def test_runes_that_are_not_valid() raises:
     """Go's `Runes that are not valid.`, 5 rows."""
-    assert_equal(sprintf["%c"](Int(-1)), "�")
-    assert_equal(sprintf["%c"](Int(56448)), "�")
-    assert_equal(sprintf["%c"](Int32(1114112)), "�")
-    assert_equal(sprintf["%c"](Int64(68719476735)), "�")
-    assert_equal(sprintf["%c"](UInt64(68719476735)), "�")
+    _both["%c"](Int(-1), "�")
+    _both["%c"](Int(56448), "�")
+    _both["%c"](Int32(1114112), "�")
+    _both["%c"](Int64(68719476735), "�")
+    _both["%c"](UInt64(68719476735), "�")
 
 
 def test_escaped_characters() raises:
     """Go's `escaped characters`, 17 rows."""
-    assert_equal(sprintf["%q"](UInt(0)), "'\\x00'")
-    assert_equal(sprintf["%+q"](UInt(0)), "'\\x00'")
-    assert_equal(sprintf["%q"](Int32(34)), "'\"'")
-    assert_equal(sprintf["%+q"](Int32(34)), "'\"'")
-    assert_equal(sprintf["%q"](Int32(39)), "'\\''")
-    assert_equal(sprintf["%+q"](Int32(39)), "'\\''")
-    assert_equal(sprintf["%q"](Int32(96)), "'`'")
-    assert_equal(sprintf["%+q"](Int32(96)), "'`'")
-    assert_equal(sprintf["%q"](Int32(120)), "'x'")
-    assert_equal(sprintf["%+q"](Int32(120)), "'x'")
-    assert_equal(sprintf["%q"](Int32(255)), "'ÿ'")
-    assert_equal(sprintf["%+q"](Int32(255)), "'\\u00ff'")
-    assert_equal(sprintf["%q"](Int32(10)), "'\\n'")
-    assert_equal(sprintf["%+q"](Int32(10)), "'\\n'")
-    assert_equal(sprintf["%q"](Int32(9786)), "'☺'")
-    assert_equal(sprintf["%+q"](Int32(9786)), "'\\u263a'")
-    assert_equal(sprintf["% q"](Int32(9786)), "'☺'")
+    _both["%q"](UInt(0), "'\\x00'")
+    _both["%+q"](UInt(0), "'\\x00'")
+    _both["%q"](Int32(34), "'\"'")
+    _both["%+q"](Int32(34), "'\"'")
+    _both["%q"](Int32(39), "'\\''")
+    _both["%+q"](Int32(39), "'\\''")
+    _both["%q"](Int32(96), "'`'")
+    _both["%+q"](Int32(96), "'`'")
+    _both["%q"](Int32(120), "'x'")
+    _both["%+q"](Int32(120), "'x'")
+    _both["%q"](Int32(255), "'ÿ'")
+    _both["%+q"](Int32(255), "'\\u00ff'")
+    _both["%q"](Int32(10), "'\\n'")
+    _both["%+q"](Int32(10), "'\\n'")
+    _both["%q"](Int32(9786), "'☺'")
+    _both["%+q"](Int32(9786), "'\\u263a'")
+    _both["% q"](Int32(9786), "'☺'")
 
 
 def test_the_space_modifier_should_have_no_effect_2() raises:
     """Go's `The space modifier should have no effect.`, 1 rows."""
-    assert_equal(sprintf["%.0q"](Int32(9786)), "'☺'")
+    _both["%.0q"](Int32(9786), "'☺'")
 
 
 def test_specifying_precision_should_have_no_effect_2() raises:
     """Go's `Specifying precision should have no effect.`, 7 rows."""
-    assert_equal(sprintf["%10q"](Int32(8984)), "       '⌘'")
-    assert_equal(sprintf["%+10q"](Int32(8984)), "  '\\u2318'")
-    assert_equal(sprintf["%-10q"](Int32(8984)), "'⌘'       ")
-    assert_equal(sprintf["%+-10q"](Int32(8984)), "'\\u2318'  ")
-    assert_equal(sprintf["%010q"](Int32(8984)), "0000000'⌘'")
-    assert_equal(sprintf["%+010q"](Int32(8984)), "00'\\u2318'")
-    assert_equal(sprintf["%-010q"](Int32(8984)), "'⌘'       ")
+    _both["%10q"](Int32(8984), "       '⌘'")
+    _both["%+10q"](Int32(8984), "  '\\u2318'")
+    _both["%-10q"](Int32(8984), "'⌘'       ")
+    _both["%+-10q"](Int32(8984), "'\\u2318'  ")
+    _both["%010q"](Int32(8984), "0000000'⌘'")
+    _both["%+010q"](Int32(8984), "00'\\u2318'")
+    _both["%-010q"](Int32(8984), "'⌘'       ")
 
 
 def test_0_has_no_effect_when_is_present_2() raises:
     """Go's `0 has no effect when - is present.`, 1 rows."""
-    assert_equal(sprintf["%+-010q"](Int32(8984)), "'\\u2318'  ")
+    _both["%+-010q"](Int32(8984), "'\\u2318'  ")
 
 
 def test_runes_that_are_not_printable_3() raises:
     """Go's `Runes that are not printable.`, 2 rows."""
-    assert_equal(sprintf["%q"](Int32(3584)), "'\\u0e00'")
-    assert_equal(sprintf["%q"](Int32(1114111)), "'\\U0010ffff'")
+    _both["%q"](Int32(3584), "'\\u0e00'")
+    _both["%q"](Int32(1114111), "'\\U0010ffff'")
 
 
 def test_runes_that_are_not_valid_2() raises:
     """Go's `Runes that are not valid.`, 5 rows."""
-    assert_equal(sprintf["%q"](Int32(-1)), "'�'")
-    assert_equal(sprintf["%q"](Int(56448)), "'�'")
-    assert_equal(sprintf["%q"](Int32(1114112)), "'�'")
-    assert_equal(sprintf["%q"](Int64(68719476735)), "'�'")
-    assert_equal(sprintf["%q"](UInt64(68719476735)), "'�'")
+    _both["%q"](Int32(-1), "'�'")
+    _both["%q"](Int(56448), "'�'")
+    _both["%q"](Int32(1114112), "'�'")
+    _both["%q"](Int64(68719476735), "'�'")
+    _both["%q"](UInt64(68719476735), "'�'")
 
 
 def test_width() raises:
     """Go's `width`, 17 rows."""
-    assert_equal(sprintf["%5s"](String("abc")), "  abc")
-    assert_equal(sprintf["%2s"](String("☺")), " ☺")
-    assert_equal(sprintf["%-5s"](String("abc")), "abc  ")
-    assert_equal(sprintf["%05s"](String("abc")), "00abc")
-    assert_equal(
-        sprintf["%5s"](String("abcdefghijklmnopqrstuvwxyz")),
-        "abcdefghijklmnopqrstuvwxyz",
+    _both["%5s"](String("abc"), "  abc")
+    _both["%2s"](String("☺"), " ☺")
+    _both["%-5s"](String("abc"), "abc  ")
+    _both["%05s"](String("abc"), "00abc")
+    _both["%5s"](
+        String("abcdefghijklmnopqrstuvwxyz"), "abcdefghijklmnopqrstuvwxyz"
     )
-    assert_equal(sprintf["%.5s"](String("abcdefghijklmnopqrstuvwxyz")), "abcde")
-    assert_equal(sprintf["%.0s"](String("日本語日本語")), "")
-    assert_equal(sprintf["%.5s"](String("日本語日本語")), "日本語日本")
-    assert_equal(sprintf["%.10s"](String("日本語日本語")), "日本語日本語")
-    assert_equal(sprintf["%08q"](String("abc")), '000"abc"')
-    assert_equal(sprintf["%-8q"](String("abc")), '"abc"   ')
-    assert_equal(
-        sprintf["%.5q"](String("abcdefghijklmnopqrstuvwxyz")), '"abcde"'
-    )
-    assert_equal(
-        sprintf["%.5x"](String("abcdefghijklmnopqrstuvwxyz")), "6162636465"
-    )
-    assert_equal(sprintf["%.3q"](String("日本語日本語")), '"日本語"')
-    assert_equal(sprintf["%.1q"](String("日本語")), '"日"')
-    assert_equal(sprintf["%.1x"](String("日本語")), "e6")
-    assert_equal(sprintf["%10.1q"](String("日本語日本語")), '       "日"')
+    _both["%.5s"](String("abcdefghijklmnopqrstuvwxyz"), "abcde")
+    _both["%.0s"](String("日本語日本語"), "")
+    _both["%.5s"](String("日本語日本語"), "日本語日本")
+    _both["%.10s"](String("日本語日本語"), "日本語日本語")
+    _both["%08q"](String("abc"), '000"abc"')
+    _both["%-8q"](String("abc"), '"abc"   ')
+    _both["%.5q"](String("abcdefghijklmnopqrstuvwxyz"), '"abcde"')
+    _both["%.5x"](String("abcdefghijklmnopqrstuvwxyz"), "6162636465")
+    _both["%.3q"](String("日本語日本語"), '"日本語"')
+    _both["%.1q"](String("日本語"), '"日"')
+    _both["%.1x"](String("日本語"), "e6")
+    _both["%10.1q"](String("日本語日本語"), '       "日"')
 
 
 def test_integers() raises:
     """Go's `integers`, 37 rows."""
-    assert_equal(sprintf["%d"](UInt(12345)), "12345")
-    assert_equal(sprintf["%d"](Int(-12345)), "-12345")
-    assert_equal(sprintf["%.d"](Int(0)), "")
-    assert_equal(sprintf["%.0d"](Int(0)), "")
-    assert_equal(sprintf["%6.0d"](Int(0)), "      ")
-    assert_equal(sprintf["%06.0d"](Int(0)), "      ")
-    assert_equal(sprintf["% d"](Int(12345)), " 12345")
-    assert_equal(sprintf["%+d"](Int(12345)), "+12345")
-    assert_equal(sprintf["%+d"](Int(-12345)), "-12345")
-    assert_equal(sprintf["%b"](Int(7)), "111")
-    assert_equal(sprintf["%b"](Int(-6)), "-110")
-    assert_equal(sprintf["%#b"](Int(7)), "0b111")
-    assert_equal(sprintf["%#b"](Int(-6)), "-0b110")
-    assert_equal(sprintf["%o"](Int(668)), "1234")
-    assert_equal(sprintf["%o"](Int(-668)), "-1234")
-    assert_equal(sprintf["%#o"](Int(668)), "01234")
-    assert_equal(sprintf["%#o"](Int(-668)), "-01234")
-    assert_equal(sprintf["%O"](Int(668)), "0o1234")
-    assert_equal(sprintf["%O"](Int(-668)), "-0o1234")
-    assert_equal(sprintf["%#X"](Int(0)), "0X0")
-    assert_equal(sprintf["%x"](Int(313249263)), "12abcdef")
-    assert_equal(sprintf["%X"](Int(313249263)), "12ABCDEF")
-    assert_equal(sprintf["%.20b"](Int(7)), "00000000000000000111")
-    assert_equal(sprintf["%10d"](Int(12345)), "     12345")
-    assert_equal(sprintf["%10d"](Int(-12345)), "    -12345")
-    assert_equal(sprintf["%+10d"](Int(12345)), "    +12345")
-    assert_equal(sprintf["%010d"](Int(12345)), "0000012345")
-    assert_equal(sprintf["%010d"](Int(-12345)), "-000012345")
-    assert_equal(sprintf["%20.8d"](Int(1234)), "            00001234")
-    assert_equal(sprintf["%20.8d"](Int(-1234)), "           -00001234")
-    assert_equal(sprintf["%020.8d"](Int(1234)), "            00001234")
-    assert_equal(sprintf["%020.8d"](Int(-1234)), "           -00001234")
-    assert_equal(sprintf["%-20.8d"](Int(1234)), "00001234            ")
-    assert_equal(sprintf["%-20.8d"](Int(-1234)), "-00001234           ")
-    assert_equal(sprintf["%-#20.8x"](Int(19090108)), "0x01234abc          ")
-    assert_equal(sprintf["%-#20.8X"](Int(19090108)), "0X01234ABC          ")
-    assert_equal(sprintf["%-#20.8o"](Int(668)), "00001234            ")
+    _both["%d"](UInt(12345), "12345")
+    _both["%d"](Int(-12345), "-12345")
+    _both["%.d"](Int(0), "")
+    _both["%.0d"](Int(0), "")
+    _both["%6.0d"](Int(0), "      ")
+    _both["%06.0d"](Int(0), "      ")
+    _both["% d"](Int(12345), " 12345")
+    _both["%+d"](Int(12345), "+12345")
+    _both["%+d"](Int(-12345), "-12345")
+    _both["%b"](Int(7), "111")
+    _both["%b"](Int(-6), "-110")
+    _both["%#b"](Int(7), "0b111")
+    _both["%#b"](Int(-6), "-0b110")
+    _both["%o"](Int(668), "1234")
+    _both["%o"](Int(-668), "-1234")
+    _both["%#o"](Int(668), "01234")
+    _both["%#o"](Int(-668), "-01234")
+    _both["%O"](Int(668), "0o1234")
+    _both["%O"](Int(-668), "-0o1234")
+    _both["%#X"](Int(0), "0X0")
+    _both["%x"](Int(313249263), "12abcdef")
+    _both["%X"](Int(313249263), "12ABCDEF")
+    _both["%.20b"](Int(7), "00000000000000000111")
+    _both["%10d"](Int(12345), "     12345")
+    _both["%10d"](Int(-12345), "    -12345")
+    _both["%+10d"](Int(12345), "    +12345")
+    _both["%010d"](Int(12345), "0000012345")
+    _both["%010d"](Int(-12345), "-000012345")
+    _both["%20.8d"](Int(1234), "            00001234")
+    _both["%20.8d"](Int(-1234), "           -00001234")
+    _both["%020.8d"](Int(1234), "            00001234")
+    _both["%020.8d"](Int(-1234), "           -00001234")
+    _both["%-20.8d"](Int(1234), "00001234            ")
+    _both["%-20.8d"](Int(-1234), "-00001234           ")
+    _both["%-#20.8x"](Int(19090108), "0x01234abc          ")
+    _both["%-#20.8X"](Int(19090108), "0X01234ABC          ")
+    _both["%-#20.8o"](Int(668), "00001234            ")
 
 
 def test_unicode_format() raises:
     """Go's `unicode format`, 5 rows."""
-    assert_equal(sprintf["%U"](Int(0)), "U+0000")
-    assert_equal(sprintf["%U"](Int(-1)), "U+FFFFFFFFFFFFFFFF")
-    assert_equal(sprintf["%U"](Int32(10)), "U+000A")
-    assert_equal(sprintf["%#U"](Int32(10)), "U+000A")
-    assert_equal(sprintf["%+U"](Int32(120)), "U+0078")
+    _both["%U"](Int(0), "U+0000")
+    _both["%U"](Int(-1), "U+FFFFFFFFFFFFFFFF")
+    _both["%U"](Int32(10), "U+000A")
+    _both["%#U"](Int32(10), "U+000A")
+    _both["%+U"](Int32(120), "U+0078")
 
 
 def test_plus_flag_should_have_no_effect() raises:
     """Go's `Plus flag should have no effect.`, 1 rows."""
-    assert_equal(sprintf["%# U"](Int32(120)), "U+0078 'x'")
+    _both["%# U"](Int32(120), "U+0078 'x'")
 
 
 def test_space_flag_should_have_no_effect() raises:
     """Go's `Space flag should have no effect.`, 1 rows."""
-    assert_equal(sprintf["%#.2U"](Int32(120)), "U+0078 'x'")
+    _both["%#.2U"](Int32(120), "U+0078 'x'")
 
 
 def test_precisions_below_4_should_print_4_digits() raises:
     """Go's `Precisions below 4 should print 4 digits.`, 8 rows."""
-    assert_equal(sprintf["%U"](Int32(9786)), "U+263A")
-    assert_equal(sprintf["%#U"](Int32(9786)), "U+263A '☺'")
-    assert_equal(sprintf["%U"](Int32(120514)), "U+1D6C2")
-    assert_equal(sprintf["%#U"](Int32(120514)), "U+1D6C2 '𝛂'")
-    assert_equal(sprintf["%#14.6U"](Int32(8984)), "  U+002318 '⌘'")
-    assert_equal(sprintf["%#-14.6U"](Int32(8984)), "U+002318 '⌘'  ")
-    assert_equal(sprintf["%#014.6U"](Int32(8984)), "  U+002318 '⌘'")
-    assert_equal(sprintf["%#-014.6U"](Int32(8984)), "U+002318 '⌘'  ")
+    _both["%U"](Int32(9786), "U+263A")
+    _both["%#U"](Int32(9786), "U+263A '☺'")
+    _both["%U"](Int32(120514), "U+1D6C2")
+    _both["%#U"](Int32(120514), "U+1D6C2 '𝛂'")
+    _both["%#14.6U"](Int32(8984), "  U+002318 '⌘'")
+    _both["%#-14.6U"](Int32(8984), "U+002318 '⌘'  ")
+    _both["%#014.6U"](Int32(8984), "  U+002318 '⌘'")
+    _both["%#-014.6U"](Int32(8984), "U+002318 '⌘'  ")
 
 
 def test_floats() raises:
     """Go's `floats`, 28 rows."""
-    assert_equal(sprintf["%+.3e"](_f64(0x0000000000000000)), "+0.000e+00")
-    assert_equal(sprintf["%+.3e"](_f64(0x3FF0000000000000)), "+1.000e+00")
-    assert_equal(sprintf["%+.3x"](_f64(0x0000000000000000)), "+0x0.000p+00")
-    assert_equal(sprintf["%+.3x"](_f64(0x3FF0000000000000)), "+0x1.000p+00")
-    assert_equal(sprintf["%+.3f"](_f64(0xBFF0000000000000)), "-1.000")
-    assert_equal(sprintf["%+.3F"](_f64(0xBFF0000000000000)), "-1.000")
-    assert_equal(sprintf["%+.3F"](_f32(0xBF800000)), "-1.000")
-    assert_equal(sprintf["%+07.2f"](_f64(0x3FF0000000000000)), "+001.00")
-    assert_equal(sprintf["%+07.2f"](_f64(0xBFF0000000000000)), "-001.00")
-    assert_equal(sprintf["%-07.2f"](_f64(0x3FF0000000000000)), "1.00   ")
-    assert_equal(sprintf["%-07.2f"](_f64(0xBFF0000000000000)), "-1.00  ")
-    assert_equal(sprintf["%+-07.2f"](_f64(0x3FF0000000000000)), "+1.00  ")
-    assert_equal(sprintf["%+-07.2f"](_f64(0xBFF0000000000000)), "-1.00  ")
-    assert_equal(sprintf["%-+07.2f"](_f64(0x3FF0000000000000)), "+1.00  ")
-    assert_equal(sprintf["%-+07.2f"](_f64(0xBFF0000000000000)), "-1.00  ")
-    assert_equal(sprintf["%+10.2f"](_f64(0x3FF0000000000000)), "     +1.00")
-    assert_equal(sprintf["%+10.2f"](_f64(0xBFF0000000000000)), "     -1.00")
-    assert_equal(sprintf["% .3E"](_f64(0xBFF0000000000000)), "-1.000E+00")
-    assert_equal(sprintf["% .3e"](_f64(0x3FF0000000000000)), " 1.000e+00")
-    assert_equal(sprintf["% .3X"](_f64(0xBFF0000000000000)), "-0X1.000P+00")
-    assert_equal(sprintf["% .3x"](_f64(0x3FF0000000000000)), " 0x1.000p+00")
-    assert_equal(sprintf["%+.3g"](_f64(0x0000000000000000)), "+0")
-    assert_equal(sprintf["%+.3g"](_f64(0x3FF0000000000000)), "+1")
-    assert_equal(sprintf["%+.3g"](_f64(0xBFF0000000000000)), "-1")
-    assert_equal(sprintf["% .3g"](_f64(0xBFF0000000000000)), "-1")
-    assert_equal(sprintf["% .3g"](_f64(0x3FF0000000000000)), " 1")
-    assert_equal(sprintf["%b"](_f32(0x3F800000)), "8388608p-23")
-    assert_equal(
-        sprintf["%b"](_f64(0x3FF0000000000000)), "4503599627370496p-52"
-    )
+    _both["%+.3e"](_f64(0x0000000000000000), "+0.000e+00")
+    _both["%+.3e"](_f64(0x3FF0000000000000), "+1.000e+00")
+    _both["%+.3x"](_f64(0x0000000000000000), "+0x0.000p+00")
+    _both["%+.3x"](_f64(0x3FF0000000000000), "+0x1.000p+00")
+    _both["%+.3f"](_f64(0xBFF0000000000000), "-1.000")
+    _both["%+.3F"](_f64(0xBFF0000000000000), "-1.000")
+    _both["%+.3F"](_f32(0xBF800000), "-1.000")
+    _both["%+07.2f"](_f64(0x3FF0000000000000), "+001.00")
+    _both["%+07.2f"](_f64(0xBFF0000000000000), "-001.00")
+    _both["%-07.2f"](_f64(0x3FF0000000000000), "1.00   ")
+    _both["%-07.2f"](_f64(0xBFF0000000000000), "-1.00  ")
+    _both["%+-07.2f"](_f64(0x3FF0000000000000), "+1.00  ")
+    _both["%+-07.2f"](_f64(0xBFF0000000000000), "-1.00  ")
+    _both["%-+07.2f"](_f64(0x3FF0000000000000), "+1.00  ")
+    _both["%-+07.2f"](_f64(0xBFF0000000000000), "-1.00  ")
+    _both["%+10.2f"](_f64(0x3FF0000000000000), "     +1.00")
+    _both["%+10.2f"](_f64(0xBFF0000000000000), "     -1.00")
+    _both["% .3E"](_f64(0xBFF0000000000000), "-1.000E+00")
+    _both["% .3e"](_f64(0x3FF0000000000000), " 1.000e+00")
+    _both["% .3X"](_f64(0xBFF0000000000000), "-0X1.000P+00")
+    _both["% .3x"](_f64(0x3FF0000000000000), " 0x1.000p+00")
+    _both["%+.3g"](_f64(0x0000000000000000), "+0")
+    _both["%+.3g"](_f64(0x3FF0000000000000), "+1")
+    _both["%+.3g"](_f64(0xBFF0000000000000), "-1")
+    _both["% .3g"](_f64(0xBFF0000000000000), "-1")
+    _both["% .3g"](_f64(0x3FF0000000000000), " 1")
+    _both["%b"](_f32(0x3F800000), "8388608p-23")
+    _both["%b"](_f64(0x3FF0000000000000), "4503599627370496p-52")
 
 
 def test_test_sharp_flag_used_with_floats() raises:
     """Go's `Test sharp flag used with floats.`, 36 rows."""
-    assert_equal(sprintf["%#g"](_f64(0x0000000000000002)), "1.00000e-323")
-    assert_equal(sprintf["%#g"](_f64(0xBFF0000000000000)), "-1.00000")
-    assert_equal(sprintf["%#g"](_f64(0x3FF199999999999A)), "1.10000")
-    assert_equal(sprintf["%#g"](_f64(0x40FE240000000000)), "123456.")
-    assert_equal(sprintf["%#g"](_f64(0x4132D68700000000)), "1.234567e+06")
-    assert_equal(sprintf["%#g"](_f64(0x4132C4B000000000)), "1.23000e+06")
-    assert_equal(sprintf["%#g"](_f64(0x412E848000000000)), "1.00000e+06")
-    assert_equal(sprintf["%#.0f"](_f64(0x3FF0000000000000)), "1.")
-    assert_equal(sprintf["%#.0e"](_f64(0x3FF0000000000000)), "1.e+00")
-    assert_equal(sprintf["%#.0x"](_f64(0x3FF0000000000000)), "0x1.p+00")
-    assert_equal(sprintf["%#.0g"](_f64(0x3FF0000000000000)), "1.")
-    assert_equal(sprintf["%#.0g"](_f64(0x4130C8E000000000)), "1.e+06")
-    assert_equal(sprintf["%#.4f"](_f64(0x3FF0000000000000)), "1.0000")
-    assert_equal(sprintf["%#.4e"](_f64(0x3FF0000000000000)), "1.0000e+00")
-    assert_equal(sprintf["%#.4x"](_f64(0x3FF0000000000000)), "0x1.0000p+00")
-    assert_equal(sprintf["%#.4g"](_f64(0x3FF0000000000000)), "1.000")
-    assert_equal(sprintf["%#.4g"](_f64(0x40F86A0000000000)), "1.000e+05")
-    assert_equal(sprintf["%#.4g"](_f64(0x3FF3BE76C8B43958)), "1.234")
-    assert_equal(sprintf["%#.4g"](_f64(0x3FBF972474538EF3)), "0.1234")
-    assert_equal(sprintf["%#.4g"](_f64(0x3FF3AE147AE147AE)), "1.230")
-    assert_equal(sprintf["%#.4g"](_f64(0x3FBF7CED916872B0)), "0.1230")
-    assert_equal(sprintf["%#.4g"](_f64(0x3FF3333333333333)), "1.200")
-    assert_equal(sprintf["%#.4g"](_f64(0x3FBEB851EB851EB8)), "0.1200")
-    assert_equal(sprintf["%#.4g"](_f64(0x4024666666666666)), "10.20")
-    assert_equal(sprintf["%#.4g"](_f64(0x0000000000000000)), "0.000")
-    assert_equal(sprintf["%#.4g"](_f64(0x3F889374BC6A7EFA)), "0.01200")
-    assert_equal(sprintf["%#.0f"](_f64(0x405EC00000000000)), "123.")
-    assert_equal(sprintf["%#.0e"](_f64(0x405EC00000000000)), "1.e+02")
-    assert_equal(sprintf["%#.0x"](_f64(0x405EC00000000000)), "0x1.p+07")
-    assert_equal(sprintf["%#.0g"](_f64(0x405EC00000000000)), "1.e+02")
-    assert_equal(sprintf["%#.4f"](_f64(0x405EC00000000000)), "123.0000")
-    assert_equal(sprintf["%#.4e"](_f64(0x405EC00000000000)), "1.2300e+02")
-    assert_equal(sprintf["%#.4x"](_f64(0x405EC00000000000)), "0x1.ec00p+06")
-    assert_equal(sprintf["%#.4g"](_f64(0x405EC00000000000)), "123.0")
-    assert_equal(sprintf["%#.4g"](_f64(0x40FE078000000000)), "1.230e+05")
-    assert_equal(sprintf["%#9.4g"](_f64(0x3FF0000000000000)), "    1.000")
+    _both["%#g"](_f64(0x0000000000000002), "1.00000e-323")
+    _both["%#g"](_f64(0xBFF0000000000000), "-1.00000")
+    _both["%#g"](_f64(0x3FF199999999999A), "1.10000")
+    _both["%#g"](_f64(0x40FE240000000000), "123456.")
+    _both["%#g"](_f64(0x4132D68700000000), "1.234567e+06")
+    _both["%#g"](_f64(0x4132C4B000000000), "1.23000e+06")
+    _both["%#g"](_f64(0x412E848000000000), "1.00000e+06")
+    _both["%#.0f"](_f64(0x3FF0000000000000), "1.")
+    _both["%#.0e"](_f64(0x3FF0000000000000), "1.e+00")
+    _both["%#.0x"](_f64(0x3FF0000000000000), "0x1.p+00")
+    _both["%#.0g"](_f64(0x3FF0000000000000), "1.")
+    _both["%#.0g"](_f64(0x4130C8E000000000), "1.e+06")
+    _both["%#.4f"](_f64(0x3FF0000000000000), "1.0000")
+    _both["%#.4e"](_f64(0x3FF0000000000000), "1.0000e+00")
+    _both["%#.4x"](_f64(0x3FF0000000000000), "0x1.0000p+00")
+    _both["%#.4g"](_f64(0x3FF0000000000000), "1.000")
+    _both["%#.4g"](_f64(0x40F86A0000000000), "1.000e+05")
+    _both["%#.4g"](_f64(0x3FF3BE76C8B43958), "1.234")
+    _both["%#.4g"](_f64(0x3FBF972474538EF3), "0.1234")
+    _both["%#.4g"](_f64(0x3FF3AE147AE147AE), "1.230")
+    _both["%#.4g"](_f64(0x3FBF7CED916872B0), "0.1230")
+    _both["%#.4g"](_f64(0x3FF3333333333333), "1.200")
+    _both["%#.4g"](_f64(0x3FBEB851EB851EB8), "0.1200")
+    _both["%#.4g"](_f64(0x4024666666666666), "10.20")
+    _both["%#.4g"](_f64(0x0000000000000000), "0.000")
+    _both["%#.4g"](_f64(0x3F889374BC6A7EFA), "0.01200")
+    _both["%#.0f"](_f64(0x405EC00000000000), "123.")
+    _both["%#.0e"](_f64(0x405EC00000000000), "1.e+02")
+    _both["%#.0x"](_f64(0x405EC00000000000), "0x1.p+07")
+    _both["%#.0g"](_f64(0x405EC00000000000), "1.e+02")
+    _both["%#.4f"](_f64(0x405EC00000000000), "123.0000")
+    _both["%#.4e"](_f64(0x405EC00000000000), "1.2300e+02")
+    _both["%#.4x"](_f64(0x405EC00000000000), "0x1.ec00p+06")
+    _both["%#.4g"](_f64(0x405EC00000000000), "123.0")
+    _both["%#.4g"](_f64(0x40FE078000000000), "1.230e+05")
+    _both["%#9.4g"](_f64(0x3FF0000000000000), "    1.000")
 
 
 def test_the_sharp_flag_has_no_effect_for_binary_float_format() raises:
     """Go's `The sharp flag has no effect for binary float format.`, 1 rows."""
-    assert_equal(
-        sprintf["%#b"](_f64(0x3FF0000000000000)), "4503599627370496p-52"
-    )
+    _both["%#b"](_f64(0x3FF0000000000000), "4503599627370496p-52")
 
 
 def test_precision_has_no_effect_for_binary_float_format() raises:
     """Go's `Precision has no effect for binary float format.`, 2 rows."""
-    assert_equal(sprintf["%.4b"](_f32(0x3F800000)), "8388608p-23")
-    assert_equal(
-        sprintf["%.4b"](_f64(0xBFF0000000000000)), "-4503599627370496p-52"
-    )
+    _both["%.4b"](_f32(0x3F800000), "8388608p-23")
+    _both["%.4b"](_f64(0xBFF0000000000000), "-4503599627370496p-52")
 
 
 def test_old_test_fmt_test_go() raises:
     """Go's `old test/fmt_test.go`, 45 rows."""
-    assert_equal(sprintf["%e"](_f64(0x3FF0000000000000)), "1.000000e+00")
-    assert_equal(sprintf["%e"](_f64(0x4132D687CCCCCCCD)), "1.234568e+06")
-    assert_equal(sprintf["%e"](_f64(0x3EE9E4091070DF4C)), "1.234568e-05")
-    assert_equal(sprintf["%e"](_f64(0xC01C000000000000)), "-7.000000e+00")
-    assert_equal(sprintf["%e"](_f64(0xBE112E0BE826D695)), "-1.000000e-09")
-    assert_equal(sprintf["%f"](_f64(0x4132D687CCCCCCCD)), "1234567.800000")
-    assert_equal(sprintf["%f"](_f64(0x3EE9E4091070DF4C)), "0.000012")
-    assert_equal(sprintf["%f"](_f64(0xC01C000000000000)), "-7.000000")
-    assert_equal(sprintf["%f"](_f64(0xBE112E0BE826D695)), "-0.000000")
-    assert_equal(sprintf["%g"](_f64(0x4132D687CCCCCCCD)), "1.2345678e+06")
-    assert_equal(sprintf["%g"](_f32(0x4996B43E)), "1.2345678e+06")
-    assert_equal(sprintf["%g"](_f64(0x3EE9E4091070DF4C)), "1.2345678e-05")
-    assert_equal(sprintf["%g"](_f64(0xC01C000000000000)), "-7")
-    assert_equal(sprintf["%g"](_f64(0xBE112E0BE826D695)), "-1e-09")
-    assert_equal(sprintf["%g"](_f32(0xB089705F)), "-1e-09")
-    assert_equal(sprintf["%E"](_f64(0x3FF0000000000000)), "1.000000E+00")
-    assert_equal(sprintf["%E"](_f64(0x4132D687CCCCCCCD)), "1.234568E+06")
-    assert_equal(sprintf["%E"](_f64(0x3EE9E4091070DF4C)), "1.234568E-05")
-    assert_equal(sprintf["%E"](_f64(0xC01C000000000000)), "-7.000000E+00")
-    assert_equal(sprintf["%E"](_f64(0xBE112E0BE826D695)), "-1.000000E-09")
-    assert_equal(sprintf["%G"](_f64(0x4132D687CCCCCCCD)), "1.2345678E+06")
-    assert_equal(sprintf["%G"](_f32(0x4996B43E)), "1.2345678E+06")
-    assert_equal(sprintf["%G"](_f64(0x3EE9E4091070DF4C)), "1.2345678E-05")
-    assert_equal(sprintf["%G"](_f64(0xC01C000000000000)), "-7")
-    assert_equal(sprintf["%G"](_f64(0xBE112E0BE826D695)), "-1E-09")
-    assert_equal(sprintf["%G"](_f32(0xB089705F)), "-1E-09")
-    assert_equal(
-        sprintf["%20.5s"](String("qwertyuiop")), "               qwert"
-    )
-    assert_equal(sprintf["%.5s"](String("qwertyuiop")), "qwert")
-    assert_equal(
-        sprintf["%-20.5s"](String("qwertyuiop")), "qwert               "
-    )
-    assert_equal(sprintf["%20c"](Int32(120)), "                   x")
-    assert_equal(sprintf["%-20c"](Int32(120)), "x                   ")
-    assert_equal(
-        sprintf["%20.6e"](_f64(0x40934A0000000000)), "        1.234500e+03"
-    )
-    assert_equal(
-        sprintf["%20.6e"](_f64(0x3F5439DE481F5382)), "        1.234500e-03"
-    )
-    assert_equal(
-        sprintf["%20e"](_f64(0x40934A0000000000)), "        1.234500e+03"
-    )
-    assert_equal(
-        sprintf["%20e"](_f64(0x3F5439DE481F5382)), "        1.234500e-03"
-    )
-    assert_equal(
-        sprintf["%20.8e"](_f64(0x40934A0000000000)), "      1.23450000e+03"
-    )
-    assert_equal(
-        sprintf["%20f"](_f64(0x40934A4584F4C6E7)), "         1234.567890"
-    )
-    assert_equal(
-        sprintf["%20f"](_f64(0x3F543A272D955E51)), "            0.001235"
-    )
-    assert_equal(
-        sprintf["%20f"](_f64(0x4206FEE0E1A9E065)), "  12345678901.234568"
-    )
-    assert_equal(
-        sprintf["%-20f"](_f64(0x40934A4584F4C6E7)), "1234.567890         "
-    )
-    assert_equal(
-        sprintf["%20.8f"](_f64(0x40934A4584F4C6E7)), "       1234.56789000"
-    )
-    assert_equal(
-        sprintf["%20.8f"](_f64(0x3F543A272D955E51)), "          0.00123457"
-    )
-    assert_equal(sprintf["%g"](_f64(0x40934A4584F4C6E7)), "1234.56789")
-    assert_equal(sprintf["%g"](_f64(0x3F543A272D955E51)), "0.00123456789")
-    assert_equal(sprintf["%g"](_f64(0x441AC53A7DF93D69)), "1.23456789e+20")
+    _both["%e"](_f64(0x3FF0000000000000), "1.000000e+00")
+    _both["%e"](_f64(0x4132D687CCCCCCCD), "1.234568e+06")
+    _both["%e"](_f64(0x3EE9E4091070DF4C), "1.234568e-05")
+    _both["%e"](_f64(0xC01C000000000000), "-7.000000e+00")
+    _both["%e"](_f64(0xBE112E0BE826D695), "-1.000000e-09")
+    _both["%f"](_f64(0x4132D687CCCCCCCD), "1234567.800000")
+    _both["%f"](_f64(0x3EE9E4091070DF4C), "0.000012")
+    _both["%f"](_f64(0xC01C000000000000), "-7.000000")
+    _both["%f"](_f64(0xBE112E0BE826D695), "-0.000000")
+    _both["%g"](_f64(0x4132D687CCCCCCCD), "1.2345678e+06")
+    _both["%g"](_f32(0x4996B43E), "1.2345678e+06")
+    _both["%g"](_f64(0x3EE9E4091070DF4C), "1.2345678e-05")
+    _both["%g"](_f64(0xC01C000000000000), "-7")
+    _both["%g"](_f64(0xBE112E0BE826D695), "-1e-09")
+    _both["%g"](_f32(0xB089705F), "-1e-09")
+    _both["%E"](_f64(0x3FF0000000000000), "1.000000E+00")
+    _both["%E"](_f64(0x4132D687CCCCCCCD), "1.234568E+06")
+    _both["%E"](_f64(0x3EE9E4091070DF4C), "1.234568E-05")
+    _both["%E"](_f64(0xC01C000000000000), "-7.000000E+00")
+    _both["%E"](_f64(0xBE112E0BE826D695), "-1.000000E-09")
+    _both["%G"](_f64(0x4132D687CCCCCCCD), "1.2345678E+06")
+    _both["%G"](_f32(0x4996B43E), "1.2345678E+06")
+    _both["%G"](_f64(0x3EE9E4091070DF4C), "1.2345678E-05")
+    _both["%G"](_f64(0xC01C000000000000), "-7")
+    _both["%G"](_f64(0xBE112E0BE826D695), "-1E-09")
+    _both["%G"](_f32(0xB089705F), "-1E-09")
+    _both["%20.5s"](String("qwertyuiop"), "               qwert")
+    _both["%.5s"](String("qwertyuiop"), "qwert")
+    _both["%-20.5s"](String("qwertyuiop"), "qwert               ")
+    _both["%20c"](Int32(120), "                   x")
+    _both["%-20c"](Int32(120), "x                   ")
+    _both["%20.6e"](_f64(0x40934A0000000000), "        1.234500e+03")
+    _both["%20.6e"](_f64(0x3F5439DE481F5382), "        1.234500e-03")
+    _both["%20e"](_f64(0x40934A0000000000), "        1.234500e+03")
+    _both["%20e"](_f64(0x3F5439DE481F5382), "        1.234500e-03")
+    _both["%20.8e"](_f64(0x40934A0000000000), "      1.23450000e+03")
+    _both["%20f"](_f64(0x40934A4584F4C6E7), "         1234.567890")
+    _both["%20f"](_f64(0x3F543A272D955E51), "            0.001235")
+    _both["%20f"](_f64(0x4206FEE0E1A9E065), "  12345678901.234568")
+    _both["%-20f"](_f64(0x40934A4584F4C6E7), "1234.567890         ")
+    _both["%20.8f"](_f64(0x40934A4584F4C6E7), "       1234.56789000")
+    _both["%20.8f"](_f64(0x3F543A272D955E51), "          0.00123457")
+    _both["%g"](_f64(0x40934A4584F4C6E7), "1234.56789")
+    _both["%g"](_f64(0x3F543A272D955E51), "0.00123456789")
+    _both["%g"](_f64(0x441AC53A7DF93D69), "1.23456789e+20")
 
 
 def test_floates_with_v() raises:
     """Go's `floates with %v`, 2 rows."""
-    assert_equal(sprintf["%v"](_f64(0x3FF3C0CA2A5B1D5D)), "1.2345678")
-    assert_equal(sprintf["%v"](_f32(0x3F9E0651)), "1.2345678")
+    _both["%v"](_f64(0x3FF3C0CA2A5B1D5D), "1.2345678")
+    _both["%v"](_f32(0x3F9E0651), "1.2345678")
 
 
 def test_go_syntax() raises:
     """Go's `go syntax`, 4 rows."""
-    assert_equal(sprintf["%#v"](Int(1000000000)), "1000000000")
-    assert_equal(sprintf["%#v"](String("foo")), '"foo"')
-    assert_equal(sprintf["%#v"](_f64(0x3FF3C0CA2A5B1D5D)), "1.2345678")
-    assert_equal(sprintf["%#v"](_f32(0x3F9E0651)), "1.2345678")
+    _both["%#v"](Int(1000000000), "1000000000")
+    _both["%#v"](String("foo"), '"foo"')
+    _both["%#v"](_f64(0x3FF3C0CA2A5B1D5D), "1.2345678")
+    _both["%#v"](_f32(0x3F9E0651), "1.2345678")
 
 
 def test_whole_number_floats_are_printed_without_decimals_see_issue_27634() raises:
     """Go's `Whole number floats are printed without decimals. See Issue 27634.`, 4 rows.
     """
-    assert_equal(sprintf["%#v"](_f64(0x3FF0000000000000)), "1")
-    assert_equal(sprintf["%#v"](_f64(0x412E848000000000)), "1e+06")
-    assert_equal(sprintf["%#v"](_f32(0x3F800000)), "1")
-    assert_equal(sprintf["%#v"](_f32(0x49742400)), "1e+06")
+    _both["%#v"](_f64(0x3FF0000000000000), "1")
+    _both["%#v"](_f64(0x412E848000000000), "1e+06")
+    _both["%#v"](_f32(0x3F800000), "1")
+    _both["%#v"](_f32(0x49742400), "1e+06")
 
 
 def test_same_for_strings() raises:
     """Go's `Same for strings`, 6 rows."""
-    assert_equal(sprintf["%2x"](String("")), "  ")
-    assert_equal(sprintf["%#2x"](String("")), "  ")
-    assert_equal(sprintf["% 02x"](String("")), "00")
-    assert_equal(sprintf["%# 02x"](String("")), "00")
-    assert_equal(sprintf["%-2x"](String("")), "  ")
-    assert_equal(sprintf["%-02x"](String("")), "  ")
+    _both["%2x"](String(""), "  ")
+    _both["%#2x"](String(""), "  ")
+    _both["% 02x"](String(""), "00")
+    _both["%# 02x"](String(""), "00")
+    _both["%-2x"](String(""), "  ")
+    _both["%-02x"](String(""), "  ")
 
 
 def test_test_that_maps_with_non_reflexive_keys_print_all_keys_and_values() raises:
     """Go's `Test that maps with non-reflexive keys print all keys and values.`, 22 rows.
     """
-    assert_equal(sprintf["%.2f"](_f64(0x3FF0000000000000)), "1.00")
-    assert_equal(sprintf["%.2f"](_f64(0xBFF0000000000000)), "-1.00")
-    assert_equal(sprintf["% .2f"](_f64(0x3FF0000000000000)), " 1.00")
-    assert_equal(sprintf["% .2f"](_f64(0xBFF0000000000000)), "-1.00")
-    assert_equal(sprintf["%+.2f"](_f64(0x3FF0000000000000)), "+1.00")
-    assert_equal(sprintf["%+.2f"](_f64(0xBFF0000000000000)), "-1.00")
-    assert_equal(sprintf["%7.2f"](_f64(0x3FF0000000000000)), "   1.00")
-    assert_equal(sprintf["%7.2f"](_f64(0xBFF0000000000000)), "  -1.00")
-    assert_equal(sprintf["% 7.2f"](_f64(0x3FF0000000000000)), "   1.00")
-    assert_equal(sprintf["% 7.2f"](_f64(0xBFF0000000000000)), "  -1.00")
-    assert_equal(sprintf["%+7.2f"](_f64(0x3FF0000000000000)), "  +1.00")
-    assert_equal(sprintf["%+7.2f"](_f64(0xBFF0000000000000)), "  -1.00")
-    assert_equal(sprintf["% +7.2f"](_f64(0x3FF0000000000000)), "  +1.00")
-    assert_equal(sprintf["% +7.2f"](_f64(0xBFF0000000000000)), "  -1.00")
-    assert_equal(sprintf["%07.2f"](_f64(0x3FF0000000000000)), "0001.00")
-    assert_equal(sprintf["%07.2f"](_f64(0xBFF0000000000000)), "-001.00")
-    assert_equal(sprintf["% 07.2f"](_f64(0x3FF0000000000000)), " 001.00")
-    assert_equal(sprintf["% 07.2f"](_f64(0xBFF0000000000000)), "-001.00")
-    assert_equal(sprintf["%+07.2f"](_f64(0x3FF0000000000000)), "+001.00")
-    assert_equal(sprintf["%+07.2f"](_f64(0xBFF0000000000000)), "-001.00")
-    assert_equal(sprintf["% +07.2f"](_f64(0x3FF0000000000000)), "+001.00")
-    assert_equal(sprintf["% +07.2f"](_f64(0xBFF0000000000000)), "-001.00")
+    _both["%.2f"](_f64(0x3FF0000000000000), "1.00")
+    _both["%.2f"](_f64(0xBFF0000000000000), "-1.00")
+    _both["% .2f"](_f64(0x3FF0000000000000), " 1.00")
+    _both["% .2f"](_f64(0xBFF0000000000000), "-1.00")
+    _both["%+.2f"](_f64(0x3FF0000000000000), "+1.00")
+    _both["%+.2f"](_f64(0xBFF0000000000000), "-1.00")
+    _both["%7.2f"](_f64(0x3FF0000000000000), "   1.00")
+    _both["%7.2f"](_f64(0xBFF0000000000000), "  -1.00")
+    _both["% 7.2f"](_f64(0x3FF0000000000000), "   1.00")
+    _both["% 7.2f"](_f64(0xBFF0000000000000), "  -1.00")
+    _both["%+7.2f"](_f64(0x3FF0000000000000), "  +1.00")
+    _both["%+7.2f"](_f64(0xBFF0000000000000), "  -1.00")
+    _both["% +7.2f"](_f64(0x3FF0000000000000), "  +1.00")
+    _both["% +7.2f"](_f64(0xBFF0000000000000), "  -1.00")
+    _both["%07.2f"](_f64(0x3FF0000000000000), "0001.00")
+    _both["%07.2f"](_f64(0xBFF0000000000000), "-001.00")
+    _both["% 07.2f"](_f64(0x3FF0000000000000), " 001.00")
+    _both["% 07.2f"](_f64(0xBFF0000000000000), "-001.00")
+    _both["%+07.2f"](_f64(0x3FF0000000000000), "+001.00")
+    _both["%+07.2f"](_f64(0xBFF0000000000000), "-001.00")
+    _both["% +07.2f"](_f64(0x3FF0000000000000), "+001.00")
+    _both["% +07.2f"](_f64(0xBFF0000000000000), "-001.00")
 
 
 def test_use_spaces_instead_of_zero_if_padding_to_the_right() raises:
     """Go's `Use spaces instead of zero if padding to the right.`, 2 rows."""
-    assert_equal(sprintf["%0-5s"](String("abc")), "abc  ")
-    assert_equal(sprintf["%-05.1f"](_f64(0x3FF0000000000000)), "1.0  ")
+    _both["%0-5s"](String("abc"), "abc  ")
+    _both["%-05.1f"](_f64(0x3FF0000000000000), "1.0  ")

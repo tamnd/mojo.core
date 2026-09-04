@@ -16,7 +16,17 @@ marker, `%!d(string=hi)`, which is Go's text and is compared against Go's own
 output byte for byte in the differential suite. A `String` here is a `string`
 there, and spelling it the Mojo way would make our markers something a Go
 programmer has to translate for no gain.
+
+The last two kinds are decided by conformance rather than by identity, and that
+is a different question from the one above. Asking whether a type is `Intable`
+is useless because half the types are. Asking whether it is `Writable`, or
+whether it is the `Fields` this library declared itself, has exactly one answer
+and no overlap, and `conforms_to` in a `comptime if` answers it. The order
+matters: a type that writes itself is asked to write itself, and only a type
+that cannot is walked field by field.
 """
+
+from .fields import Fields
 
 comptime OTHER = 0
 """Anything `Writable` that is not one of the kinds below. It prints through
@@ -28,8 +38,20 @@ comptime FLOAT = 3
 comptime TEXT = 4
 comptime BOOLEAN = 5
 
+comptime STRUCT = 6
+"""A type that is not `Writable` but conforms to `Fields`, so it can be walked
+field by field. See fields.mojo."""
 
-def kind_of[T: Writable]() -> Int:
+comptime OPAQUE = 7
+"""A type that can neither write itself nor list its fields.
+
+There is nothing to print and no way to find out what there would have been.
+This is the reflection hole: the argument is named while the program is built
+and comes out as Go's marker when it runs.
+"""
+
+
+def kind_of[T: AnyType]() -> Int:
     """Which of the kinds above `T` is."""
     comptime if T == Int:
         return SIGNED
@@ -61,16 +83,20 @@ def kind_of[T: Writable]() -> Int:
         return TEXT
     elif T == Bool:
         return BOOLEAN
-    else:
+    elif conforms_to(T, Writable):
         return OTHER
+    elif conforms_to(T, Fields):
+        return STRUCT
+    else:
+        return OPAQUE
 
 
-def name_of[T: Writable]() -> StaticString:
+def name_of[T: AnyType]() -> StaticString:
     """What Go calls the type `T` stands in for.
 
-    `OTHER` has no name to give. Go would print the type here and we have no
-    way to ask for one, so the marker says `value` and the compile time warning
-    is what the programmer is expected to act on.
+    The last three kinds have no name to give. Go would print the type here and
+    we have no way to ask for one, so the marker says `value` and the line on
+    the compiler's output is what the programmer is expected to act on.
     """
     comptime if T == Int:
         return "int"
@@ -106,7 +132,7 @@ def name_of[T: Writable]() -> StaticString:
         return "value"
 
 
-def float_bits[T: Writable]() -> Int:
+def float_bits[T: AnyType]() -> Int:
     """How wide the float is, which decides what the shortest text for it is.
 
     `%v` of `Float32(1.0 / 3)` is `0.33333334` and `%v` of the same division in
@@ -119,7 +145,7 @@ def float_bits[T: Writable]() -> Int:
         return 64
 
 
-def as_uint64[T: Writable](value: T) -> UInt64:
+def as_uint64[T: AnyType](value: T) -> UInt64:
     """The bits of an integer argument, sign extended if it is signed.
 
     Go passes every integer through `uint64` and remembers separately whether
@@ -151,7 +177,7 @@ def as_uint64[T: Writable](value: T) -> UInt64:
         return 0
 
 
-def as_float64[T: Writable](value: T) -> Float64:
+def as_float64[T: AnyType](value: T) -> Float64:
     """A float argument as the widest float, with its own width remembered by
     `float_bits`."""
     comptime if T == Float32:
@@ -162,7 +188,7 @@ def as_float64[T: Writable](value: T) -> Float64:
         return 0.0
 
 
-def as_text[T: Writable](value: T) -> String:
+def as_text[T: AnyType](value: T) -> String:
     """A text argument, or what anything else writes.
 
     The `OTHER` branch is the one that makes `%s` and `%v` work on a type this
@@ -173,11 +199,15 @@ def as_text[T: Writable](value: T) -> String:
         return rebind[String](value)
     elif T == StaticString:
         return String(rebind[StaticString](value))
-    else:
+    elif conforms_to(T, Writable):
         return String(value)
+    else:
+        # A struct or an opaque value never gets here: neither has text to
+        # give, and both are answered before anything asks for any.
+        return String()
 
 
-def as_bool[T: Writable](value: T) -> Bool:
+def as_bool[T: AnyType](value: T) -> Bool:
     """A boolean argument."""
     comptime if T == Bool:
         return rebind[Bool](value)
@@ -185,7 +215,7 @@ def as_bool[T: Writable](value: T) -> Bool:
         return False
 
 
-def as_index[T: Writable](value: T) -> Int:
+def as_index[T: AnyType](value: T) -> Int:
     """An integer argument as a width or a precision.
 
     Go takes a `*` width from any integer type and refuses anything else, which
