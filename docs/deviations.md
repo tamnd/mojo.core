@@ -192,6 +192,7 @@ Things a Go programmer will look for and not find. This is separate from the 41 
 
 | Missing | Instead |
 | --- | --- |
+| `syscall.Getdents` on Linux and `syscall.Getdirentries` on macOS, each reading raw directory entries out of a descriptor | `opendir`, `readdir` and `closedir`, which are the same three functions with the same behaviour on all three of our platforms. Go avoids libc entirely and so has to have one of these per platform and a buffer walker for each layout; this library is already linking libc, and the C library is also what deals with a directory whose entries take more than one buffer to arrive. The handle comes back as a plain integer, because Mojo's pointers cannot be null and cannot carry an origin that means somebody else owns the memory. |
 | `strings.Title` and `bytes.Title` | Deprecated in Go itself: the word boundary rule does not handle Unicode punctuation, so it turns `they're` into `They'Re`. Use the case mapping with a Unicode aware word breaker. `to_title` is still here and is the rune wise mapping, which was never the broken part. |
 | A single `len` for a string | `count_bytes`, `count_runes` and `count_graphemes`. Mojo makes `len(s)` a compile error and it is right to. |
 | `maps.Keys`, `Values` and `All` returning an iterator | `keys()`, `values()` and `all()` returning a list, each with an `_into(out)` sibling. Go's iterators are closures, and a `Dict` already has iterators of its own, so a function handing one back would be a second name for something that exists. |

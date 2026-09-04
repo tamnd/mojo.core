@@ -45,6 +45,7 @@ from std.ffi import external_call
 from core.errors import Report
 
 from .abi import PATH_MAX
+from .dir import Dirent
 from .errno import Errno, errno, set_errno
 from .stat import Stat
 
@@ -272,6 +273,68 @@ def rmdir(path: String) raises:
     var raw = _cstr(path)
     if external_call["rmdir", Int32](raw.unsafe_ptr()) < 0:
         _fail("rmdir", errno())
+
+
+def opendir(path: String) raises -> Int:
+    """Start reading a directory. Gives back a handle to close later.
+
+    The handle is C's `DIR *` as a plain integer, because Mojo's pointers
+    cannot be null and cannot carry an origin that means "the C library owns
+    this". Nothing here reads through it: it goes back to `readdir` and
+    `closedir` and nowhere else. Passing anything that did not come out of here
+    is undefined behaviour in C and will be undefined behaviour here.
+
+    This is `opendir` rather than Go's `Getdents`, which reads raw entries out
+    of a descriptor with a different name and a different structure on each
+    platform. `opendir`, `readdir` and `closedir` are the same three functions
+    on all three of ours, and this library is already linking libc.
+
+    Owning the handle is `core.os`'s job. Nothing at this layer closes anything
+    for you, exactly as nothing closes a descriptor from `open`.
+    """
+    var raw = _cstr(path)
+    var handle = external_call["opendir", Int](raw.unsafe_ptr())
+    if handle == 0:
+        _fail("opendir", errno())
+    return handle
+
+
+def readdir(dir: Int) raises -> Optional[Dirent]:
+    """The next entry, or nothing at the end of the directory.
+
+    Nothing and a failure are the same return value in C, a null pointer, and
+    the only thing telling them apart is errno, so it is cleared before the
+    call and read after it. That is the same dance `lseek` does and the second
+    reason `set_errno` is public.
+
+    The fields are copied out before this returns. The entry C hands back
+    points into a buffer the library owns and reuses on the next call, so a
+    `Dirent` that borrowed it would be pointing at the following entry by the
+    time anybody looked.
+
+    Every entry is handed back, `.` and `..` included, and `kind` is often
+    `DT_UNKNOWN`. Both are the platform's answers and filtering them is a
+    policy this layer does not have.
+    """
+    set_errno(Errno(0))
+    var entry = external_call["readdir", Int](dir)
+    if entry == 0:
+        var failure = errno()
+        if failure:
+            _fail("readdir", failure)
+        return None
+    return Dirent(unsafe_from_address=entry)
+
+
+def closedir(dir: Int) raises:
+    """Finish with a directory handle.
+
+    The handle is unusable afterwards whether this succeeded or not, which is
+    the same rule `close` follows and for the same reason: the resource is gone
+    and calling again reaches whatever took its place.
+    """
+    if external_call["closedir", Int32](dir) < 0:
+        _fail("closedir", errno())
 
 
 def unlink(path: String) raises:
