@@ -108,6 +108,17 @@ parity = "python tools/parity/run.py"
 docjson = "python tools/docjson/run.py"
 docjson-selftest = "python tools/docjson/run.py --selftest"
 
+# A JSON encoder and decoder for every struct in a package that asks for one.
+# `pixi run codec core.encoding.json` does a package of this library and
+# `pixi run codec ~/src/myapp/inventory` does one of yours, writing
+# `json_codec.mojo` beside the structs it was generated from.
+#
+# Not part of `check`, because it would rewrite files. `generated-check` is what
+# says the checked in codecs are current, and the selftest is what says the
+# generator still produces something that compiles and round trips.
+codec = "python tools/codec/run.py"
+codec-selftest = "python tools/codec/run.py --selftest"
+
 # Unicode tables, tzdata, the syscall bindings and every generated codec are
 # checked in as well as generated. This rebuilds them and fails on a diff, which
 # is the single most valuable check in the list, because generated code drifting
@@ -146,6 +157,7 @@ check = { depends-on = [
   "lint",
   "lint-selftest",
   "docjson-selftest",
+  "codec-selftest",
   "vendor-check",
   "generated-check",
   "baseline",

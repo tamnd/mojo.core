@@ -54,6 +54,8 @@ jobs:
       - run: pixi run lint-selftest
       # The reader that stands in for reflection, against a fixture package it compiles on every run. Everything the generators know about a struct comes through here, and what it reads is the output of a compiler that is still changing.
       - run: pixi run docjson-selftest
+      # The codec generator, which writes a codec for a fixture package outside the repository, builds it with warnings on and runs it. Generated code that compiles is not evidence that it is right, so the selftest round trips it.
+      - run: pixi run codec-selftest
 
   generated:
     name: generated code

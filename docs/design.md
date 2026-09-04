@@ -84,6 +84,10 @@ That generator is infrastructure rather than a JSON detail. JSON, XML, gob, bina
 
 `tools/docjson` is the reader they share, and two things it does are worth knowing about because they are not in the JSON. A field type arrives as rendered text under the name it was declared with rather than the name the module wrote, so `from core.math.big import Int as BigInt` produces a field that says `Int`, and `mojo doc` reports no private fields at all, so a struct with one looks exactly like a struct without one. Both are answered by reading the module's source alongside the JSON: what a field was written as is a name the compiler already resolved in that module's scope, and the fields missing from the JSON are the private ones. Where the source cannot be read, a name that could be two things is reported as ambiguous and a struct that might be hiding a field is reported as incomplete, and in both cases a generator refuses rather than guesses.
 
+Generating rather than reflecting settles two things Go decides at run time. A struct tag is read while the code is being written rather than while it is running, so a misspelled one stops the build instead of quietly producing a field under the wrong name. And a field that is not in the document is an error rather than a zero, because Mojo has no zero value to leave it at: only `Optional`, `List` and `Dict` may be absent, since those are the three that have an empty value nobody has to invent. That makes `omitempty` on anything else a refusal rather than a round trip that loses a field.
+
+Each generated file carries its own copy of the scanner it needs rather than importing one, so a codec works for somebody who has this library and nothing else of ours. When `core.encoding.json` exists the emitter can import instead, and because the generated files are checked in, that change is a diff in every one of them.
+
 The hole this leaves is real and it is not papered over. `json.Marshal(anyValue)` cannot exist, because there is no such thing as a value of unknown type at run time.
 
 ## 9. Real OS threads are available through libc
