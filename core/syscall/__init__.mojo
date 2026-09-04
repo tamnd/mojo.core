@@ -7,8 +7,8 @@ indistinguishable from "the directory was not searchable" to anything trying to
 decide what to do next. Everything above this needs the real thing.
 
 Start with `open`, `read`, `write` and `close` for descriptors, `stat` and its
-two siblings for what the platform knows about a path, and `Errno` for what a
-failure was.
+two siblings for what the platform knows about a path, `opendir` and `readdir`
+for what is in a directory, and `Errno` for what a failure was.
 
 Every constant the platform defines comes out of here, because a caller
 comparing an errno against `ENOENT` should not have to know that the number
@@ -218,6 +218,7 @@ from .calls import (
     chdir,
     chmod,
     close,
+    closedir,
     create,
     dup,
     fchmod,
@@ -232,7 +233,9 @@ from .calls import (
     lstat,
     mkdir,
     open,
+    opendir,
     read,
+    readdir,
     readlink,
     rename,
     rmdir,
@@ -242,5 +245,6 @@ from .calls import (
     unlinkat,
     write,
 )
+from .dir import Dirent
 from .errno import Errno, errno, set_errno
 from .stat import Stat, Timespec
