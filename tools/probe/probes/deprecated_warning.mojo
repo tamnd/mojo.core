@@ -1,13 +1,15 @@
 # PINS: 10. A compile time fact cannot be turned into a compile error
 # EXPECT: runs
-# OUTPUT: three bad rings and one good one sum to 30
+# OUTPUT: every ring here is good and sums to 24
 # WARNINGS: 1
-# WHY: The mechanism section 10 settles on, and its limit. Three bad
-# WHY: instantiations at three separate call sites produce exactly one
-# WHY: warning, because the warning belongs to the line the deprecated stub is
-# WHY: called on and not to the instantiation. So this tells you a check fired
-# WHY: and not which call was wrong, and the WARNINGS count above is what
-# WHY: would change if that were ever fixed.
+# WHY: Why section 10 does not use `@deprecated`, kept so that nobody spends a
+# WHY: day rediscovering it. Every instantiation below is good, the branch
+# WHY: holding the stub is never taken, and the warning is emitted anyway. It
+# WHY: belongs to the line the stub is written on and not to any instantiation,
+# WHY: so it fires on correct code and cannot distinguish one call from the
+# WHY: next. If this ever reports 0 warnings, `@deprecated` has become
+# WHY: conditional, and the complaint mechanism in comptime_complaint.mojo
+# WHY: could be replaced by something that carries a source location.
 
 
 @deprecated("core: n must be a power of two")
@@ -26,8 +28,4 @@ def ring[n: Int]() -> Int:
 
 
 def main():
-    var a = ring[6]()
-    var b = ring[6]()
-    var c = ring[10]()
-    var d = ring[8]()
-    print("three bad rings and one good one sum to", a + b + c + d)
+    print("every ring here is good and sums to", ring[8]() + ring[16]())

@@ -8,9 +8,13 @@ So the strategy is to take Go's tests rather than write our own, and to spend th
 
 Go's standard library ships roughly 400,000 lines of test code under a BSD licence. It is the highest value asset available to this project and it is not a substitute for thinking. It is the specification, made executable.
 
-`tools/testgen` does the conversion and it works in three tiers depending on what the test actually is.
+`tools/testgen` does the conversion and it works in four tiers depending on what the test actually is.
 
 **Data.** A large fraction of Go's tests are table driven, which is a slice of input and expected output pairs plus a loop. The table is data, the loop is boilerplate, and the table converts mechanically. The generator parses the Go source with a Go program, using the same `go/ast` package we deliberately excluded from this library and which is exactly the right tool for this job, extracts the literal tables and emits Mojo test data plus a driver. Most of `strconv`, `strings`, `bytes`, `url`, `path`, `time`, `unicode`, `regexp`, `fmt` and the codecs is this. `math` is the first package taken this way and is the one that shaped the tool: `tools/testgen/plan.toml` names the tables to harvest package by package, `extract.go` prints them as Mojo, and the extractor fails rather than skipping when a table named in the plan is not in the Go tree, because a table quietly disappearing after a Go upgrade would take its test coverage with it and say nothing. The output lands in `tests/generated/` and is checked in, and `pixi run -e oracle testgen math` is what regenerates it against the Go that `pixi.lock` pins rather than whichever one is on PATH, because two releases of Go do not have to agree about the last bit of a Bessel function and a harvest that changed with the machine would be worthless as a diff.
+
+**Calls.** One table cannot become data, and it is `fmt`'s. A format string here is a compile time parameter, so there is no loop that could walk a table of them: each row has to become its own call with its own instantiation. `tools/testgen/fmtcases` reads Go's `fmtTests` with the same `go/ast` and writes Mojo code rather than Mojo data, one `assert_equal` per row, grouped into test functions named after the section comments in Go's own table so that a failure says which part of it broke. 326 of the 811 rows come across, and the generated file states the count and the reason for every row that did not, so a Go release that changes the shape of the table shows up as a changed number rather than as quietly fewer tests. The literals are evaluated with `go/constant` rather than handed back to Go the way `extract.go` does, because fmt's table leans on methods declared in the same test file and a copy that takes the types without the methods is not a package.
+
+The fourteen rows of that table which expect an error marker are moved rather than dropped, and where they go is the interesting part. A wrong format string is a complaint from the compiler here, and the suite build treats a complaint of ours as a failure, so those rows live in `tests/warnings/fmt_table.mojo` instead, where `tools/warnings` expects the complaint, asserts its text, then runs the program and compares what it printed against Go's marker.
 
 **Corpora.** Directories of inputs with expected outputs, for the archive, image, compression and cryptography packages. These are copied as they are, with provenance recorded, and the test is written once per package rather than once per file.
 
@@ -82,11 +86,13 @@ There is one rule left in that design that nothing checks. A borrowed view is an
 
 ## The compile time checks
 
-A compile time mismatch in this library is a warning rather than an error, for the reason in [design.md](design.md). That makes the warning mechanism load bearing, and load bearing things get tested.
+A compile time mismatch in this library is a message on the compiler's output rather than an error or a warning, for the reason in [design.md](design.md). That makes the mechanism load bearing, and load bearing things get tested.
 
-`tests/warnings/` holds files that are expected to produce warnings, compiled with warnings on, with the count and the message text asserted. If the underlying mechanism stops firing, which is a plausible thing for a compiler release to change, those files start compiling cleanly and the test fails. Without it, every compile time check in the library would silently stop working and nothing would say so.
+`tests/warnings/` holds programs that are expected to complain. Each one carries its own header saying how many complaints it should produce, what text they should contain, and what the program should print when it runs, and `pixi run warnings` asserts all three. The last of those is what keeps the two halves of the promise together: the mistake is named while the program is built, and the program then behaves exactly like Go. Every build there uses an empty compiler cache, because a build served from cache does not re-run the interpreter and so says nothing, and a check that passes because the compiler stayed quiet is not a check.
 
-`pixi run lint` builds the whole tree with warnings on and fails on any diagnostic carrying our marker prefix, which is what turns those warnings into errors inside this repository.
+If the underlying mechanism stops firing, which is a plausible thing for a compiler release to change, those files start compiling silently and the test fails. Without it, every compile time check in the library would stop working at once and nothing would say so.
+
+The build of the test suite is where those complaints become errors inside this repository: `pixi run test` builds every test into one program and fails if any line of the build carries our marker. That is the build that reaches our own code, and it is why nothing in `core` ever ships a wrong format string. `pixi run lint` used to do this over each package and no longer does, because compiling a package elaborates nothing and the check was passing without ever having run.
 
 ## Why one machine is not enough
 

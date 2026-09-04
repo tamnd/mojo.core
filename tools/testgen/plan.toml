@@ -145,3 +145,12 @@ tables = [
 # core/math/rand/tables.mojo already and are the thing under test rather than
 # something to test against, so there is nothing lost in leaving them behind.
 skip = ["rn", "kn", "wn", "fn", "re", "ke", "we", "fe"]
+
+[harvest.fmt]
+go = "fmt"
+# The one entry that generates code rather than data, because a format string
+# is a compile time parameter here and a table walked by a loop cannot carry
+# one. See tools/testgen/fmtcases, which also explains which rows of Go's
+# table can be ported and which cannot.
+mode = "calls"
+file = "fmt_test.go"

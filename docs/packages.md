@@ -61,7 +61,7 @@ Everything else depends on these, and they are the first three milestones.
 
 | Go package | Symbols | `core` package | Verdict | Note |
 | --- | --- | --- | --- | --- |
-| `fmt` | 43 | `core.fmt` | Adapt | Format strings are `comptime` parameters and verbs are typechecked at compile time. [design](design.md). |
+| `fmt` | 43 | `core.fmt` | Adapt | Format strings are `comptime` parameters and verbs are typechecked at compile time. In progress: the compile time path is here, which is `sprintf`, `printf`, `fprintf` and `appendf`, every verb, flag, width and precision Go has, argument indexes and `*` widths, and 326 rows of Go's own `fmtTests` passing byte for byte. A mismatch is named on the compiler's output at the call and then prints Go's exact marker. Still to come: the runtime path, the `Print` and `Sprint` families and `errorf`. `%T` and `%p` are waived. [design](design.md), [deviations](deviations.md). |
 | `regexp` | 49 | `core.regexp` | Port | RE2 semantics: linear time, no backtracking, no catastrophic blowup. |
 | `regexp/syntax` | 113 | `core.regexp.syntax` | Port | Parser, simplifier, compiler. Parse tree in an arena. |
 | `text/scanner` | 41 | `core.text.scanner` | Port | |

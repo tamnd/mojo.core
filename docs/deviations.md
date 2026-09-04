@@ -29,8 +29,8 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `for rec := range reader` | The `core.iter.Cursor` trait, an explicit `has_next` and `next` pair, for all fallible iteration | 7, `for` drops the error |
 | `iter.Seq`, `iter.Seq2`, `iter.Pull` and `iter.Pull2` | Nothing. Range over func needs a storable closure, and a `Cursor` yielding a tuple covers what `Seq2` was for | 3 |
 | `json.Unmarshal(data, &v)` by reflection | A dynamic document, or a codec generated at build time | 8, no reflection |
-| A format verb mismatch reported at run time | Detected at compile time, reported as a warning, plus Go's exact runtime marker | 10, no static assert |
-| `%v` printing arbitrary struct fields | Needs `Writable` or a generated codec, otherwise a warning and Go's marker | 8 |
+| A format verb mismatch reported at run time | Detected at compile time and named on the compiler's output, plus Go's exact runtime marker. Not a warning and not an error, because neither can be raised from a compile time fact. | 10, no static assert |
+| `%v` printing arbitrary struct fields | Needs `Writable` or a generated codec, otherwise a complaint and Go's marker | 8 |
 | `FuncMap` mapping a name to an arbitrary function | Template functions have one fixed signature | 3 and 8 |
 | `{{.User.FullName}}` calling a method | Works on the generated path only, not the dynamic document path | 8 |
 | `go f(x)` capturing locals | `spawn[f](payload)`, one moved value carrying what a closure would have captured | 3 |
@@ -195,6 +195,8 @@ Things a Go programmer will look for and not find. This is separate from the 41 
 | `maps.Insert(m, seq)` and `Collect(seq)` taking an `iter.Seq2[K, V]` | Both take a `Span[Tuple[K, V]]`. The natural translation is a `Cursor` of pairs, and it cannot be written: `where C.Element == Tuple[K, V]` is checked at the call site and leaves the type opaque in the body, so a dict cannot get the key and the value out separately. Drain a fallible source with `slices.collect` first. |
 | Go's iterator function types generally | Traits for iterable and fallible iterable. |
 | `ChaCha8` declaring `io.Reader`, so one can be handed to anything that reads | `ChaCha8.read` has that signature exactly, so wrapping one as a reader is a wrapper and nothing more. Declaring the conformance would put `core.io` underneath `core.math.rand` in the tier list, and Go's `math/rand/v2` does not import `io` either. |
+| `fmt`'s `%T` verb | Nothing. It prints the type of the argument and there is no way to ask for one, so a type outside the table `core.fmt` knows is called `value` inside a marker rather than named. Every type it does know is named exactly as Go names it, so `%!d(string=hi)` is Go's own text. |
+| `fmt`'s `%p` verb | Nothing. It prints an address, and an address printed in a test is a number that changes between runs, which is why Go's own tests write it as `0xPTR` and rewrite it before comparing. |
 | `big.Int.Format` and `big.Int.Scan` | `text` for a number in a base, `write_to` for printing one, and `set_string` for reading one back. Go's two are its run time formatting interfaces, `fmt.Formatter` and `fmt.Scanner`, and `core.fmt` takes the format string as a `comptime` parameter and typechecks the verbs when the program is compiled, so there is no `State` to hand them and no verb to look at. |
 | Go's `divRecursive` and `karatsubaSqr` | Long division and the squaring loop, at every size. Both of Go's are written as overlapping subsections of one vector being read and written by the same call, which is the shape this port cannot express, and neither changes an answer: `divRecursive` helps on divisors of several thousand digits and `karatsubaSqr` on squaring numbers about as large. |
 | Backreferences and lookaround in regexp | Linear time matching, as in Go. Not a deviation from Go, listed because it is the first thing people ask. |

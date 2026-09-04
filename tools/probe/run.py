@@ -33,14 +33,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from lib.cold import environment
 from lib.tree import ROOT, report
 
 PROBES = Path(__file__).parent / "probes"
 DESIGN = ROOT / "docs" / "design.md"
 
-# The prefix every compile time diagnostic in this library carries, so that the
-# warnings tool can tell ours from the compiler's own. The deprecation probe
-# counts these.
+# The prefix every compile time complaint in this library carries, so that the
+# warnings tool can tell ours from anything the compiler says. The two probes
+# about section 10 count these.
 MARKER = "core:"
 
 HEADER = re.compile(r"^#\s*([A-Z]+):\s?(.*)$")
@@ -118,10 +119,15 @@ def run(probe: Probe, mojo: str) -> str | None:
     """Build and maybe run one probe. Gives back a problem, or None."""
     with tempfile.TemporaryDirectory() as scratch:
         binary = Path(scratch) / probe.name
+        # Compiled against an empty cache. Our compile time complaints are
+        # prints from the interpreter, and a compile the compiler serves from
+        # its cache does not run the interpreter, so a probe counting them
+        # would count zero on its second run. See tools/lib/cold.py.
         built = subprocess.run(
             [mojo, "build", "-o", str(binary), str(probe.path)],
             capture_output=True,
             text=True,
+            env=environment(Path(scratch) / "cache"),
         )
         diagnostics = built.stdout + built.stderr
 
