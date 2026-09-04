@@ -5,10 +5,7 @@ verdict = "Adapt"
 tier = 2
 unsafe = false
 deps = [
-  "core.errors",
   "core.io",
-  "core.math",
   "core.strconv",
-  "core.unicode",
   "core.unicode.utf8",
 ]

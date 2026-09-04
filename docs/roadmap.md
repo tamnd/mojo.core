@@ -17,7 +17,7 @@ Fifteen milestones in four bands. Each one is a GitHub milestone on this reposit
 
 Before any library code: the tree, `PACKAGE.toml`, the linter, the parity tool, the baseline checks, CI on all three platforms.
 
-And `tools/probe/`, which is every claim in [design.md](design.md) as a compiled, running test. The thin function pointer vtable, `raises` across it, the field restriction on origins, the non-nullable pointer, the `for` loop swallowing an error out of `__next__`, comptime folding of a user `def`, the builtin only limit on `where` clauses, `@deprecated` firing once per source location rather than once per instantiation, and the pthread primitives.
+And `tools/probe/`, which is every claim in [design.md](design.md) as a compiled, running test. The thin function pointer vtable, `raises` across it, the field restriction on origins, the non-nullable pointer, the `for` loop swallowing an error out of `__next__`, comptime folding of a user `def`, the builtin only limit on `where` clauses, `@deprecated` warning on code that is correct, the compile time print that is used instead of it, and the pthread primitives.
 
 Those probes go in before anything is built on them, so that a Mojo release which changes one produces a failing test naming the section to rewrite.
 

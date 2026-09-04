@@ -65,6 +65,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from lib.cold import environment
 from lib.native import shim
 from lib.tree import ROOT, report
 
@@ -84,10 +85,23 @@ RACE_FOUND = "WARNING: ThreadSanitizer"
 # and sending somebody looking for a bug in their own code.
 RACE_UNAVAILABLE = "TCMalloc assumes a 48-bit virtual address space"
 
+# The prefix every compile time check in this library puts on its message. The
+# checks are prints from the compile time interpreter, so they are heard while
+# a program is built rather than while a package is compiled, and the suite is
+# the program that reaches our own code. A line carrying this while the suite
+# builds means some call in the library or its tests is wrong.
+MARKER = "core:"
+
 # tests/lint holds files that are supposed to fail the linter and tests/mojotest
 # holds files that are supposed to fail this. Neither belongs in the suite.
 FIXTURES = TESTS / "mojotest"
 EXCLUDED = (TESTS / "lint", FIXTURES)
+
+# The one fixture that is not a failing test but a wrong format string, kept in
+# a directory of its own because it has to be built on its own. It is what
+# proves the marker check above can fail, and it is skipped by every run that
+# is not asking for it by name, including the selftest's other two.
+MARKED = FIXTURES / "marked"
 
 # Go's convention, kept, because a reader coming from Go already knows it and
 # because the harvested tests arrive with these names.
@@ -160,6 +174,8 @@ def discover(where: Path, only: str | None) -> tuple[list[Case], list[str]]:
     problems: list[str] = []
     for path in sorted(where.rglob("test_*.mojo")):
         if where == TESTS and any(skip in path.parents for skip in EXCLUDED):
+            continue
+        if where != MARKED and MARKED in path.parents:
             continue
         if wanted and wanted != path.parent and wanted not in path.parents:
             continue
@@ -243,6 +259,14 @@ def build_and_run(scratch: Path, quiet: bool, race: bool = False) -> tuple[int, 
     folded into stdout below, and it does not change the exit code on its own,
     so the caller has to read the output for it. That is deliberate on the
     sanitiser's part and it is why `suite` looks for the warning by name.
+
+    This build is also where the compile time checks in the library are heard.
+    A format string is checked while the interpreter folds the call that uses
+    it, and nothing folds a call that no program makes, so the suite binary is
+    the one build in this repository that reaches all of our own code. Any line
+    carrying our marker is a problem here, and the cache is pointed somewhere
+    empty so that a suite built twice says it twice. See tools/lib/cold.py and
+    section 10 of docs/design.md.
     """
     slot = shim(scratch)
     if isinstance(slot, str):
@@ -254,11 +278,16 @@ def build_and_run(scratch: Path, quiet: bool, race: bool = False) -> tuple[int, 
         ["mojo", "build", "-I", str(ROOT), *flags, "-o", str(binary), "-Xlinker", str(slot), str(MAIN)],
         capture_output=True,
         text=True,
+        env=environment(scratch / "cache"),
     )
+    said = (built.stdout + built.stderr).replace(f"{ROOT}/", "")
     if built.returncode != 0:
         if not quiet:
-            sys.stderr.write((built.stdout + built.stderr).replace(f"{ROOT}/", ""))
+            sys.stderr.write(said)
         return built.returncode, "", []
+    marked = [line.strip() for line in said.splitlines() if MARKER in line]
+    if marked:
+        return 1, "", marked
 
     collected = []
     process = subprocess.Popen(
@@ -333,6 +362,12 @@ def selftest() -> int:
     tests/mojotest contain a test that is supposed to fail, and this asserts
     that it is reported, with the file, the line and both values, and that the
     slow one is skipped under --short.
+
+    The third run is the other duty this runner has. The suite build is where a
+    compile time complaint from this library becomes a failure, and a check
+    that has never fired is a check nobody knows works. tests/mojotest/marked
+    holds one wrong format string, and this asserts that building it is
+    reported rather than passed over.
     """
     problems = []
 
@@ -356,7 +391,14 @@ def selftest() -> int:
     if short_ran != ran - 1:
         problems.append(f"--short should run {ran - 1} of the fixtures, and it ran {short_ran}")
 
-    return report("test-selftest", 2, "runs of the fixtures", problems)
+    _, _, _, complained = suite(MARKED, None, short=False, quiet=True)
+    if not any(MARKER in line for line in complained):
+        problems.append(
+            "the marked fixture should have failed the build with a complaint, "
+            f"instead got {complained or 'a pass'}"
+        )
+
+    return report("test-selftest", 3, "runs of the fixtures", problems)
 
 
 def main() -> int:

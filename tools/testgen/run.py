@@ -47,6 +47,7 @@ from lib.tree import ROOT, report
 # change somebody looked at.
 PLAN = Path(__file__).parent / "plan.toml"
 EXTRACT = Path(__file__).parent / "extract.go"
+FMTCASES = Path(__file__).parent / "fmtcases" / "main.go"
 OUT = ROOT / "tests" / "generated"
 LOCK = ROOT / "pixi.lock"
 # `.../go-1.26.7-h1234567_0.conda`, the same line tools/gen/goapi.py reads.
@@ -109,11 +110,24 @@ def plan() -> dict[str, dict]:
         return tomllib.load(fh).get("harvest", {})
 
 
-def harvest(name: str, entry: dict, src: Path, env: dict[str, str]) -> str | None:
-    """Run the extractor over one Go package and write the Mojo table."""
+def command_for(name: str, entry: dict, src: Path) -> list[str] | str:
+    """What to run for one entry of the plan, or why it cannot be run.
+
+    Almost every entry is a set of tables and goes through the extractor. `fmt`
+    is the exception and says so with `mode = "calls"`: its format strings are
+    compile time parameters, so there is no loop for a table to be walked by
+    and each row has to become its own call. That is code rather than data and
+    it has a generator of its own.
+    """
     package = src / "src" / entry["go"]
     if not package.is_dir():
         return f"{name}: {entry['go']} is not in this Go tree"
+
+    if entry.get("mode") == "calls":
+        source = package / entry["file"]
+        if not source.is_file():
+            return f"{name}: {entry['file']} is not in this Go tree"
+        return ["go", "run", str(FMTCASES), "-file", str(source)]
 
     # `skip` is optional and almost always absent. It is there for a package
     # whose test files declare something that cannot be copied out of them,
@@ -121,13 +135,25 @@ def harvest(name: str, entry: dict, src: Path, env: dict[str, str]) -> str | Non
     command = ["go", "run", str(EXTRACT), "-package", str(package), "-tables", ",".join(entry["tables"])]
     if entry.get("skip"):
         command += ["-skip", ",".join(entry["skip"])]
+    return command
+
+
+def harvest(name: str, entry: dict, src: Path, env: dict[str, str]) -> str | None:
+    """Run the right generator over one Go package and write the Mojo."""
+    command = command_for(name, entry, src)
+    if isinstance(command, str):
+        return command
 
     out = subprocess.run(command, capture_output=True, text=True, env=env)
     if out.returncode != 0:
         detail = out.stderr.strip().splitlines()
         return f"{name}: the extractor failed, {detail[-1] if detail else 'no output'}"
 
-    target = OUT / f"{name}.mojo"
+    # A harvest that emits calls emits tests, so it is named the way the runner
+    # collects them. A harvest that emits data is read by a test written by
+    # hand beside it and is named after the package.
+    stem = f"test_{name}" if entry.get("mode") == "calls" else name
+    target = OUT / f"{stem}.mojo"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(HEADER.format(source=entry["go"]) + "\n" + out.stdout)
 
@@ -166,9 +192,10 @@ def main() -> int:
     if src is None:
         print(f"testgen: {env['GOTOOLCHAIN']} has no source tree here", file=sys.stderr)
         return 1
-    if not EXTRACT.is_file():
-        print(f"testgen: {EXTRACT.name} is missing, so nothing can be parsed", file=sys.stderr)
-        return 1
+    for tool in (EXTRACT, FMTCASES):
+        if not tool.is_file():
+            print(f"testgen: {tool.name} is missing, so nothing can be parsed", file=sys.stderr)
+            return 1
     print(f"testgen: against the {env['GOTOOLCHAIN']} tree at {src}")
 
     problems = [p for p in (harvest(k, v, src, env) for k, v in sorted(entries.items())) if p]
