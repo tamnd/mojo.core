@@ -229,13 +229,10 @@ def load_location_from_tz_data[
         if not at_ok or Int(at) >= len(abbrev):
             raise _bad_data()
 
-        zones.append(
-            Zone(
-                _abbrev_at(abbrev, Int(at)),
-                Int(Int32(raw_offset)),
-                dst != 0,
-            )
-        )
+        # Through `_signed4` rather than a conversion, which is not a style
+        # choice. See that function.
+        var offset = _signed4(raw_offset)
+        zones.append(Zone(_abbrev_at(abbrev, Int(at)), offset, dst != 0))
 
     var txs = List[ZoneTrans]()
     for i in range(n[_N_TIME]):
@@ -244,12 +241,15 @@ def load_location_from_tz_data[
             var got, ok = tx_times.big8()
             if not ok:
                 raise _bad_data()
+            # No sign extension to get wrong at this width: the eight bytes
+            # are already as wide as an `Int`, so this only reads the same
+            # bits as signed.
             when = Int(Int64(got))
         else:
             var got, ok = tx_times.big4()
             if not ok:
                 raise _bad_data()
-            when = Int(Int32(got))
+            when = _signed4(got)
         if Int(tx_zones[i]) >= len(zones):
             raise _bad_data()
         txs.append(ZoneTrans(when, Int(tx_zones[i])))
@@ -295,6 +295,27 @@ def _abbrev_at[o: Origin](abbrev: Span[UInt8, o], at: Int) -> String:
     while end < len(abbrev) and abbrev[end] != 0:
         end += 1
     return String(from_utf8_lossy=abbrev[at:end])
+
+
+def _signed4(raw: UInt32) -> Int:
+    """Four bytes read as a big endian number, taken as signed.
+
+    A zone offset and a version 1 transition time are both signed 32 bit
+    numbers, and `big4` gives back the bits without saying so. Anything west of
+    Greenwich has the high bit set, so reading one unsigned turns `-10800` into
+    `4294956496`, and every field computed from it goes with it.
+
+    Written as arithmetic on purpose. The obvious `Int(Int32(raw))` gives the
+    wrong answer, and so do `Int(Int64(Int32(raw)))`, a named intermediate, and
+    `Int32(raw).cast[DType.int64]()`: where the narrowed value has no other use,
+    the compiler drops the narrowing and zero extends the original.
+    `probes/int_narrow_then_widen.mojo` pins it. Subtracting the range needs no
+    conversion to be preserved to be right, so it stays right whatever the
+    compiler does with the ones around it.
+    """
+    if raw >= 0x8000_0000:
+        return Int(raw) - 0x1_0000_0000
+    return Int(raw)
 
 
 def _bad_data() -> Error:

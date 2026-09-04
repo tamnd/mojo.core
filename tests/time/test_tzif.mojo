@@ -1,17 +1,15 @@
 """The TZif reader, against Go's four slim files and its own malformed input.
 
-Go's `TestLoadLocationFromTZDataSlim` builds a `Date` in the loaded location and
-asks the resulting `Time` for its zone. A `Time` does not carry a location yet,
-so each row here asks the location directly through `lookup` at the instant Go's
-`Date` call works out to. Those instants were computed by running Go against
-these same four files, which is recorded next to each row, so the rows check the
-same four answers Go checks and not a rewritten version of them.
+The four files are the ones Go's own `TestLoadLocationFromTZDataSlim` reads, and
+the rows are Go's rows: a wall clock reading in the loaded location, and the
+zone name and offset the resulting instant is in. They are vendored under
+`tests/data/go-time`, pinned by digest, and embedded by a generator, because
+nothing in this suite opens a file at run time.
 
-That is a real difference and it is worth naming: this does not test that wall
-clock time in Berlin converts to the right instant, because nothing here does
-that conversion yet. It tests that the file was read correctly, which is all the
-Go test is really about, since its `Date` call is the same arithmetic in both
-languages once the zone is known.
+The instant each row works out to is written next to it as well, because a name
+and an offset alone would still match if the wall clock conversion were out by
+an hour in one direction and the zone table were out by an hour in the other.
+Those numbers came from running Go against these same files.
 """
 
 from std.testing import assert_equal, assert_raises, assert_true
@@ -24,31 +22,74 @@ from tests.generated.tzif import (
     bytes_of,
 )
 
+from core.time import APRIL, OCTOBER, Month, date
 from core.time.tzif import _abbrev_at, load_location_from_tz_data
 
 
 def test_slim_files_load_and_answer_what_go_says() raises:
-    """Go's `TestLoadLocationFromTZDataSlim`, asked through `lookup`.
+    """Go's `TestLoadLocationFromTZDataSlim`, written the way Go writes it.
 
-    The instants are Go's `time.Date(...)` calls in each location, evaluated by
-    Go against these exact files:
-
-    - Berlin, 2020-10-29 15:30:00 local, is 1603981800.
-    - Nuuk, the same wall clock, is 1603996200.
-    - Gaza, the same wall clock, is 1603978200.
-    - Dublin, 2021-04-02 11:12:13 local, is 1617358333.
-
-    They differ from each other only by the offsets the files themselves
-    declare, which is why they are not all the same number.
+    The first three rows are the same wall clock reading in three locations, so
+    the three instants differ from each other only by the offsets the files
+    themselves declare. That is what makes them worth having together: a reader
+    that lost a sign or an hour would put two of them on the same instant.
     """
     var berlin = bytes_of(BERLIN_2020B)
     var nuuk = bytes_of(NUUK_2021A)
     var gaza = bytes_of(GAZA_2021A)
     var dublin = bytes_of(DUBLIN_2021A)
-    _check_zone_at("Europe/Berlin", Span(berlin), 1603981800, "CET", 3600)
-    _check_zone_at("America/Nuuk", Span(nuuk), 1603996200, "-03", -10800)
-    _check_zone_at("Asia/Gaza", Span(gaza), 1603978200, "EET", 7200)
-    _check_zone_at("Europe/Dublin", Span(dublin), 1617358333, "IST", 3600)
+    _check_zone_at(
+        "Europe/Berlin",
+        Span(berlin),
+        2020,
+        OCTOBER,
+        29,
+        15,
+        30,
+        0,
+        1603981800,
+        "CET",
+        3600,
+    )
+    _check_zone_at(
+        "America/Nuuk",
+        Span(nuuk),
+        2020,
+        OCTOBER,
+        29,
+        15,
+        30,
+        0,
+        1603996200,
+        "-03",
+        -10800,
+    )
+    _check_zone_at(
+        "Asia/Gaza",
+        Span(gaza),
+        2020,
+        OCTOBER,
+        29,
+        15,
+        30,
+        0,
+        1603978200,
+        "EET",
+        7200,
+    )
+    _check_zone_at(
+        "Europe/Dublin",
+        Span(dublin),
+        2021,
+        APRIL,
+        2,
+        11,
+        12,
+        13,
+        1617358333,
+        "IST",
+        3600,
+    )
 
 
 def test_dublins_daylight_flag_runs_backwards() raises:
@@ -87,13 +128,13 @@ def test_a_slim_file_answers_past_its_last_transition() raises:
     var data = bytes_of(BERLIN_2020B)
     var loc = load_location_from_tz_data("Europe/Berlin", Span(data))
 
-    # 2035-07-01 12:00:00 UTC, which is inside central European summer time.
+    # 2035-06-29 12:00:00 UTC, which is inside central European summer time.
     var name, off, _s, _e, is_dst = loc.lookup(2066731200)
     assert_equal(name, "CEST")
     assert_equal(off, 7200)
     assert_true(is_dst)
 
-    # 2035-01-01 12:00:00 UTC, which is not.
+    # 2034-12-29 12:00:00 UTC, which is not.
     var wname, woff, _ws, _we, wis_dst = loc.lookup(2051006400)
     assert_equal(wname, "CET")
     assert_equal(woff, 3600)
@@ -200,13 +241,21 @@ def _check_zone_at[
 ](
     name: StringSlice,
     data: Span[UInt8, o],
+    year: Int,
+    month: Month,
+    day: Int,
+    hour: Int,
+    minute: Int,
     sec: Int,
+    want_unix: Int,
     want_name: StringSlice,
     want_offset: Int,
 ) raises:
-    """One row of Go's `slimTests`, asked at the instant Go's `Date` gives."""
+    """One row of Go's `slimTests`, through `date` in the loaded location."""
     var loc = load_location_from_tz_data(name, data)
     assert_equal(String(loc), name)
-    var got_name, got_offset, _s, _e, _is_dst = loc.lookup(sec)
+    var t = date(year, month, day, hour, minute, sec, 0, loc)
+    assert_equal(t.unix(), want_unix)
+    var got_name, got_offset = t.zone()
     assert_equal(got_name, want_name)
     assert_equal(got_offset, want_offset)

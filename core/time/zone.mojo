@@ -7,23 +7,25 @@ has used, a list of the instants it changed between them, and a rule for what
 happens after the list runs out. `lookup` is the one question it answers, and
 everything about the printed form of a `Time` is that question asked once.
 
-## A location is a value here, not a pointer
+## A location is a handle, not a table
 
 Go's `Location` is always used through a pointer. `time.UTC` is a pointer, a
 `Time` holds one, and a nil one means UTC. That works because Go has a garbage
 collector, so a location outlives every `Time` that points at it without anybody
 saying how.
 
-This is a value, and copying one copies its two lists. The copy has to be asked
-for with `.copy()`: `Location` is `Copyable` and not `ImplicitlyCopyable`,
-which falls out of `List` being the same and is the right answer anyway, since
-it means the two allocations are always visible at the point they happen.
+The table here is `_Table`, which holds the two lists and is not copyable, and a
+`Location` is a counted pointer to one. Copying a location is an atomic
+increment rather than two allocations, which is what lets a `Time` hold one and
+still be a value that copies without thinking about it. The last location to go
+frees the table, so nothing is leaked and nothing is shared that should not be.
+`docs/design.md` says why this rather than a process wide table of locations
+interned by name, which is the shape Go's own registry has and which this
+language would have to put outside itself.
 
-That is fine for what is here, where a caller loads a location and asks it
-questions, and it is not fine for putting one inside every `Time`: a `Time` is
-four machine words that copy for free, and it has to stay that way. So a `Time`
-does not hold a `Location` yet, and every method of `Time` still reads UTC. The
-mechanism that connects the two is its own piece of work.
+The default `Location` holds no table at all, and that is UTC. It is not an
+empty table and it does not allocate, which matters because it is what every
+`Time` that nobody gave a location to carries.
 
 ## The one element cache
 
@@ -35,6 +37,8 @@ language declines to hold, so the cache here is a copy of the zone instead. That
 is also what lets the cache hold a zone the list does not contain, which happens
 when the answer came from the TZ string rather than from the file.
 """
+
+from std.memory import ArcPointer
 
 from core.syscall import CLOCK_REALTIME, clock_gettime
 
@@ -108,19 +112,12 @@ struct ZoneTrans(Copyable, Equatable, ImplicitlyCopyable, Movable):
         return not (self == other)
 
 
-struct Location(Copyable, Movable, Writable):
-    """The clock history of a place. Go's `Location`.
+struct _Table(Movable):
+    """What a location knows, which a `Location` points at rather than holds.
 
-    ```mojo
-    from core.time import fixed_zone
-
-    var loc = fixed_zone("CET", 3600)
-    print(loc)  # => CET
-    ```
-
-    The default value is UTC, and so is any location with no zones in it, which
-    is what makes a location that failed to load behave like UTC rather than
-    like nothing.
+    Not copyable and not public. One of these is built once, filled in, and
+    then shared by every `Location` and every `Time` that names it, so there is
+    no version of it that two holders can disagree about.
     """
 
     var name: String
@@ -152,16 +149,54 @@ struct Location(Copyable, Movable, Writable):
     var has_cache: Bool
     """Whether the three cache fields mean anything."""
 
-    def __init__(out self):
-        """UTC, which is what a location with nothing in it is."""
-        self.name = "UTC"
-        self.zone = []
-        self.tx = []
-        self.extend = ""
+    def __init__(
+        out self,
+        name: StringSlice,
+        var zone: List[Zone],
+        var tx: List[ZoneTrans],
+        extend: StringSlice,
+    ):
+        """Hold a name, the zones, the transitions and the TZ string."""
+        self.name = String(name)
+        self.zone = zone^
+        self.tx = tx^
+        self.extend = String(extend)
         self.cache_start = 0
         self.cache_end = 0
         self.cache_zone = Zone("UTC", 0, False)
         self.has_cache = False
+
+
+struct Location(Copyable, ImplicitlyCopyable, Movable, Writable):
+    """The clock history of a place. Go's `Location`.
+
+    ```mojo
+    from core.time import fixed_zone
+
+    var loc = fixed_zone("CET", 3600)
+    print(loc)  # => CET
+    ```
+
+    A counted pointer to a table that is built once and never changed, so
+    copying one is cheap and every copy answers the same way. The default value
+    points at no table and is UTC, which is what makes a location that failed
+    to load behave like UTC rather than like nothing.
+    """
+
+    var table: Optional[ArcPointer[_Table]]
+    """The table, or nothing at all, which is UTC.
+
+    Public because everything on a struct is here, and not something to reach
+    into. `lookup` is the question this type answers.
+    """
+
+    def __init__(out self):
+        """UTC, which is what a location pointing at no table is.
+
+        Allocates nothing, which is the property that matters: this is the
+        location of every `Time` that was never given one.
+        """
+        self.table = None
 
     def __init__(
         out self,
@@ -176,18 +211,17 @@ struct Location(Copyable, Movable, Writable):
         filling it means reading the clock and a constructor is not where that
         belongs.
         """
-        self.name = String(name)
-        self.zone = zone^
-        self.tx = tx^
-        self.extend = String(extend)
-        self.cache_start = 0
-        self.cache_end = 0
-        self.cache_zone = Zone("UTC", 0, False)
-        self.has_cache = False
+        self.table = ArcPointer(_Table(name, zone^, tx^, extend))
+
+    def name(self) -> String:
+        """What this location is called. Go's `Location.String`."""
+        if self.table:
+            return self.table.value()[].name
+        return String("UTC")
 
     def write_to[W: Writer](self, mut writer: W):
         """The name, which is Go's `Location.String`."""
-        writer.write(self.name)
+        writer.write(self.name())
 
     def lookup(self, sec: Int) -> Tuple[String, Int, Int, Int, Bool]:
         """The zone in force at `sec`, a Unix second. Go's `Location.lookup`.
@@ -198,25 +232,29 @@ struct Location(Copyable, Movable, Writable):
         nothing before or after.
 
         The name is copied out rather than borrowed. Go returns a string header
-        that shares the location's bytes, which a value type cannot do without
-        tying the answer to the lifetime of the location, and a zone
-        abbreviation is at most a handful of bytes.
+        that shares the location's bytes, which would tie the answer to the
+        lifetime of the location, and a zone abbreviation is at most a handful
+        of bytes.
         """
-        if len(self.zone) == 0:
+        if not self.table:
+            return (String("UTC"), 0, _ALPHA, _OMEGA, False)
+        ref t = self.table.value()[]
+
+        if len(t.zone) == 0:
             return (String("UTC"), 0, _ALPHA, _OMEGA, False)
 
-        if self.has_cache and self.cache_start <= sec and sec < self.cache_end:
+        if t.has_cache and t.cache_start <= sec and sec < t.cache_end:
             return (
-                self.cache_zone.name,
-                self.cache_zone.offset,
-                self.cache_start,
-                self.cache_end,
-                self.cache_zone.is_dst,
+                t.cache_zone.name,
+                t.cache_zone.offset,
+                t.cache_start,
+                t.cache_end,
+                t.cache_zone.is_dst,
             )
 
-        if len(self.tx) == 0 or sec < self.tx[0].when:
-            var z = self.zone[self._lookup_first_zone()]
-            var end = self.tx[0].when if len(self.tx) > 0 else _OMEGA
+        if len(t.tx) == 0 or sec < t.tx[0].when:
+            var z = t.zone[self._lookup_first_zone()]
+            var end = t.tx[0].when if len(t.tx) > 0 else _OMEGA
             return (z.name, z.offset, _ALPHA, end, z.is_dst)
 
         # The largest transition at or before `sec`. Go writes the search out
@@ -224,23 +262,23 @@ struct Location(Copyable, Movable, Writable):
         # this does the same for the same reason.
         var end = _OMEGA
         var lo = 0
-        var hi = len(self.tx)
+        var hi = len(t.tx)
         while hi - lo > 1:
             var m = (lo + hi) // 2
-            var lim = self.tx[m].when
+            var lim = t.tx[m].when
             if sec < lim:
                 end = lim
                 hi = m
             else:
                 lo = m
 
-        var z = self.zone[self.tx[lo].index]
-        var start = self.tx[lo].when
+        var z = t.zone[t.tx[lo].index]
+        var start = t.tx[lo].when
 
         # Past the last recorded change, the TZ string is the answer if there is
         # one. This is the ordinary case for a slim file, not a corner of it.
-        if lo == len(self.tx) - 1 and self.extend != "":
-            var ext = _tzset(self.extend, start, sec)
+        if lo == len(t.tx) - 1 and t.extend != "":
+            var ext = _tzset(t.extend, start, sec)
             if ext[5]:
                 return (ext[0], ext[1], ext[2], ext[3], ext[4])
 
@@ -260,14 +298,17 @@ struct Location(Copyable, Movable, Writable):
         settles for any zone with the right name. Around a backward change the
         first pass can pick either, and Go says so too.
         """
-        for i in range(len(self.zone)):
-            var z = self.zone[i]
+        if not self.table:
+            return (0, False)
+        ref t = self.table.value()[]
+        for i in range(len(t.zone)):
+            var z = t.zone[i]
             if z.name == name:
                 var got = self.lookup(unix - z.offset)
                 if got[0] == z.name:
                     return (got[1], True)
-        for i in range(len(self.zone)):
-            var z = self.zone[i]
+        for i in range(len(t.zone)):
+            var z = t.zone[i]
             if z.name == name:
                 return (z.offset, True)
         return (0, False)
@@ -281,22 +322,26 @@ struct Location(Copyable, Movable, Writable):
         has it there as a placeholder. Go's comment cites the release of tzcode
         the algorithm is from and this follows it step for step.
         """
+        if not self.table:
+            return 0
+        ref t = self.table.value()[]
+
         # A first zone no transition names is a placeholder, and is the answer.
         if not self._first_zone_used():
             return 0
 
         # Otherwise, if the first change is into daylight time, the standard
         # zone before it is what was in force before.
-        if len(self.tx) > 0 and self.zone[self.tx[0].index].is_dst:
-            var zi = self.tx[0].index - 1
+        if len(t.tx) > 0 and t.zone[t.tx[0].index].is_dst:
+            var zi = t.tx[0].index - 1
             while zi >= 0:
-                if not self.zone[zi].is_dst:
+                if not t.zone[zi].is_dst:
                     return zi
                 zi -= 1
 
         # Otherwise the first standard zone anywhere in the list.
-        for i in range(len(self.zone)):
-            if not self.zone[i].is_dst:
+        for i in range(len(t.zone)):
+            if not t.zone[i].is_dst:
                 return i
 
         # Otherwise there is nothing better than the first.
@@ -304,37 +349,62 @@ struct Location(Copyable, Movable, Writable):
 
     def _first_zone_used(self) -> Bool:
         """Whether any transition names the first zone. Go's `firstZoneUsed`."""
-        for i in range(len(self.tx)):
-            if self.tx[i].index == 0:
+        if not self.table:
+            return False
+        ref t = self.table.value()[]
+        for i in range(len(t.tx)):
+            if t.tx[i].index == 0:
                 return True
         return False
 
-    def _fill_cache(mut self) raises:
+    def _fill_cache(self) raises:
         """Point the cache at the zone in force right now.
 
         Go does this at the end of `LoadLocationFromTZData` for the same reason:
         the next lookup is almost certainly for a time near now, and this turns
         that lookup into two comparisons.
+
+        Writes through the counted pointer, which is the one place anything in
+        this file does. It is called on a location that has just been built and
+        has not been handed to anybody, so no other holder can see the change
+        happen. Nothing else here writes to a table after construction.
         """
+        if not self.table:
+            return
+        ref t = self.table.value()[]
         var sec = clock_gettime(CLOCK_REALTIME).sec
-        for i in range(len(self.tx)):
-            var at_or_before = self.tx[i].when <= sec
-            var before_next = i + 1 == len(self.tx) or sec < self.tx[i + 1].when
+        for i in range(len(t.tx)):
+            var at_or_before = t.tx[i].when <= sec
+            var before_next = i + 1 == len(t.tx) or sec < t.tx[i + 1].when
             if not (at_or_before and before_next):
                 continue
-            self.cache_start = self.tx[i].when
-            self.cache_end = _OMEGA
-            self.cache_zone = self.zone[self.tx[i].index]
-            self.has_cache = True
-            if i + 1 < len(self.tx):
-                self.cache_end = self.tx[i + 1].when
-            elif self.extend != "":
-                var ext = _tzset(self.extend, self.cache_start, sec)
+            t.cache_start = t.tx[i].when
+            t.cache_end = _OMEGA
+            t.cache_zone = t.zone[t.tx[i].index]
+            t.has_cache = True
+            if i + 1 < len(t.tx):
+                t.cache_end = t.tx[i + 1].when
+            elif t.extend != "":
+                var ext = _tzset(t.extend, t.cache_start, sec)
                 if ext[5]:
-                    self.cache_start = ext[2]
-                    self.cache_end = ext[3]
-                    self.cache_zone = Zone(ext[0], ext[1], ext[4])
+                    t.cache_start = ext[2]
+                    t.cache_end = ext[3]
+                    t.cache_zone = Zone(ext[0], ext[1], ext[4])
             return
+
+    def _set_cache(self, start: Int, end: Int, var zone: Zone):
+        """Point the cache at a zone that is known to be right for all time.
+
+        `fixed_zone`'s, and the same rule about writing through the pointer
+        applies: the location has just been built and nobody else holds it.
+        """
+        if not self.table:
+            return
+        ref t = self.table.value()[]
+        t.cache_start = start
+        t.cache_end = end
+        t.cache_zone = zone^
+        t.has_cache = True
 
 
 def utc() -> Location:
@@ -346,9 +416,9 @@ def utc() -> Location:
     print(utc())  # => UTC
     ```
 
-    A function rather than a constant, because a location holds two lists and a
-    list cannot live at module scope in this language. It holds no zones, so
-    building one allocates nothing.
+    A function rather than a constant, because a `Location` is not something a
+    module level `var` can hold and a `comptime` value cannot be built by
+    running code. It points at no table, so building one allocates nothing.
     """
     return Location()
 
@@ -365,18 +435,16 @@ def fixed_zone(name: StringSlice, offset: Int) -> Location:
 
     `offset` is seconds east of UTC, so an hour ahead is 3600 and New York's
     standard time is -18000. Nothing about it changes with the date, which is
-    what makes it the wrong thing to use for a place: use `load_location` for
+    what makes it the wrong thing to use for a place: use a real zone file for
     somewhere real and this for a fixed offset that came off the wire.
 
     Go interns the unnamed whole hour offsets and hands the same pointer back
-    for each. There is no pointer here to hand back, so there is nothing to
-    intern and every call builds one.
+    for each, which saves an allocation on the offsets a wire format is most
+    likely to carry. There is nowhere to keep that table here, so every call
+    builds one, and every copy of what it built is still a counted pointer.
     """
     var zones: List[Zone] = [Zone(name, offset, False)]
     var txs: List[ZoneTrans] = [ZoneTrans(_ALPHA, 0)]
     var loc = Location(name, zones^, txs^, "")
-    loc.cache_start = _ALPHA
-    loc.cache_end = _OMEGA
-    loc.cache_zone = Zone(name, offset, False)
-    loc.has_cache = True
+    loc._set_cache(_ALPHA, _OMEGA, Zone(name, offset, False))
     return loc^

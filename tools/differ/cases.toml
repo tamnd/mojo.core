@@ -77,3 +77,26 @@ count = 4096
 build = "tools/differ/mojo/strconv_float32.mojo"
 oracle = ["go", "run", "-C", "tools/differ/go", "./strconvfloat32"]
 needs = ["mojo", "go", "cc"]
+
+[area.time-zones]
+# Every answer core.time gives about an instant in a real time zone, against
+# Go's, one line each: the calendar fields, the zone name and offset, both zone
+# bounds, the printed form, the wall clock reading turned back into an instant
+# by `date`, and the same date a month later. The four locations are the four
+# vendored slim TZif files, read by both sides through the same
+# LoadLocationFromTZData, so neither side touches the host's zone database and
+# a machine with no /usr/share/zoneinfo gives the same answer.
+#
+# The instants land anywhere between 1880 and 2120, which reaches the local
+# mean time zone at the front of every file and the trailing POSIX rule at the
+# back of the slim ones. The one that finds the interesting failures is the
+# `date` round trip, since a wall clock reading in the hour daylight saving
+# skipped names no instant and one it repeated names two.
+#
+# `build` rather than `mojo`, because the driver reaches core.errors and the
+# thread local slot behind that is C that has to be linked in. `cc` is in
+# `needs` for the same reason.
+count = 200000
+build = "tools/differ/mojo/time_zones.mojo"
+oracle = ["go", "run", "-C", "tools/differ/go", "./timezones"]
+needs = ["mojo", "go", "cc"]

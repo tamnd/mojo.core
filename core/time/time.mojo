@@ -27,14 +27,26 @@ row. Nothing observable turns on it unless a program subtracts two times that
 are both centuries away and both came from `now`, which cannot happen without
 setting the machine clock.
 
+## The location travels with the instant
+
+A `Time` carries a `Location`, and every method that names a field reads the
+clock of that location rather than UTC. The instant itself is stored in UTC and
+never moves, so `in_location` changes what `hour` answers and changes nothing
+about which moment is being talked about, which is Go's rule and the only one
+that makes `t1 == t2` mean what it should.
+
+A `Location` here is a counted pointer to a table, so carrying one costs a word
+and copying a `Time` costs an atomic increment. The default is the location that
+points at no table, which is UTC and allocates nothing, so a `Time` nobody gave
+a location to is exactly as cheap as it was before locations existed.
+
 ## What is not here yet
 
-The location. Every method below reads UTC, because a `Location` is a pointer
-to a shared immutable table in Go and this language has neither null pointers
-nor global mutable storage, so the design costs more than a paragraph. Until
-it lands, `hour` on a machine in Tokyo answers what UTC says rather than what
-the wall says, which is the one thing to know before using this package. The
-layout language, `parse`, timers and marshalling are also still to come.
+`load_location` and `Local`, which is the half of the zone story that reads the
+host's database and asks it for `Europe/Berlin` by name. Until that lands a
+location has to be built from bytes with `load_location_from_tz_data` or made up
+with `fixed_zone`, so a program cannot yet ask what the local wall clock says.
+The layout language, `parse`, timers and marshalling are also still to come.
 """
 
 from core.syscall import CLOCK_MONOTONIC, CLOCK_REALTIME, clock_gettime
@@ -65,6 +77,8 @@ from .duration import (
     _less_than_half,
 )
 from .divide import _quo, _rem
+from .tzset import _ALPHA, _OMEGA
+from .zone import Location
 
 
 struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
@@ -77,13 +91,15 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
     print(t.year(), t.month(), t.day())  # => 2024 December 25
     ```
 
-    The zero value is the first instant of January 1 of the year 1, which is
-    what `is_zero` tests for. Go uses that value as its "no time here" marker
+    The zero value is the first instant of January 1 of the year 1 UTC, which
+    is what `is_zero` tests for. Go uses that value as its "no time here" marker
     for the same reason a null pointer would be used elsewhere, and so does
     this package.
 
-    Copy one freely. It is four machine words and it holds no reference to
-    anything, so passing it about costs nothing and no two copies can disagree.
+    Copy one freely. The instant is four machine words and the location is a
+    counted pointer, so a copy is those words and an atomic increment, and no
+    two copies can disagree because the table a location points at is never
+    written to after it is built.
     """
 
     var sec: Int
@@ -116,6 +132,14 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
     legitimately hand back, on a machine that has just started.
     """
 
+    var loc: Location
+    """Whose wall clock the fields are read against. UTC by default.
+
+    Go holds a `*Location` here and treats nil as UTC. This holds a `Location`,
+    which is itself a counted pointer whose empty value is UTC, so the two are
+    the same arrangement with the nil case given a name.
+    """
+
     def __init__(
         out self,
         *,
@@ -123,6 +147,7 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         nsec: Int = 0,
         mono: Int = 0,
         has_mono: Bool = False,
+        loc: Location = Location(),
     ):
         """Hold an instant, from parts already normalised.
 
@@ -135,19 +160,37 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         self.nsec = nsec
         self.mono = mono
         self.has_mono = has_mono
+        self.loc = loc
+
+    def _lookup(self) -> Tuple[String, Int, Int, Int, Bool]:
+        """The zone in force here, as `Location.lookup` answers it.
+
+        Go's `Time.loc.lookup(t.unixSec())`. A `Time` in UTC never touches the
+        location at all, since the empty `Location` short circuits.
+        """
+        return self.loc.lookup(self.unix())
+
+    def _offset(self) -> Int:
+        """Seconds east of UTC for this instant in this location."""
+        return self._lookup()[1]
 
     def _abs_sec(self) -> UInt64:
-        """This instant as a count of seconds from the absolute epoch.
+        """This instant as a count of seconds from the absolute epoch, in this
+        location's clock.
 
-        The single place the calendar is entered from, and so the single place
-        a zone offset will be added when locations land. Everything that
-        answers a question about the date goes through here.
+        The single place the calendar is entered from and the single place the
+        zone offset is added, so everything that answers a question about the
+        date sees the same wall clock and nothing has to remember to shift.
 
         The addition is unsigned so that a `sec` far enough forward to overflow
         a signed word wraps rather than trapping, which is what Go's does and
         what the absolute epoch is arranged to make harmless.
         """
-        return UInt64(self.sec) + UInt64(_INTERNAL_TO_ABSOLUTE)
+        return (
+            UInt64(self.sec)
+            + UInt64(self._offset())
+            + UInt64(_INTERNAL_TO_ABSOLUTE)
+        )
 
     def _abs_days(self) -> UInt64:
         """This instant as a count of whole days from the absolute epoch."""
@@ -160,7 +203,7 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         the two would then describe different instants and the next subtraction
         would silently take the stale one.
         """
-        return Self(internal_sec=self.sec, nsec=self.nsec)
+        return Self(internal_sec=self.sec, nsec=self.nsec, loc=self.loc)
 
     def is_zero(self) -> Bool:
         """Whether this is the zero time, January 1 of the year 1, UTC.
@@ -288,6 +331,77 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         """The nanosecond within the second. Go's `Nanosecond`."""
         return self.nsec
 
+    def location(self) -> Location:
+        """Whose wall clock this instant is read against. Go's `Location`.
+
+        A counted pointer, so this is a cheap copy of the handle rather than a
+        copy of the table. Go returns the pointer itself and this is the same
+        thing with the counting made explicit.
+        """
+        return self.loc
+
+    def in_location(self, loc: Location) -> Self:
+        """The same instant, read against `loc`. Go's `In`.
+
+        ```mojo
+        from core.time import JUNE, date, fixed_zone, utc
+
+        var t = date(2024, JUNE, 1, 12, 0, 0, 0, utc())
+        print(t.in_location(fixed_zone("CET", 3600)).hour())  # => 13
+        ```
+
+        Nothing about which moment this is changes, which is the whole point:
+        `t.in_location(anywhere) == t` is always true, and only the answers to
+        `hour`, `day` and the rest move. Go names this `In` and that is a
+        keyword here, so it says what it does instead.
+
+        The monotonic reading goes, because Go drops it in `In` and for the
+        same reason it drops it everywhere else that touches the wall clock:
+        a value that has been moved about should not still claim to be a
+        measurement.
+        """
+        var moved = self._strip_mono()
+        moved.loc = loc
+        return moved
+
+    def utc(self) -> Self:
+        """The same instant, read against UTC. Go's `UTC`."""
+        return self.in_location(Location())
+
+    def zone(self) -> Tuple[String, Int]:
+        """The name and offset of the zone in force here. Go's `Zone`.
+
+        ```mojo
+        from core.time import JUNE, date, fixed_zone
+
+        var name, offset = date(2024, JUNE, 1, 12, 0, 0, 0, fixed_zone("CET", 3600)).zone()
+        print(name, offset)  # => CET 3600
+        ```
+
+        The offset is seconds east of UTC, so adding it to the Unix second
+        gives the wall clock reading.
+        """
+        var got = self._lookup()
+        return (got[0], got[1])
+
+    def zone_bounds(self) -> Tuple[Self, Self]:
+        """When the zone in force here began and when it ends. Go's
+        `ZoneBounds`.
+
+        Both are read in this instant's own location. A zone that has always
+        been in force gives the zero time for the start, and one that never
+        ends gives the zero time for the end, which is Go's way of saying
+        there is no bound rather than inventing one.
+        """
+        var got = self._lookup()
+        var start = Self()
+        var end = Self()
+        if got[2] != _ALPHA:
+            start = unix(got[2], 0).in_location(self.loc)
+        if got[3] != _OMEGA:
+            end = unix(got[3], 0).in_location(self.loc)
+        return (start, end)
+
     def __add__(self, d: Duration) -> Self:
         """This instant `d` later, or earlier for a negative `d`. Go's `Add`.
 
@@ -312,7 +426,7 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
             dsec -= 1
             ns += 1_000_000_000
 
-        var moved = Self(internal_sec=self.sec + dsec, nsec=ns)
+        var moved = Self(internal_sec=self.sec + dsec, nsec=ns, loc=self.loc)
         if not self.has_mono:
             return moved
 
@@ -452,6 +566,7 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
             minute,
             sec,
             self.nsec,
+            self.loc,
         )
 
     def truncate(self, d: Duration) -> Self:
@@ -499,9 +614,9 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         and its trailing zeros are dropped otherwise, so a whole second reads
         as `06` and half a second reads as `06.5`.
 
-        The zone is always `+0000 UTC` until locations land, and a time with a
-        monotonic reading gets Go's ` m=` suffix so that two of them printed
-        next to each other can be told apart.
+        The zone is this instant's own, so a time in Berlin in June prints
+        `+0200 CEST`, and a time with a monotonic reading gets Go's ` m=` suffix
+        so that two of them printed next to each other can be told apart.
 
         Written by hand rather than through the layout language, which is not
         here yet. It moves to `format` when that lands and this docstring goes
@@ -509,6 +624,7 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         """
         var year, month, day = self.date()
         var hour, minute, sec = self.clock()
+        var zone_name, offset = self.zone()
 
         var out = String()
         _write_padded(out, year, 4)
@@ -523,7 +639,10 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         out += ":"
         _write_padded(out, sec, 2)
         _write_fraction(out, self.nsec)
-        out += " +0000 UTC"
+        out += " "
+        _write_offset(out, offset)
+        out += " "
+        out += zone_name
 
         if self.has_mono:
             out += " m="
@@ -555,6 +674,28 @@ def _write_padded(mut out: String, value: Int, width: Int):
     for _ in range(width - digits.byte_length()):
         out += "0"
     out += digits
+
+
+def _write_offset(mut out: String, offset: Int):
+    """The zone offset as `-0700` writes it: a sign, two hours, two minutes.
+
+    Whole minutes only, and the seconds of an offset are dropped rather than
+    rounded, which is what Go's `-0700` does. It matters for the local mean
+    time zones at the start of most zone files, where Berlin's first offset is
+    3208 seconds and prints as `+0053`.
+
+    `_quo` rather than `//`, because dropping the seconds of a negative offset
+    has to drop them towards zero the way Go's division does. Rounding the
+    other way turns Kiritimati's old `-1029` into `-1030`.
+    """
+    var minutes = _quo(offset, 60)
+    if minutes < 0:
+        out += "-"
+        minutes = -minutes
+    else:
+        out += "+"
+    _write_padded(out, minutes // 60, 2)
+    _write_padded(out, minutes % 60, 2)
 
 
 def _write_fraction(mut out: String, nsec: Int):
@@ -717,8 +858,9 @@ def date(
     minute: Int,
     sec: Int,
     nsec: Int,
+    loc: Location = Location(),
 ) -> Time:
-    """The instant those parts name, in UTC. Go's `Date`.
+    """The instant those parts name on `loc`'s wall clock. Go's `Date`.
 
     ```mojo
     from core.time import FEBRUARY, date
@@ -732,9 +874,18 @@ def date(
     day zero is the last day of the previous month, which is the trick for
     finding it. Go behaves identically.
 
-    Go takes a `*Location` and panics on nil. This takes none and always
-    answers UTC, because locations are not here yet. The package docstring says
-    what that costs, and the argument arrives when they land.
+    Go takes a `*Location` and panics on nil. The location here is optional and
+    defaults to UTC, because the empty `Location` already means UTC and there
+    is nothing to panic about, so a caller who does not care about zones writes
+    the same seven arguments as before.
+
+    A wall clock reading in a location does not always name exactly one
+    instant. An hour that daylight saving skipped names none, and an hour it
+    repeated names two, and this returns one instant in both cases without
+    saying which, exactly as Go does. The instant is found by asking the
+    location what the offset was at the reading taken as UTC and correcting once
+    if that lands outside the zone the answer came from, which is the two step
+    Go's own `Date` does and the reason it is not a single subtraction.
     """
     # The month is normalised from zero so that month zero falls into the year
     # before, then put back to counting from one.
@@ -756,9 +907,26 @@ def date(
         + normal_hour[1] * SECONDS_PER_MINUTE
         + normal_min[1]
     )
+    var internal = Int(abs_sec - UInt64(_INTERNAL_TO_ABSOLUTE))
+
+    # The reading taken as if it were UTC, which is what the location is asked
+    # about. Go's comment says it hopes the answer is not too close to a
+    # transition and corrects when it is, and the correction below is that.
+    var wall_unix = internal + _INTERNAL_TO_UNIX
+    var got = loc.lookup(wall_unix)
+    var offset = got[1]
+    if offset != 0:
+        var as_utc = wall_unix - offset
+        if as_utc < got[2]:
+            offset = loc.lookup(got[2] - 1)[1]
+        elif as_utc >= got[3]:
+            offset = loc.lookup(got[3])[1]
+        wall_unix -= offset
+
     return Time(
-        internal_sec=Int(abs_sec - UInt64(_INTERNAL_TO_ABSOLUTE)),
+        internal_sec=wall_unix + _UNIX_TO_INTERNAL,
         nsec=normal_sec[1],
+        loc=loc,
     )
 
 
