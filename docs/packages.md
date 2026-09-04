@@ -146,7 +146,7 @@ Hashes and symmetric primitives are written in Mojo: they are pure computation, 
 | `os/exec` | 49 | `core.os.exec` | Port | `posix_spawn` where available, `fork`/`exec` otherwise. |
 | `os/signal` | 6 | `core.os.signal` | Port | The self-pipe trick, delivered onto a channel from [design](design.md). |
 | `os/user` | 23 | `core.os.user` | Port | |
-| `path` | 9 | `core.path` | Port | Slash paths. |
+| `path` | 9 | `core.path` | Port | Slash paths, all nine symbols, all lexical. `Match` is `is_match` because `match` is a Mojo keyword, which is the package's only rename. |
 | `path/filepath` | 27 | `core.path.filepath` | Port | Host paths. Two platforms, so `Separator` is always `/`; the abstraction is kept for portability rather than deleted. |
 | `syscall` | (per-platform) | `core.syscall` | Adapt | Constants and layouts generated from the host headers for macOS arm64, Linux x86-64 and Linux arm64 by `tools/baseline/` and `tools/gen/syscall.py`, and the calls over descriptors, paths, directories, clocks and `struct stat` written over them. `open` and `fcntl` go through two wrappers in `core/syscall/shim/varargs.c`, because both are variadic in C and a variadic function cannot be called portably from Mojo. Go's manifests carry 6,233 names here across eleven platforms and ours is three, which are different enough that a percentage between them would mean nothing. Left out of the totals for that reason. |
 | `runtime/debug` | 37 | `core.runtime.debug` | Adapt | Stack traces, build info, GC knobs that are no-ops with a documented reason. |

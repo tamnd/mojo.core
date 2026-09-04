@@ -154,3 +154,23 @@ go = "fmt"
 # table can be ported and which cannot.
 mode = "calls"
 file = "fmt_test.go"
+
+[harvest.path]
+go = "path"
+# Every table in the package, which between them are the whole of what `path`
+# promises. `cleantests` is the interesting one: 44 rows of the rewriting rules
+# that make two spellings of a path the same string, including the ones that
+# look like they should be symmetrical and are not, and it is read twice
+# because `Clean` of an already clean path has to be the same string again.
+# `matchTests` comes from the other test file and carries an `err` field, which
+# is `nil` on every row that is not one of the six bad patterns.
+tables = [
+  "cleantests",
+  "splittests",
+  "jointests",
+  "exttests",
+  "basetests",
+  "dirtests",
+  "isAbsTests",
+  "matchTests",
+]

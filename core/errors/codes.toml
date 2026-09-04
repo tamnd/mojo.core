@@ -62,3 +62,6 @@ ErrInvalidEncoding = { doc = "A marshalled generator state was not one this can 
 
 ["core.math.big"]
 ErrNaN = { go = "big.ErrNaN", doc = "An operation on `Float` values has no answer: adding infinities of opposite signs, subtracting two infinities of the same sign, multiplying an infinity by a zero, dividing zero by zero or infinity by infinity, or taking the square root of a negative number. Go panics with an `ErrNaN` value and documents that `Float` has no NaN, so that a program which wants one has to catch the panic; this raises with the same meaning, and nothing here ever produces a NaN by returning it." }
+
+["core.path"]
+ErrBadPattern = { go = "path.ErrBadPattern", doc = "A pattern handed to `match` was malformed: a character class with nothing in it, one that was never closed, a backslash at the very end with nothing to escape, or a byte in a class that is not the start of a character. It says the pattern is wrong rather than that the name failed to match, which is why `match` reports it even when the name had already stopped agreeing. Go's `path/filepath` shares this value, and so does `core.path.filepath`." }
