@@ -4,7 +4,25 @@ One file per platform, holding what that platform's own C headers say about the 
 
 These are here because they cannot be checked from Mojo. Checking them means asking the host what the right answer is, and a wrong offset does not fail, it reads a plausible wrong number out of the middle of a structure. Everything that can be checked from Mojo is an ordinary test instead, so that it runs everywhere on every run rather than only where a C compiler happens to exist.
 
-The numbers are not a formality. `pthread_mutex_t` is 40 bytes on Linux x86-64, 48 on Linux arm64 and 64 on macOS. `sin_family` is at offset 0 on Linux and at offset 1 on macOS, because macOS puts a length byte first. `O_CREAT` is 64 on Linux and 512 on macOS. `struct stat` has a different field order on the two Linux architectures, not just a different size. Every one of those is a bug that compiles cleanly and returns something believable.
+The numbers are not a formality. `pthread_mutex_t` is 40 bytes on Linux x86-64, 48 on Linux arm64 and 64 on macOS. `sin_family` is at offset 0 on Linux and at offset 1 on macOS, because macOS puts a length byte first. `O_CREAT` is 64 on Linux and 512 on macOS. Every one of those is a bug that compiles cleanly and returns something believable.
+
+`struct stat` is the one worth stating in full, because it is the structure most of this library reads and the two Linux architectures do not merely disagree with macOS, they disagree with each other. It is 144 bytes on x86-64 and 128 on arm64. Eleven of the recorded facts differ between them:
+
+| Fact | Linux x86-64 | Linux arm64 |
+|---|---|---|
+| `sizeof(struct stat)` | 144 | 128 |
+| `struct stat.st_mode` | 24 | 16 |
+| `struct stat.st_nlink` | 16 | 20 |
+| `struct stat.st_uid` | 28 | 24 |
+| `struct stat.st_gid` | 32 | 28 |
+| `struct stat.st_rdev` | 40 | 32 |
+| `sizeof(nlink_t)` | 8 | 4 |
+| `sizeof(blksize_t)` | 8 | 4 |
+| `sizeof(pthread_mutex_t)` | 40 | 48 |
+| `O_DIRECTORY` | 65536 | 16384 |
+| `O_NOFOLLOW` | 131072 | 32768 |
+
+A binding written on an x86-64 machine and assumed to hold for Linux reads `st_nlink` where `st_uid` is on arm64, four bytes wide instead of eight, and reports a link count that is a user id. Nothing about the result says so. That is the whole reason there are three files here rather than two.
 
 ## Recording
 

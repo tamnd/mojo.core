@@ -1,6 +1,6 @@
 # Design
 
-Mojo is not Go. Ten properties of the language shape nearly every decision in this repository, and each one has a compiled probe under `tools/probe/` so that a release which changes it produces a failing test naming the section here that has to be rewritten.
+Mojo is not Go. Twelve properties of the language shape nearly every decision in this repository, and each one has a compiled probe under `tools/probe/` so that a release which changes it produces a failing test naming the section here that has to be rewritten.
 
 Everything below was established by writing the smallest program that would settle the question and running it against Mojo 1.0.0. Where a probe result contradicted an assumption, the assumption lost.
 
@@ -119,6 +119,26 @@ The honest summary, using format strings as the example: this library detects ev
 The same shape applies to codec field sets, struct tags, and SQL placeholder counts. If Mojo ever grows a static assert, all of it becomes a compile error and the change is about four lines.
 
 The section heading stays as it is because it is still true. A compile time fact cannot be turned into a compile error, or into a warning. It can be turned into a message, which is a weaker thing that happens to be enough.
+
+## 11. A variadic C function cannot be called portably
+
+`external_call` emits a call of fixed arity. C decides how to pass an argument from the prototype, and a variadic prototype does not pass its anonymous arguments the same way a fixed one does, so a call that names the arguments individually is using the wrong convention for every one of them past the last named parameter.
+
+On x86-64 and on standard AArch64 the two conventions agree for integer arguments and nothing goes wrong. Apple's AArch64 variant is the exception: an anonymous argument goes on the stack, and a fixed arity call leaves it in a register, so the callee reads whatever the stack happened to hold. `open("/tmp/f", O_CREAT | O_WRONLY, 0644)` written the obvious way creates a file with mode zero on this laptop and mode 0644 on both Linux machines, and nothing anywhere reports a problem.
+
+That is the worst shape a portability bug can have: right on two of the three platforms, wrong on the one most of the development happens on, and silent on all three. `probes/variadic_call.mojo` pins both halves, so it fails if Apple silicon starts working and also if a platform that works today stops.
+
+The consequence for the library is small but not nothing. `open` with a creation mode, `fcntl` with an argument, and `ioctl` are variadic, and none of them can be reached from Mojo directly. They need a non variadic C wrapper, which is a second file next to the one section 4 already needs, and the reasoning for adding it is on issue #139. Everything else `core.syscall` binds has a fixed prototype and is called straight through.
+
+## 12. A Mojo string is not a C string
+
+A `String` carries its length. It does not carry a terminator, and `as_bytes()` gives back exactly the bytes of the string, so the pointer under it is not a `char *` and handing it to a C function that expects one is reading past the end of the value.
+
+Nothing about that reads as wrong at the call site, and most of the time it appears to work, because a buffer with nothing after it often has a zero there anyway. The case that shows it every time is a substring: `String("/tmp/keep-this-name")[byte=0:5]` is five bytes to Mojo and nineteen to `strlen`, because what follows the five is the rest of the string it came from. The case that caused it here was duller and worse. A path built by concatenation lands in an allocation that held a longer path a moment ago, so `mkdir` was called with the right name followed by the tail of an older one, and the whole of `core.syscall`'s first test run failed with `ENOENT` and `EILSEQ` for directories whose names were nearly right. `probes/cstring_terminator.mojo` pins it.
+
+So every path in `core.syscall` is copied into a zero terminated buffer before it crosses the boundary, by `_cstr` in `core/syscall/calls.mojo`, and the caller keeps that buffer in a variable for the duration of the call. It is an allocation and a copy per call, which is the price of the boundary and not worth optimising away: Go does the same thing in `syscall.BytePtrFromString`, and it takes the opportunity to reject an interior zero while it is there, which is a check `core.os` will do here for the same reason.
+
+There is no `unsafe_cstr_ptr` on `String` in Mojo 1.0 to do this for us. If one arrives, `_cstr` can go.
 
 ## Smaller facts that change how code is written
 

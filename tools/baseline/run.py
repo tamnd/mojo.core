@@ -44,9 +44,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.native import compiler
 from lib.tree import ROOT, report
 
-# Next to the bindings that will assume them, once tools/gen writes those in
-# M5. Until then these tables are the only statement of the numbers, which is
-# why they are checked in rather than measured fresh every run.
+# Next to the bindings that assume them. `tools/gen/syscall.py` reads these
+# three files and writes core/syscall/generated.mojo out of them, so what is
+# recorded here is not a note about the platform, it is the source the bindings
+# are compiled from.
 BASELINES = ROOT / "core" / "syscall" / "baseline"
 
 # The three CI runs on, named the way the CI matrix names them. A platform
@@ -60,22 +61,62 @@ FIELD = re.compile(r"^(.+)\.(\w+)$")
 PROBE = r"""
 #include <stddef.h>
 #include <stdio.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
 #include <signal.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
+
+/* macOS and Linux spell the three timespec fields of struct stat
+   differently, and a binding that reads a modification time has to know
+   where it is under whichever name the platform uses. The offsets are
+   recorded under the POSIX names, so that everything above this reads one
+   name on every platform. */
+#ifdef __APPLE__
+#define ST_ATIM st_atimespec
+#define ST_MTIM st_mtimespec
+#define ST_CTIM st_ctimespec
+#else
+#define ST_ATIM st_atim
+#define ST_MTIM st_mtim
+#define ST_CTIM st_ctim
+#endif
 
 #define SIZE(t)       printf("  \"sizeof(%s)\": %zu,\n", #t, sizeof(t))
 #define OFFSET(t, f)  printf("  \"%s.%s\": %zu,\n", #t, #f, offsetof(t, f))
+#define AT(t, f, n)   printf("  \"%s.%s\": %zu,\n", #t, n, offsetof(t, f))
 #define VALUE(n)      printf("  \"%s\": %d,\n", #n, (int)(n))
 
 int main(void) {
     printf("{\n");
+
+    /* The width of every type a field is read at. A field read at the
+       wrong width is the same class of bug as a field read at the wrong
+       offset and is harder to see, because the low half of a number is
+       usually right. */
+    SIZE(mode_t);
+    SIZE(dev_t);
+    SIZE(ino_t);
+    SIZE(nlink_t);
+    SIZE(uid_t);
+    SIZE(gid_t);
+    SIZE(off_t);
+    SIZE(blksize_t);
+    SIZE(blkcnt_t);
+    SIZE(time_t);
+    SIZE(pid_t);
+    SIZE(size_t);
+    SIZE(ssize_t);
+    SIZE(socklen_t);
 
     SIZE(struct stat);
     OFFSET(struct stat, st_dev);
@@ -84,11 +125,35 @@ int main(void) {
     OFFSET(struct stat, st_nlink);
     OFFSET(struct stat, st_uid);
     OFFSET(struct stat, st_gid);
+    OFFSET(struct stat, st_rdev);
     OFFSET(struct stat, st_size);
+    OFFSET(struct stat, st_blksize);
+    OFFSET(struct stat, st_blocks);
+    AT(struct stat, ST_ATIM, "st_atim");
+    AT(struct stat, ST_MTIM, "st_mtim");
+    AT(struct stat, ST_CTIM, "st_ctim");
+#ifdef __APPLE__
+    AT(struct stat, st_birthtimespec, "st_birthtim");
+#endif
 
     SIZE(struct timespec);
     OFFSET(struct timespec, tv_sec);
     OFFSET(struct timespec, tv_nsec);
+
+    SIZE(struct timeval);
+    OFFSET(struct timeval, tv_sec);
+    OFFSET(struct timeval, tv_usec);
+
+    /* A directory entry is read out of a buffer the kernel filled, so
+       every one of these is a pointer into somebody else's memory. */
+    SIZE(struct dirent);
+    OFFSET(struct dirent, d_ino);
+    OFFSET(struct dirent, d_reclen);
+    OFFSET(struct dirent, d_type);
+    OFFSET(struct dirent, d_name);
+#ifdef __APPLE__
+    OFFSET(struct dirent, d_namlen);
+#endif
 
     /* The threads probe takes a generous fixed buffer for these rather than
        the exact size, and says these are the numbers that pin it down. */
@@ -120,30 +185,186 @@ int main(void) {
     VALUE(O_RDONLY);
     VALUE(O_WRONLY);
     VALUE(O_RDWR);
+    VALUE(O_ACCMODE);
     VALUE(O_APPEND);
     VALUE(O_CREAT);
     VALUE(O_EXCL);
     VALUE(O_TRUNC);
     VALUE(O_NONBLOCK);
     VALUE(O_CLOEXEC);
+    VALUE(O_DIRECTORY);
+    VALUE(O_NOFOLLOW);
+    VALUE(O_SYNC);
 
+    VALUE(SEEK_SET);
+    VALUE(SEEK_CUR);
+    VALUE(SEEK_END);
+
+    VALUE(AT_FDCWD);
+    VALUE(AT_SYMLINK_NOFOLLOW);
+    VALUE(AT_REMOVEDIR);
+
+    VALUE(F_GETFD);
+    VALUE(F_SETFD);
+    VALUE(F_GETFL);
+    VALUE(F_SETFL);
+    VALUE(F_DUPFD);
+    VALUE(F_DUPFD_CLOEXEC);
+    VALUE(FD_CLOEXEC);
+
+    /* The file type bits live in the high half of st_mode and the
+       permission bits in the low half. Everything above this asks about a
+       type through S_IFMT, so the mask matters as much as the values. */
+    VALUE(S_IFMT);
+    VALUE(S_IFREG);
+    VALUE(S_IFDIR);
+    VALUE(S_IFLNK);
+    VALUE(S_IFBLK);
+    VALUE(S_IFCHR);
+    VALUE(S_IFIFO);
+    VALUE(S_IFSOCK);
+    VALUE(S_ISUID);
+    VALUE(S_ISGID);
+    VALUE(S_ISVTX);
+
+    VALUE(DT_UNKNOWN);
+    VALUE(DT_REG);
+    VALUE(DT_DIR);
+    VALUE(DT_LNK);
+    VALUE(DT_BLK);
+    VALUE(DT_CHR);
+    VALUE(DT_FIFO);
+    VALUE(DT_SOCK);
+
+    VALUE(WNOHANG);
+    VALUE(WUNTRACED);
+
+    /* Every errno anything in this library reports on. Go's os maps these
+       to its own errors by number, and a number that is right on one
+       platform and wrong on another produces a correct looking error for
+       the wrong reason. */
+    VALUE(E2BIG);
+    VALUE(EACCES);
+    VALUE(EADDRINUSE);
+    VALUE(EADDRNOTAVAIL);
+    VALUE(EAFNOSUPPORT);
     VALUE(EAGAIN);
+    VALUE(EALREADY);
     VALUE(EBADF);
+    VALUE(EBUSY);
+    VALUE(ECANCELED);
+    VALUE(ECHILD);
+    VALUE(ECONNABORTED);
+    VALUE(ECONNREFUSED);
     VALUE(ECONNRESET);
+    VALUE(EDEADLK);
+    VALUE(EDESTADDRREQ);
+    VALUE(EDOM);
+    VALUE(EDQUOT);
     VALUE(EEXIST);
+    VALUE(EFAULT);
+    VALUE(EFBIG);
+    VALUE(EHOSTDOWN);
+    VALUE(EHOSTUNREACH);
+    VALUE(EIDRM);
+    VALUE(EILSEQ);
+    VALUE(EINPROGRESS);
     VALUE(EINTR);
     VALUE(EINVAL);
+    VALUE(EIO);
+    VALUE(EISCONN);
     VALUE(EISDIR);
+    VALUE(ELOOP);
+    VALUE(EMFILE);
+    VALUE(EMLINK);
+    VALUE(EMSGSIZE);
+    VALUE(ENAMETOOLONG);
+    VALUE(ENETDOWN);
+    VALUE(ENETRESET);
+    VALUE(ENETUNREACH);
+    VALUE(ENFILE);
+    VALUE(ENOBUFS);
+    VALUE(ENODEV);
     VALUE(ENOENT);
+    VALUE(ENOEXEC);
+    VALUE(ENOLCK);
+    VALUE(ENOMEM);
+    VALUE(ENOPROTOOPT);
+    VALUE(ENOSPC);
+    VALUE(ENOSYS);
+    VALUE(ENOTCONN);
     VALUE(ENOTDIR);
+    VALUE(ENOTEMPTY);
+    VALUE(ENOTRECOVERABLE);
+    VALUE(ENOTSOCK);
+    VALUE(ENOTSUP);
+    VALUE(ENOTTY);
+    VALUE(ENXIO);
+    VALUE(EOPNOTSUPP);
+    VALUE(EOVERFLOW);
+    VALUE(EOWNERDEAD);
+    VALUE(EPERM);
     VALUE(EPIPE);
+    VALUE(EPROTONOSUPPORT);
+    VALUE(EPROTOTYPE);
+    VALUE(ERANGE);
+    VALUE(EROFS);
+    VALUE(ESHUTDOWN);
+    VALUE(ESPIPE);
+    VALUE(ESRCH);
+    VALUE(ETIMEDOUT);
+    VALUE(ETXTBSY);
+    VALUE(EWOULDBLOCK);
+    VALUE(EXDEV);
 
-    VALUE(SIGALRM);
-    VALUE(SIGCHLD);
+    /* The signals POSIX names, plus the two each platform has that the
+       other does not. A signal number is not portable even between the two
+       Linux architectures for the real time range, and these are the ones
+       that are fixed. */
+    VALUE(SIGHUP);
     VALUE(SIGINT);
-    VALUE(SIGPIPE);
+    VALUE(SIGQUIT);
+    VALUE(SIGILL);
+    VALUE(SIGTRAP);
+    VALUE(SIGABRT);
+    VALUE(SIGBUS);
+    VALUE(SIGFPE);
+    VALUE(SIGKILL);
+    VALUE(SIGUSR1);
     VALUE(SIGSEGV);
+    VALUE(SIGUSR2);
+    VALUE(SIGPIPE);
+    VALUE(SIGALRM);
     VALUE(SIGTERM);
+    VALUE(SIGCHLD);
+    VALUE(SIGCONT);
+    VALUE(SIGSTOP);
+    VALUE(SIGTSTP);
+    VALUE(SIGTTIN);
+    VALUE(SIGTTOU);
+    VALUE(SIGURG);
+    VALUE(SIGXCPU);
+    VALUE(SIGXFSZ);
+    VALUE(SIGVTALRM);
+    VALUE(SIGPROF);
+    VALUE(SIGWINCH);
+    VALUE(SIGIO);
+    VALUE(SIGSYS);
+#ifdef SIGEMT
+    VALUE(SIGEMT);
+#endif
+#ifdef SIGINFO
+    VALUE(SIGINFO);
+#endif
+#ifdef SIGPWR
+    VALUE(SIGPWR);
+#endif
+#ifdef SIGSTKFLT
+    VALUE(SIGSTKFLT);
+#endif
+
+    VALUE(NAME_MAX);
+    VALUE(PATH_MAX);
 
     printf("  \"end\": 0\n}\n");
     return 0;
