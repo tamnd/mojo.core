@@ -52,6 +52,8 @@ jobs:
       - run: pixi run lint
       # A lint that has stopped matching anything reports success forever, so the lints are themselves checked against known violations.
       - run: pixi run lint-selftest
+      # The reader that stands in for reflection, against a fixture package it compiles on every run. Everything the generators know about a struct comes through here, and what it reads is the output of a compiler that is still changing.
+      - run: pixi run docjson-selftest
 
   generated:
     name: generated code

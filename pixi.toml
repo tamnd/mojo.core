@@ -96,6 +96,18 @@ lint-selftest = "python tools/lint/run.py --selftest"
 # `pixi run parity --write` is what puts that right.
 parity = "python tools/parity/run.py"
 
+# What `mojo doc` says about a package, which is the whole of the reflection
+# substitute this library has. `pixi run docjson core.math.big` prints every
+# struct with its fields, the resolved type of each one and any struct tags in
+# its docstring, and fails on a field type that cannot be pinned to one thing,
+# which is the list of fields a generator is going to refuse.
+#
+# Not part of `check`, because it compiles the documentation for every package
+# and takes half a minute. The selftest is, because it is the thing that says
+# whether the reader still agrees with the compiler.
+docjson = "python tools/docjson/run.py"
+docjson-selftest = "python tools/docjson/run.py --selftest"
+
 # Unicode tables, tzdata, the syscall bindings and every generated codec are
 # checked in as well as generated. This rebuilds them and fails on a diff, which
 # is the single most valuable check in the list, because generated code drifting
@@ -133,6 +145,7 @@ check = { depends-on = [
   "format-check",
   "lint",
   "lint-selftest",
+  "docjson-selftest",
   "vendor-check",
   "generated-check",
   "baseline",

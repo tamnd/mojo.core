@@ -82,6 +82,8 @@ The substitute is `mojo doc`, which emits JSON containing every struct's field n
 
 That generator is infrastructure rather than a JSON detail. JSON, XML, gob, binary, ASN.1, SQL row scanning, `%+v` formatting, template field access and property test generators all read the same output.
 
+`tools/docjson` is the reader they share, and two things it does are worth knowing about because they are not in the JSON. A field type arrives as rendered text under the name it was declared with rather than the name the module wrote, so `from core.math.big import Int as BigInt` produces a field that says `Int`, and `mojo doc` reports no private fields at all, so a struct with one looks exactly like a struct without one. Both are answered by reading the module's source alongside the JSON: what a field was written as is a name the compiler already resolved in that module's scope, and the fields missing from the JSON are the private ones. Where the source cannot be read, a name that could be two things is reported as ambiguous and a struct that might be hiding a field is reported as incomplete, and in both cases a generator refuses rather than guesses.
+
 The hole this leaves is real and it is not papered over. `json.Marshal(anyValue)` cannot exist, because there is no such thing as a value of unknown type at run time.
 
 ## 9. Real OS threads are available through libc
