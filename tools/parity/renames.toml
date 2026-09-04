@@ -198,3 +198,49 @@ NewChaCha8 = "new_chacha8"
 # the same package, and the file it lives in is `pattern.mojo` because the
 # module name is a keyword too.
 Match = "is_match"
+
+["time"]
+# The twenty five constants go into capitals on the rule that gave `io` its
+# seek constants theirs: they are `comptime` values, and a constant is spelled
+# in capitals here. Go's `time.Second` and `time.March` are already the shape a
+# Mojo name has, which is what makes the rule leave them alone and this section
+# necessary.
+Nanosecond = "NANOSECOND"
+Microsecond = "MICROSECOND"
+Millisecond = "MILLISECOND"
+Second = "SECOND"
+Minute = "MINUTE"
+Hour = "HOUR"
+January = "JANUARY"
+February = "FEBRUARY"
+March = "MARCH"
+April = "APRIL"
+May = "MAY"
+June = "JUNE"
+July = "JULY"
+August = "AUGUST"
+September = "SEPTEMBER"
+October = "OCTOBER"
+November = "NOVEMBER"
+December = "DECEMBER"
+Sunday = "SUNDAY"
+Monday = "MONDAY"
+Tuesday = "TUESDAY"
+Wednesday = "WEDNESDAY"
+Thursday = "THURSDAY"
+Friday = "FRIDAY"
+Saturday = "SATURDAY"
+# `write_to` is what a `String` method is here, the same as everywhere else in
+# this library.
+"Duration.String" = "Duration.write_to"
+"Month.String" = "Month.write_to"
+"Weekday.String" = "Weekday.write_to"
+# The operators. Mojo has a spelling for each of these and Go does not, since
+# Go's `==` on a `Time` compares the fields rather than the instant and so
+# could not be `Equal`.
+"Duration.Abs" = "Duration.__abs__"
+"Time.Add" = "Time.__add__"
+"Time.Sub" = "Time.__sub__"
+"Time.Before" = "Time.__lt__"
+"Time.After" = "Time.__gt__"
+"Time.Equal" = "Time.__eq__"

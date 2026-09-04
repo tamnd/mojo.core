@@ -157,10 +157,11 @@ jobs:
   # macOS only, and not by choice. On Linux the Mojo runtime links tcmalloc, which assumes a 48-bit address space, and the sanitiser takes that range for its shadow memory, so every binary built with `--sanitize thread` dies in the allocator before it reaches main. There is no flag to build without tcmalloc. macOS uses the system allocator and works.
   #
   # The loss is smaller than it looks: this runner is arm64, so the weak memory model that a missing barrier needs in order to show up at all is still covered. What is not covered is anything that only races under glibc.
+  # The timeout is deliberately far above what the job takes. Instrumenting the whole library is one compile, that compile took between 44 and 54 minutes across the last eight commits on main, and a ten minute spread on unchanged content is the runner rather than us. A cap set near the mean turns that spread into a red check on a branch with nothing wrong in it, which is the failure mode this number exists to avoid rather than the one it was causing.
   race:
     name: race
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
         with:

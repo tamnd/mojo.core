@@ -174,3 +174,42 @@ tables = [
   "isAbsTests",
   "matchTests",
 ]
+
+[harvest.time]
+go = "time"
+# The tables Go's own time tests are driven by, less the ones whose rows hold a
+# `Time` or a `*Location`. Reflection cannot read a `time.Time`, whose fields
+# are all unexported, and a `*Location` is a pointer into a zone database this
+# library does not have yet, so those tables are ported by hand in the test file
+# and say so there.
+#
+# What is here is the calendar and the durations. `isoWeekTests` alone is 130
+# rows of the rule that a week belongs to the year its Thursday is in, which is
+# the part of the calendar most likely to be got subtly wrong, and `yearDayTests`
+# walks the leap year rule across four centuries.
+tables = [
+  "daysInTests",
+  "isoWeekTests",
+  "yearDayTests",
+  "addDateTests",
+  "durationTests",
+  "durationTruncateTests",
+  "durationRoundTests",
+  "durationAbsTests",
+  "nsDurationTests",
+  "usDurationTests",
+  "msDurationTests",
+  "secDurationTests",
+  "minDurationTests",
+  "hourDurationTests",
+]
+# Four declarations cannot come along. `goStringTests`, `mallocTest` and
+# `slimTests` write `time.Time` with the package qualifier, and the copy these
+# declarations are moved into dot imports `time` the way most of Go's own time
+# tests do, so the qualifier has nothing to resolve against. `subTests` is built
+# out of `MinMonoTime`, which internal_test.go declares by reaching into the
+# packed representation of a `Time` from inside the package. None of the four is
+# a table this could use: the first three are about formatting and about
+# allocation counts, and the fourth is the monotonic saturation case, which is
+# tested here by hand instead.
+skip = ["goStringTests", "mallocTest", "slimTests", "subTests"]
