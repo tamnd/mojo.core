@@ -2,7 +2,7 @@
 name = "core.net.mail"
 go = "net/mail"
 verdict = "Port"
-tier = 9
+tier = 7
 unsafe = false
 deps = [
   "core.bufio",

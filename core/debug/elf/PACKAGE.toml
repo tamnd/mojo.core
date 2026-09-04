@@ -2,7 +2,7 @@
 name = "core.debug.elf"
 go = "debug/elf"
 verdict = "Port"
-tier = 7
+tier = 5
 unsafe = false
 deps = [
   "core.bytes",

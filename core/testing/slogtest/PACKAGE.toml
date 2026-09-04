@@ -2,7 +2,7 @@
 name = "core.testing.slogtest"
 go = "testing/slogtest"
 verdict = "Adapt"
-tier = 9
+tier = 7
 unsafe = false
 deps = [
   "core.context",

@@ -2,7 +2,7 @@
 name = "core.crypto.x509"
 go = "crypto/x509"
 verdict = "Wrap"
-tier = 9
+tier = 6
 unsafe = true
 deps = [
   "core.bytes",

@@ -2,7 +2,7 @@
 name = "core.crypto.tls"
 go = "crypto/tls"
 verdict = "Wrap"
-tier = 10
+tier = 7
 unsafe = true
 deps = [
   "core.bufio",

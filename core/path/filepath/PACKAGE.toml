@@ -2,13 +2,13 @@
 name = "core.path.filepath"
 go = "path/filepath"
 verdict = "Port"
-tier = 7
+tier = 5
 unsafe = false
+# The lexical half only. The disk half brings core.os back in, and glob brings
+# core.sort, and neither is written yet.
 deps = [
   "core.errors",
+  "core.io",
   "core.io.fs",
-  "core.os",
-  "core.sort",
-  "core.strings",
-  "core.unicode.utf8",
+  "core.path",
 ]

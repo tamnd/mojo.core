@@ -2,7 +2,7 @@
 name = "core.net.textproto"
 go = "net/textproto"
 verdict = "Port"
-tier = 8
+tier = 6
 unsafe = false
 deps = [
   "core.bufio",

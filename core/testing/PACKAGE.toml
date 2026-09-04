@@ -2,7 +2,7 @@
 name = "core.testing"
 go = "testing"
 verdict = "Adapt"
-tier = 9
+tier = 7
 unsafe = false
 deps = [
   "core.bytes",

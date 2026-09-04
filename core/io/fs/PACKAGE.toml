@@ -2,11 +2,9 @@
 name = "core.io.fs"
 go = "io/fs"
 verdict = "Adapt"
-tier = 5
+tier = 2
 unsafe = false
 deps = [
-  "core.errors",
   "core.io",
-  "core.path",
-  "core.time",
+  "core.unicode.utf8",
 ]
