@@ -432,6 +432,12 @@ parameter. There is no loop to write here, and the compiler walks every one of
 these format strings while this file is built, which is also the largest test
 this library has of the compile time parser itself.
 
+Every row goes down both paths. `+tick+`sprintf`+tick+` reads the format while the program is
+built and `+tick+`vsprintf`+tick+` reads it while the program runs, and the promise this
+library makes is that they print the same bytes. A promise made in a docstring
+is worth nothing, so it is checked on every row below, before the row is
+checked against Go.
+
 The function names and the order are Go's, taken from the section comments in
 its table, so a failure names the part of Go's table it came from.
 """
@@ -439,7 +445,7 @@ its table, so a failure names the part of Go's table it came from.
 from std.memory import bitcast
 from std.testing import assert_equal
 
-from core.fmt import sprintf
+from core.fmt import Arg, sprintf, vsprintf
 
 
 def _f64(bits: UInt64) -> Float64:
@@ -450,6 +456,30 @@ def _f64(bits: UInt64) -> Float64:
 def _f32(bits: UInt32) -> Float32:
     """The float32 those bits are."""
     return bitcast[DType.float32](bits)
+
+
+def _both[format: StaticString, T: AnyType](value: T, want: String) raises:
+    """One row of Go's table, down both paths.
+
+    The two paths are compared to each other before either is compared to Go,
+    because when they disagree that is the thing worth being told. A failure
+    that only says one of them is not Go leaves the reader to work out which.
+    """
+    var fast = sprintf[format](value)
+    var slow = vsprintf(String(format), [Arg(value)])
+    assert_equal(
+        slow,
+        fast,
+        String(
+            "the two paths disagree on ",
+            format,
+            ": compile time gave ",
+            fast,
+            " and run time gave ",
+            slow,
+        ),
+    )
+    assert_equal(fast, want)
 `)
 
 	used := map[string]int{}
@@ -470,7 +500,7 @@ def _f32(bits: UInt32) -> Float32:
 		for _, r := range s.rows {
 			fmt.Fprintf(
 				&out,
-				"    assert_equal(sprintf[%s](%s), %s)\n",
+				"    _both[%s](%s, %s)\n",
 				quote(r.format), r.value, quote(r.out),
 			)
 		}

@@ -90,6 +90,8 @@ Each generated file carries its own copy of the scanner it needs rather than imp
 
 The hole this leaves is real and it is not papered over. `json.Marshal(anyValue)` cannot exist, because there is no such thing as a value of unknown type at run time.
 
+`core.fmt` is the first package to meet that hole and is worth reading as the pattern for the ones after it. Go prints any value under `%v` by reflecting on it. Here the question is asked while the program is built, of the type rather than of the value, and it has three answers in order of preference: a type that implements `Writable`, which is Go's `Stringer`, prints through that; a type that implements `core.fmt.Fields` prints its fields, and that trait is one method whose body is exactly what the generator will emit from the JSON above; and a type that implements neither is named on the compiler's output at the call, with both ways out spelled in the message, and prints Go's `%!v(value)` marker when it runs. The third answer is the hole, and the design is that a caller is told about it at the call rather than finding a wrong string in a log.
+
 ## 9. Real OS threads are available through libc
 
 Verified rather than assumed. Thread creation and joining, mutexes and condition variables all work through foreign calls into libc, and a probe runs four threads incrementing a shared counter a hundred thousand times each behind a mutex and checks that it lands exactly on four hundred thousand.

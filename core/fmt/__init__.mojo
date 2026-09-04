@@ -72,11 +72,44 @@ markers this package writes name the Go type an argument corresponds to for the
 same reason: `String` is Go's `string`, and a type this library does not know
 has no name at all and is called `value`.
 
+## A type this package has never heard of
+
+Go prints one under `%v` by reflecting on it. There is nothing here that can,
+so the question is asked of the type while the program is built, and it has
+three answers in order of preference:
+
+1. It implements `Writable`, which is Go's `Stringer`, and prints as what it
+   writes.
+2. It implements `Fields`, and prints its fields. That is one method, and it
+   gets the verb, the flags, the width and the precision and hands them to each
+   field the way Go does, so `%d` of a struct holding an `Int` and a `String`
+   is Go's `{1 %!d(string=hello)}`. See `fields.mojo` for the shape.
+3. It implements neither, and there is nothing to print. The call is named on
+   the compiler's output, with both ways out spelled in the message, and writes
+   Go's `%!v(value)` marker when it runs.
+
+## A format string nobody knew until the program ran
+
+The compile time path cannot take one, because the format string is a
+parameter. `vsprintf` can. It takes a `String` and a `List[Arg]`, does no
+checking, costs a box for every argument, and prints the same bytes:
+
+```mojo
+from core.fmt import Arg, vsprintf
+
+def main() raises:
+    var format = String("%s has %d items")
+    print(vsprintf(format, [Arg(String("cart")), Arg(3)]))
+```
+
+`vprintf`, `vfprintf` and `vappendf` are the same thing written somewhere else.
+It is the honest answer for a caller building a format string out of a
+translation table and the wrong answer for everything else. See `dynamic.mojo`
+for what the two paths share, which is most of them.
+
 ## What is not here yet
 
-`vprintf`, which takes a format string that is not known until the program
-runs, and `%v` on a struct. Both are issue 26. `Print`, `Println` and the
-`Sprint` family have no format string to check and land with them.
+`errorf`, and the `Scan` family, which is a parser rather than a printer.
 """
 
 from core.io import Writer
@@ -89,9 +122,20 @@ from .check import (
     integral,
     missing_argument,
     no_width_argument,
+    unprintable,
     wrong_verb,
 )
-from .kind import as_index, kind_of, name_of
+from .arg import Arg
+from .dynamic import (
+    vappendf,
+    vformat_to,
+    vfprintf,
+    vprintf,
+    vsprintf,
+)
+from .fields import Fields, Spec
+from .kind import OPAQUE, as_index, kind_of, name_of
+from .out import to_stdout
 from .plan import (
     BADINDEX,
     MINUS,
@@ -102,11 +146,21 @@ from .plan import (
     ZERO,
     pieces,
 )
-from .value import one
+from .print import (
+    append,
+    appendln,
+    fprint,
+    fprintln,
+    print,
+    println,
+    sprint,
+    sprintln,
+)
+from .value import one, write_field
 
 
 def format_to[
-    format: StaticString, *Ts: Writable
+    format: StaticString, *Ts: AnyType
 ](mut out: String, *args: *Ts) raises:
     """The formatted text onto the end of `out`.
 
@@ -195,7 +249,10 @@ def format_to[
                 out += chr(verb)
                 out += "(MISSING)"
             else:
-                comptime if not accepts(verb, kind_of[Ts[a]]()):
+                comptime if kind_of[Ts[a]]() == OPAQUE:
+                    comptime said = unprintable[format, verb, a]()
+                    out += said
+                elif not accepts(verb, kind_of[Ts[a]]()):
                     comptime said = wrong_verb[
                         format, verb, name_of[Ts[a]](), a
                     ]()
@@ -218,25 +275,25 @@ def format_to[
         out += ")"
 
 
-def sprintf[format: StaticString, *Ts: Writable](*args: *Ts) raises -> String:
+def sprintf[format: StaticString, *Ts: AnyType](*args: *Ts) raises -> String:
     """The formatted text as a string. Go's `Sprintf`."""
     var out = String()
     format_to[format](out, *args)
     return out^
 
 
-def printf[format: StaticString, *Ts: Writable](*args: *Ts) raises:
+def printf[format: StaticString, *Ts: AnyType](*args: *Ts) raises:
     """The formatted text on standard output. Go's `Printf`.
 
     Go gives back the byte count and an error. Nothing here can fail, since
     the text is built before any of it is written, and a count nobody reads is
     a count that goes stale.
     """
-    print(sprintf[format](*args), end="")
+    to_stdout(sprintf[format](*args))
 
 
 def fprintf[
-    format: StaticString, W: Writer, *Ts: Writable
+    format: StaticString, W: Writer, *Ts: AnyType
 ](mut dst: W, *args: *Ts) raises -> Int:
     """The formatted text to a writer, and how many bytes that took. Go's
     `Fprintf`."""
@@ -245,7 +302,7 @@ def fprintf[
 
 
 def appendf[
-    format: StaticString, *Ts: Writable
+    format: StaticString, *Ts: AnyType
 ](mut dst: List[Byte], *args: *Ts) raises -> Int:
     """The formatted text onto the end of `dst`, and how many bytes that took.
     Go's `Appendf`.

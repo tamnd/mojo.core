@@ -41,17 +41,48 @@ quiet at once, and a test failing is how that gets noticed rather than a bug
 report two releases later.
 """
 
-from .kind import BOOLEAN, FLOAT, OTHER, SIGNED, TEXT, UNSIGNED
+from .kind import BOOLEAN, FLOAT, OPAQUE, OTHER, SIGNED, STRUCT, TEXT, UNSIGNED
 
 
 def accepts(verb: Int, kind: Int) -> Bool:
     """Whether `verb` can print a value of `kind`. Go's per kind switches.
 
-    This is the same table `value.mojo` dispatches on, written once. The two
+    This is the same table `verb.mojo` dispatches on, written once. The two
     agreeing is not left to inspection: `tests/fmt/test_verbs.mojo` walks every
     verb against every kind and asserts that what this says matches whether the
     output came out as a marker.
     """
+    if kind == OPAQUE:
+        # Nothing prints a value that can neither write itself nor list its
+        # fields, `%v` included. There is no text to be had.
+        return False
+    if kind == STRUCT:
+        # Go hands the verb to each field rather than to the struct, so the
+        # struct refuses nothing a field could have taken: `%d` of a struct
+        # holding an `Int` and a `String` is `{1 %!d(string=x)}`, which is one
+        # good field and one marker rather than a refusal. A verb no kind at
+        # all takes is still worth complaining about, because no field could
+        # have taken it either.
+        return (
+            verb == ord("v")
+            or verb == ord("d")
+            or verb == ord("b")
+            or verb == ord("o")
+            or verb == ord("O")
+            or verb == ord("x")
+            or verb == ord("X")
+            or verb == ord("c")
+            or verb == ord("q")
+            or verb == ord("U")
+            or verb == ord("e")
+            or verb == ord("E")
+            or verb == ord("f")
+            or verb == ord("F")
+            or verb == ord("g")
+            or verb == ord("G")
+            or verb == ord("s")
+            or verb == ord("t")
+        )
     if verb == ord("v"):
         return True
     if kind == SIGNED or kind == UNSIGNED:
@@ -141,6 +172,36 @@ def wrong_verb[
             "(",
             name,
             "=...) marker at run time",
+        )
+    )
+
+
+def unprintable[format: StaticString, verb: Int, at: Int]() -> StaticString:
+    """An argument whose type can neither write itself nor list its fields.
+
+    This is the reflection hole and it gets its own sentence rather than being
+    folded into `wrong_verb`, because nothing about the verb is wrong. Go would
+    reach for reflection here and there is none, so the answer is to name the
+    two ways out: implement `Writable`, which is Go's `Stringer`, or implement
+    `Fields`, which is the walk Go's reflection would have done.
+    """
+    return complain(
+        String(
+            'core: fmt: in "',
+            format,
+            '" argument ',
+            at + 1,
+            (
+                " has a type that can neither write itself nor list its fields,"
+                " so there is nothing to print and this call writes Go's %!"
+            ),
+            chr(verb),
+            (
+                "(value) marker at run time. Implement Writable on it, which is"
+                " Go's Stringer, or implement core.fmt.Fields on it, which is"
+                " the walk over the fields that Go would have done with"
+                " reflection"
+            ),
         )
     )
 
