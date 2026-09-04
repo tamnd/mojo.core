@@ -231,6 +231,7 @@ from .calls import (
     fsync,
     ftruncate,
     getcwd,
+    getenv,
     getpid,
     link,
     lseek,
@@ -243,10 +244,12 @@ from .calls import (
     readlink,
     rename,
     rmdir,
+    setenv,
     stat,
     symlink,
     unlink,
     unlinkat,
+    unsetenv,
     write,
 )
 from .dir import Dirent
