@@ -42,11 +42,10 @@ a location to is exactly as cheap as it was before locations existed.
 
 ## What is not here yet
 
-`load_location` and `Local`, which is the half of the zone story that reads the
-host's database and asks it for `Europe/Berlin` by name. Until that lands a
-location has to be built from bytes with `load_location_from_tz_data` or made up
-with `fixed_zone`, so a program cannot yet ask what the local wall clock says.
-The layout language, `parse`, timers and marshalling are also still to come.
+`parse`, which is the layout language read backwards: `format` writes an
+instant out by an example of the answer and there is nothing yet that takes one
+apart the same way. The timers and the marshalling methods are also still to
+come.
 """
 
 from core.syscall import CLOCK_MONOTONIC, CLOCK_REALTIME, clock_gettime
@@ -77,6 +76,7 @@ from .duration import (
     _less_than_half,
 )
 from .divide import _quo, _rem
+from .format import _append_format, _append_int
 from .tzset import _ALPHA, _OMEGA
 from .zone import Location
 
@@ -600,6 +600,47 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
             return stripped + -r
         return stripped + (d - r)
 
+    def format(self, layout: StringSlice) -> String:
+        """This instant written out by `layout`. Go's `Format`.
+
+        ```mojo
+        from core.time import DATE_ONLY, MARCH, date
+
+        print(date(2024, MARCH, 9, 14, 5, 6, 0).format(DATE_ONLY))
+        # => 2024-03-09
+        ```
+
+        The layout is an example rather than a pattern: it is the reference
+        instant `01/02 03:04:05PM '06 -0700` written the way the answer should
+        be, and `core/time/format.mojo` is where that is explained and where
+        the named layouts such as `RFC3339` and `DATE_ONLY` live.
+        """
+        var out = List[UInt8]()
+        _ = self.append_format(out, layout)
+        return String(from_utf8_lossy=Span(out))
+
+    def append_format(self, mut dst: List[UInt8], layout: StringSlice) -> Int:
+        """`format(layout)` onto the end of `dst`, and how many bytes that
+        took. Go's `AppendFormat`, which hands back the grown slice instead.
+
+        The count rather than the list, the same as `strconv.append_int` and
+        the rest of the `append_` family: the list is already the caller's and
+        a second name for it is the thing that goes stale.
+        """
+        var name, offset, _, _, _ = self._lookup()
+        var abs_sec = (
+            UInt64(self.sec) + UInt64(offset) + UInt64(_INTERNAL_TO_ABSOLUTE)
+        )
+        return _append_format(
+            dst,
+            layout,
+            abs_sec // SECONDS_PER_DAY,
+            abs_sec,
+            self.nsec,
+            name,
+            offset,
+        )
+
     def write_to[W: Writer](self, mut writer: W):
         """The instant in Go's default notation, as `Time.String` writes it.
 
@@ -618,101 +659,26 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         `+0200 CEST`, and a time with a monotonic reading gets Go's ` m=` suffix
         so that two of them printed next to each other can be told apart.
 
-        Written by hand rather than through the layout language, which is not
-        here yet. It moves to `format` when that lands and this docstring goes
-        with it.
+        The suffix is the only part written by hand. Go leaves it out of the
+        layout language too, because there is no piece of the reference instant
+        that could stand for a reading no calendar has a place for.
         """
-        var year, month, day = self.date()
-        var hour, minute, sec = self.clock()
-        var zone_name, offset = self.zone()
-
-        var out = String()
-        _write_padded(out, year, 4)
-        out += "-"
-        _write_padded(out, month.value, 2)
-        out += "-"
-        _write_padded(out, day, 2)
-        out += " "
-        _write_padded(out, hour, 2)
-        out += ":"
-        _write_padded(out, minute, 2)
-        out += ":"
-        _write_padded(out, sec, 2)
-        _write_fraction(out, self.nsec)
-        out += " "
-        _write_offset(out, offset)
-        out += " "
-        out += zone_name
+        var out = List[UInt8]()
+        _ = self.append_format(out, "2006-01-02 15:04:05.999999999 -0700 MST")
 
         if self.has_mono:
-            out += " m="
+            out.extend(" m=".as_bytes())
             var m = self.mono
             if m < 0:
-                out += "-"
+                out.extend("-".as_bytes())
                 m = -m
             else:
-                out += "+"
-            var whole = m // 1_000_000_000
-            out += String(whole)
-            out += "."
-            _write_padded(out, m % 1_000_000_000, 9)
+                out.extend("+".as_bytes())
+            _append_int(out, m // 1_000_000_000, 0)
+            out.extend(".".as_bytes())
+            _append_int(out, m % 1_000_000_000, 9)
 
-        writer.write(out)
-
-
-def _write_padded(mut out: String, value: Int, width: Int):
-    """`value` in decimal, zero padded to `width` digits, minus sign first.
-
-    A number too long for the width is written in full rather than truncated,
-    which is what Go's `appendInt` does and what keeps the year 10000 from
-    printing as `0000`. The sign is not counted towards the width, so the year
-    -1 is six characters.
-    """
-    var digits = String(abs(value))
-    if value < 0:
-        out += "-"
-    for _ in range(width - digits.byte_length()):
-        out += "0"
-    out += digits
-
-
-def _write_offset(mut out: String, offset: Int):
-    """The zone offset as `-0700` writes it: a sign, two hours, two minutes.
-
-    Whole minutes only, and the seconds of an offset are dropped rather than
-    rounded, which is what Go's `-0700` does. It matters for the local mean
-    time zones at the start of most zone files, where Berlin's first offset is
-    3208 seconds and prints as `+0053`.
-
-    `_quo` rather than `//`, because dropping the seconds of a negative offset
-    has to drop them towards zero the way Go's division does. Rounding the
-    other way turns Kiritimati's old `-1029` into `-1030`.
-    """
-    var minutes = _quo(offset, 60)
-    if minutes < 0:
-        out += "-"
-        minutes = -minutes
-    else:
-        out += "+"
-    _write_padded(out, minutes // 60, 2)
-    _write_padded(out, minutes % 60, 2)
-
-
-def _write_fraction(mut out: String, nsec: Int):
-    """A decimal point and the nanoseconds, or nothing at all if they are zero.
-
-    Trailing zeros go, which is what the `.999999999` in Go's layout asks for,
-    as against the `.000000000` that keeps them.
-    """
-    if nsec == 0:
-        return
-    var digits = String()
-    _write_padded(digits, nsec, 9)
-    var end = digits.byte_length()
-    while end > 0 and digits[byte=end - 1] == "0":
-        end -= 1
-    out += "."
-    out += digits[byte=0:end]
+        writer.write(String(from_utf8_lossy=Span(out)))
 
 
 def _div(t: Time, d: Duration) -> Tuple[Int, Duration]:

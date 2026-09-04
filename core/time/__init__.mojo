@@ -36,8 +36,20 @@ print(date(2020, OCTOBER, 29, 15, 30, 0, 0, berlin))
 # => 2020-10-29 15:30:00 +0100 CET
 ```
 
-Not here yet, and each its own piece of work: the layout language and with it
-`format` and `parse`, the timers, and `core.time.tzdata`, which is the copy of
+Writing an instant out is here as well. A layout is not a pattern of letters
+standing for fields, it is the reference instant `01/02 03:04:05PM '06 -0700`
+written the way the answer should be written, and `format` writes the instant it
+is given the same way. The nineteen layouts everybody uses already have names.
+
+```mojo
+from core.time import DATE_TIME, MARCH, date
+
+print(date(2024, MARCH, 9, 14, 5, 6, 0).format(DATE_TIME))
+# => 2024-03-09 14:05:06
+```
+
+Not here yet, and each its own piece of work: `parse`, which is that same layout
+language read backwards, the timers, and `core.time.tzdata`, which is the copy of
 the zone database a program can compile into itself so that it does not need the
 host to have one. Where what is here behaves differently from Go rather than not
 being here at all, `docs/deviations.md` has the row.
@@ -99,6 +111,27 @@ from .time import (
     unix_micro,
     unix_milli,
     until,
+)
+from .format import (
+    ANSIC,
+    DATE_ONLY,
+    DATE_TIME,
+    KITCHEN,
+    LAYOUT,
+    RFC822,
+    RFC822Z,
+    RFC850,
+    RFC1123,
+    RFC1123Z,
+    RFC3339,
+    RFC3339_NANO,
+    RUBY_DATE,
+    STAMP,
+    STAMP_MICRO,
+    STAMP_MILLI,
+    STAMP_NANO,
+    TIME_ONLY,
+    UNIX_DATE,
 )
 from .load import load_location, local
 from .tzif import load_location_from_tz_data
