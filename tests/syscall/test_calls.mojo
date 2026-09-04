@@ -16,12 +16,19 @@ from std.testing import assert_equal, assert_false, assert_true
 
 from core.errors import field
 from core.syscall import (
+    EBADF,
     EEXIST,
     ENOENT,
     ENOTDIR,
     ENOTEMPTY,
     Errno,
+    FD_CLOEXEC,
+    F_GETFD,
+    F_GETFL,
+    F_SETFD,
+    O_ACCMODE,
     O_CREAT,
+    O_EXCL,
     O_RDONLY,
     O_RDWR,
     O_WRONLY,
@@ -34,6 +41,7 @@ from core.syscall import (
     create,
     dup,
     fchmod,
+    fcntl,
     fstat,
     fsync,
     ftruncate,
@@ -95,7 +103,7 @@ def _clear(place: String, names: List[String]) raises:
 
 def _read_all(path: String) raises -> String:
     """The whole of a small file, as text."""
-    var fd = open(path, O_RDONLY)
+    var fd = open(path, O_RDONLY, 0)
     var room = List[Byte](length=4096, fill=0)
     var n = read(fd, Span(room))
     close(fd)
@@ -118,32 +126,114 @@ def test_create_write_read_back() raises:
     _clear(place, ["hello.txt"])
 
 
-def test_open_refuses_o_creat() raises:
-    # The three argument form takes the mode as a variadic argument and there
-    # is no way to pass one correctly on Apple silicon, so this refuses rather
-    # than creating a file with whatever was in the register. Design section 11
-    # and issue #139. The refusal is the tested behaviour, not an accident.
-    var place = _scratch("nocreat")
-    try:
-        _ = open(String(place, "/made.txt"), O_CREAT | O_WRONLY)
-        raise Error("open should have refused O_CREAT")
-    except e:
-        assert_true("O_CREAT" in String(e))
-        assert_true("create" in String(e))
+def test_open_creates_with_the_mode_that_was_asked_for() raises:
+    # The assertion the whole shim exists for. The mode is an anonymous
+    # argument to C's `open`, and a fixed arity call leaves it in a register
+    # that Apple silicon does not read, so this file came out with mode zero
+    # here and 0640 on both Linux machines until `core_syscall_open3` was
+    # written. Design section 11 and core/syscall/shim/README.md.
+    var place = _scratch("openmode")
+    var path = String(place, "/made.txt")
 
-    # And nothing was made.
+    var fd = open(path, O_CREAT | O_WRONLY, 0o640)
+    assert_equal(write(fd, "made".as_bytes()), 4)
+    close(fd)
+
+    var found = stat(path)
+    assert_equal(found.permissions(), 0o640)
+    assert_equal(_read_all(path), "made")
+    _clear(place, ["made.txt"])
+
+
+def test_open_creating_can_also_read() raises:
+    # `creat` is `O_CREAT | O_WRONLY | O_TRUNC` and cannot be anything else, so
+    # a file that is created and then read back through the same descriptor is
+    # the case that only the three argument form covers.
+    var place = _scratch("openrdwr")
+    var path = String(place, "/both.txt")
+
+    var fd = open(path, O_CREAT | O_RDWR, 0o644)
+    assert_equal(write(fd, "both".as_bytes()), 4)
+    assert_equal(lseek(fd, 0, SEEK_SET), 0)
+    var room = List[Byte](length=16, fill=0)
+    assert_equal(read(fd, Span(room)), 4)
+    close(fd)
+    _clear(place, ["both.txt"])
+
+
+def test_o_excl_refuses_a_file_that_is_there() raises:
+    # The other flag only the three argument form can reach, and the one whose
+    # entire purpose is that the check and the creation are one operation.
+    var place = _scratch("excl")
+    var path = String(place, "/once.txt")
+
+    close(open(path, O_CREAT | O_WRONLY | O_EXCL, 0o644))
     try:
-        _ = stat(String(place, "/made.txt"))
-        raise Error("the refused open should not have made a file")
+        _ = open(path, O_CREAT | O_WRONLY | O_EXCL, 0o644)
+        raise Error("O_EXCL should have refused a file that is already there")
     except e:
-        assert_equal(field(e, "errno").value(), String(ENOENT))
-    _remove(place)
+        assert_equal(field(e, "errno").value(), String(EEXIST))
+        assert_equal(field(e, "op").value(), "open")
+    _clear(place, ["once.txt"])
+
+
+def test_open_without_o_creat_ignores_the_mode() raises:
+    # The mode is read only when something is created, so a nonsense one on an
+    # ordinary open changes nothing. Worth pinning because the argument is now
+    # required and a caller writing a zero should be able to write anything.
+    var place = _scratch("modeignored")
+    var path = String(place, "/kept.txt")
+
+    close(create(path, 0o600))
+    close(open(path, O_RDONLY, 0o777))
+    assert_equal(stat(path).permissions(), 0o600)
+    _clear(place, ["kept.txt"])
+
+
+def test_fcntl_reads_and_sets_the_descriptor_flags() raises:
+    var place = _scratch("fcntl")
+    var path = String(place, "/flags.txt")
+    var fd = create(path, 0o644)
+
+    # A fresh descriptor is not close on exec, and setting the bit takes.
+    assert_equal(fcntl(fd, F_GETFD, 0) & FD_CLOEXEC, 0)
+    _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
+    assert_equal(fcntl(fd, F_GETFD, 0) & FD_CLOEXEC, FD_CLOEXEC)
+
+    close(fd)
+    _clear(place, ["flags.txt"])
+
+
+def test_fcntl_reads_the_access_mode_back() raises:
+    # F_GETFL gives back the flags the file was opened with, which is the one
+    # way to check from the outside that `open` passed them through.
+    var place = _scratch("getfl")
+    var path = String(place, "/mode.txt")
+
+    var fd = open(path, O_CREAT | O_RDWR, 0o644)
+    assert_equal(fcntl(fd, F_GETFL, 0) & O_ACCMODE, O_RDWR)
+    close(fd)
+
+    fd = open(path, O_RDONLY, 0)
+    assert_equal(fcntl(fd, F_GETFL, 0) & O_ACCMODE, O_RDONLY)
+    close(fd)
+    _clear(place, ["mode.txt"])
+
+
+def test_fcntl_on_a_closed_descriptor_fails() raises:
+    try:
+        _ = fcntl(-1, F_GETFD, 0)
+        raise Error("fcntl on a descriptor that is not open should have failed")
+    except e:
+        assert_equal(field(e, "op").value(), "fcntl")
+        assert_equal(field(e, "errno").value(), String(EBADF))
 
 
 def test_create_gives_the_mode_that_was_asked_for() raises:
-    # This is the assertion the variadic hole was found by. Before `create`
-    # replaced the three argument `open`, this file came out with mode zero on
-    # this laptop and 0644 on both Linux machines.
+    # This is the assertion the variadic hole was found by, and `creat` is the
+    # call that answered it first because its prototype is fixed. It stays
+    # because Go has `syscall.Creat` and because the two calls now agree, which
+    # is the cheapest evidence that the shim passes the mode through unharmed.
     var place = _scratch("mode")
     var path = String(place, "/mode.txt")
     var fd = create(path, 0o640)
@@ -159,7 +249,7 @@ def test_a_short_read_is_not_a_failure() raises:
     _ = write(fd, "abcd".as_bytes())
     close(fd)
 
-    fd = open(path, O_RDONLY)
+    fd = open(path, O_RDONLY, 0)
     var room = List[Byte](length=64, fill=0)
     assert_equal(read(fd, Span(room)), 4)
     # And the end of the file is zero rather than an error.
@@ -223,7 +313,7 @@ def test_dup_shares_the_file_offset() raises:
     _ = write(fd, "0123456789".as_bytes())
     close(fd)
 
-    fd = open(path, O_RDONLY)
+    fd = open(path, O_RDONLY, 0)
     var second = dup(fd)
     assert_equal(lseek(fd, 4, SEEK_SET), 4)
     assert_equal(lseek(second, 0, SEEK_CUR), 4)
@@ -415,7 +505,7 @@ def test_the_error_carries_the_call_that_failed() raises:
     # a caller deciding what to do next never has to read the sentence.
     var place = _scratch("fields")
     try:
-        _ = open(String(place, "/absent.txt"), O_RDWR)
+        _ = open(String(place, "/absent.txt"), O_RDWR, 0)
         raise Error("opening a path that is not there should have failed")
     except e:
         assert_equal(field(e, "op").value(), "open")

@@ -39,7 +39,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.cold import environment
-from lib.native import shim
+from lib.native import link_flags, shim
 from lib.tree import ROOT, report
 
 CASES = ROOT / "tests" / "warnings"
@@ -59,8 +59,8 @@ def diagnostics(path: Path) -> tuple[list[str], str, str]:
     A whole program, not an object file. The checks are folded by the compile
     time interpreter, and the interpreter only folds a call that some program
     makes, so a case is a `main` that makes the wrong calls on purpose. The
-    core.errors slot is linked in for the same reason it is linked into the
-    suite: a case that reaches any of the library needs it, and one link line
+    two shims are linked in for the same reason they are linked into the suite:
+    a case that reaches any of the library needs them, and one link line
     everywhere is worth the few hundred bytes.
 
     Compiled against an empty cache. A build served from the compiler's cache
@@ -72,13 +72,13 @@ def diagnostics(path: Path) -> tuple[list[str], str, str]:
     """
     with tempfile.TemporaryDirectory() as scratch:
         where = Path(scratch)
-        slot = shim(where)
-        if isinstance(slot, str):
-            return [], slot, ""
+        objects = shim(where)
+        if isinstance(objects, str):
+            return [], objects, ""
         binary = where / "case"
         out = subprocess.run(
             ["mojo", "build", "-I", str(ROOT), "-o", str(binary),
-             "-Xlinker", str(slot), str(path)],
+             *link_flags(objects), str(path)],
             capture_output=True,
             text=True,
             env=environment(where / "cache"),

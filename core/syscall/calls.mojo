@@ -32,13 +32,19 @@ The integer widths are the ones in the C prototype, so a descriptor is an `int`
 and a count is a `size_t`. `read` and `write` are the exception: Mojo's own
 standard library declares both symbols with an index sized descriptor, and two
 declarations of one symbol in a module do not link, so those two match it.
+
+Two calls do not reach libc directly. `open` and `fcntl` are variadic in C, and
+`external_call` emits a call of fixed arity, which is the wrong convention for
+an anonymous argument on Apple silicon and the right one everywhere else. Both
+go through a wrapper with a real prototype in `core/syscall/shim/varargs.c`,
+whose README says why that file exists and what the alternatives were.
 """
 
 from std.ffi import external_call
 
 from core.errors import Report
 
-from .abi import O_CREAT, PATH_MAX
+from .abi import PATH_MAX
 from .errno import Errno, errno, set_errno
 from .stat import Stat
 
@@ -78,22 +84,28 @@ def _fail(operation: StaticString, failure: Errno) raises:
     )
 
 
-def open(path: String, flags: Int) raises -> Int:
-    """Open a file that already exists. Gives back the descriptor.
+def open(path: String, flags: Int, mode: Int) raises -> Int:
+    """Open a file. Gives back the descriptor.
 
-    Two arguments only. The three argument form takes the creation mode as a
-    variadic argument, which cannot be passed correctly from Mojo on Apple
-    silicon, so `O_CREAT` is refused here rather than honoured with whatever
-    happened to be in the register. Design section 11 has the detail and issue
-    #139 has the fix. `create` covers the common case in the meantime.
+    Three arguments, as in Go, and the mode is required rather than defaulted
+    even though it means writing a zero on every open that is not creating
+    anything. A default here would be a zero that arrives silently, and a file
+    created with mode zero is exactly the failure the shim below exists to
+    prevent, so it should not be reachable by leaving an argument off.
+
+    The call goes through `core_syscall_open3` rather than straight to `open`,
+    because C's `open` is variadic and a variadic argument cannot be passed
+    correctly from Mojo on Apple silicon. See `core/syscall/shim/README.md` and
+    design section 11.
+
+    The mode is what a created file gets after the process umask has been taken
+    off it, exactly as in C, and it is ignored for an open that creates
+    nothing.
     """
-    if flags & O_CREAT != 0:
-        raise Report(
-            "open: O_CREAT needs a mode, and a mode cannot be passed to a"
-            " variadic C function from Mojo. Use create, or see issue #139"
-        ).error()
     var raw = _cstr(path)
-    var fd = external_call["open", Int32](raw.unsafe_ptr(), Int32(flags))
+    var fd = external_call["core_syscall_open3", Int32](
+        raw.unsafe_ptr(), Int32(flags), UInt32(mode)
+    )
     if fd < 0:
         _fail("open", errno())
     return Int(fd)
@@ -102,19 +114,35 @@ def open(path: String, flags: Int) raises -> Int:
 def create(path: String, mode: Int) raises -> Int:
     """Create or truncate a file for writing. Gives back the descriptor.
 
-    This is C's `creat`, which is `open` with `O_CREAT | O_WRONLY | O_TRUNC`
-    and, unlike `open`, a fixed prototype. It is here because it is the only
-    way to create a file with the mode that was asked for until issue #139
-    lands, and it stays afterwards because Go has `syscall.Creat` too.
-
-    The mode is what the file gets after the process umask has been taken off
-    it, exactly as in C.
+    This is C's `creat`, which is `open` with `O_CREAT | O_WRONLY | O_TRUNC`.
+    Go has `syscall.Creat` for the same reason and this keeps it, though with
+    `open` taking a mode there is nothing it can do that `open` cannot.
     """
     var raw = _cstr(path)
     var fd = external_call["creat", Int32](raw.unsafe_ptr(), Int32(mode))
     if fd < 0:
         _fail("create", errno())
     return Int(fd)
+
+
+def fcntl(fd: Int, cmd: Int, arg: Int) raises -> Int:
+    """Ask about or change a descriptor. Gives back whatever the command returns.
+
+    Go's `syscall.FcntlInt`, and the same three arguments. A command that takes
+    no argument, `F_GETFD` and `F_GETFL` among them, reads nothing and is
+    passed a zero by convention.
+
+    Like `open`, this goes through the shim rather than calling `fcntl`
+    directly, because `fcntl` is variadic too. The commands that take a pointer
+    are not reachable this way and none of them are bound; file locking is the
+    one that will want them.
+    """
+    var got = external_call["core_syscall_fcntl", Int32](
+        Int32(fd), Int32(cmd), Int32(arg)
+    )
+    if got < 0:
+        _fail("fcntl", errno())
+    return Int(got)
 
 
 def close(fd: Int) raises:

@@ -38,11 +38,9 @@ number somewhere else.
 
 ## What is not here
 
-`open` takes two arguments. The three argument form passes the creation mode as
-a variadic argument, and a variadic C function cannot be called correctly from
-Mojo on Apple silicon, which is design section 11 and issue #139. `create` is
-C's `creat` and covers the common case with a fixed prototype; `fcntl` and
-`ioctl` wait for the same fix.
+`ioctl` is not bound. It is variadic, so it would need the same C wrapper
+`open` and `fcntl` already go through, and nothing in this library calls it
+yet. `core/syscall/shim/README.md` has the reasoning.
 
 No call here retries on `EINTR`, and no path is checked for an interior zero
 byte. Both are policy, both belong to whoever is deciding what a failure means,
@@ -223,6 +221,7 @@ from .calls import (
     create,
     dup,
     fchmod,
+    fcntl,
     fstat,
     fsync,
     ftruncate,

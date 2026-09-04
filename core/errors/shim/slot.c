@@ -1,6 +1,8 @@
 /*
- * Two pointers, per thread. The only C in this library, and the reason it is
- * here is worth reading before touching it.
+ * Two pointers, per thread. One of the two C files in this library, and the
+ * reason it is here is worth reading before touching it. The other is
+ * core/syscall/shim/varargs.c, which is here for an unrelated reason and is
+ * not somewhere to put anything that belongs in this one.
  *
  * Mojo has no global mutable state. A module level `var` is refused outright,
  * with the compiler telling you to move it into a function body or make it a
