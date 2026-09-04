@@ -55,6 +55,7 @@ what it is.
 # wrong.
 comptime SIZEOF_BLKCNT_T: Int = 8
 comptime SIZEOF_BLKSIZE_T: Int = 8 if _LINUX_X86 else 4
+comptime SIZEOF_CLOCKID_T: Int = 4
 comptime SIZEOF_DEV_T: Int = 4 if _MACOS else 8
 comptime SIZEOF_GID_T: Int = 4
 comptime SIZEOF_INO_T: Int = 8
@@ -199,6 +200,12 @@ comptime DT_UNKNOWN: Int = 0
 # Options for `waitpid`.
 comptime WNOHANG: Int = 1
 comptime WUNTRACED: Int = 2
+
+# Which clock `clock_gettime` is being asked about. `CLOCK_MONOTONIC` is 6 on
+# macOS and 1 on Linux, and 6 on Linux is a CPU time clock, so the wrong
+# constant here reads a clock that answers and means something else.
+comptime CLOCK_MONOTONIC: Int = 6 if _MACOS else 1
+comptime CLOCK_REALTIME: Int = 0
 
 # The errno table. These are the numbers a failing call leaves behind, and
 # around half of them disagree across platforms in a way that is worse than
