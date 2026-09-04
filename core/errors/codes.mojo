@@ -241,3 +241,15 @@ pattern is wrong rather than that the name failed to match, which is why
 
 Owned by `core.path`, answering for Go's `path.ErrBadPattern`.
 """
+
+comptime ErrBadZoneData = Code(27)
+"""The bytes handed to `load_location_from_tz_data` are not a compiled zone file
+this can read. The magic is wrong, the version byte is one this does not know,
+a count in the header runs past the end of the data, an index names a zone the
+file does not contain, or the file declares no zones at all. Go has this as an
+unexported value and returns it from every one of those cases, and the split is
+kept here: a caller who passed the wrong bytes cannot act on which field ran
+out, and a caller who passed the right bytes never sees it.
+
+Owned by `core.time`. Go has no sentinel for it.
+"""
