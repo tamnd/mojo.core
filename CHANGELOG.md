@@ -2,6 +2,18 @@
 
 Notable changes, newest first. This project follows semantic versioning from 1.0. Before then, anything can move.
 
+## Unreleased
+
+`core.syscall`, the first package of M5 and the layer everything above it fails through. Constants, type sizes and structure offsets for macOS arm64, Linux x86-64 and Linux arm64, generated from each platform's own C headers rather than typed from a manual page, and the calls over descriptors, paths and `struct stat` written on top of them. `Errno` is a value that compares against a constant and prints the platform's own message, and every call raises with the number kept on the record under `errno`, so a caller decides what to do next by comparing a number rather than by reading a sentence.
+
+Nothing here is typed by hand because this is the layer where being wrong does not look like being wrong. `struct stat` is 144 bytes on macOS and on Linux x86-64 and 128 on Linux arm64, and the two Linux architectures disagree with each other on eleven recorded facts, including the order of the fields. `mode_t` is two bytes on macOS and four on Linux. `EAGAIN` is 35 on macOS and 11 on Linux, and 35 on Linux is `EDEADLK`, so a literal in the wrong place does not fail to match, it matches something else. A C program under `tools/baseline` asks the host's headers for every one of those numbers, `pixi run baseline` checks the recording against the host on all three platforms on every run, and `tools/gen/syscall.py` turns the three recordings into one generated `abi.mojo`.
+
+Two facts about calling C from Mojo were found by building this and both are now design sections with a probe pinning them.
+
+A variadic C function cannot be called portably. `external_call` emits a call of fixed arity, and on Apple silicon an anonymous argument goes on the stack rather than in a register, so `open(path, O_CREAT | O_WRONLY, 0644)` written the obvious way creates a file with mode zero on macOS and mode 0644 on both Linux machines, silently. So `open` here takes two arguments and refuses `O_CREAT` with a message naming the alternative, and `create`, which is C's `creat` and has a fixed prototype, covers creating a file. `fcntl` and `ioctl` wait on the same fix, which needs a non variadic C wrapper and is issue #139.
+
+A Mojo string is not a C string. It carries its length and no terminator, so the pointer under `as_bytes()` is not a `char *`. That is not a crash, it is worse: a path built by concatenation lands in an allocation that held a longer path a moment ago, so the call gets the right name with the tail of an older one stuck to it and fails with a plausible errno for a path nobody wrote. Every path here is copied into a zero terminated buffer first, which is what Go's `syscall.BytePtrFromString` does and for the same reason.
+
 ## v0.5.0 - 2026-09-04
 
 M4 is complete. There is no reflection in Mojo and there is not going to be any, so this milestone built the thing that stands in for it and then the first package that leans on it. That is a reader for the JSON `mojo doc` emits, a generator that turns that JSON into encoders and decoders, and `core.fmt`, which asks while the program is being built the questions Go's `fmt` asks while it runs. Four pull requests, four issues, and the parity count moves from 13.6 percent to 13.7 percent, which is the wrong number to read this milestone by. Half of it produced tools rather than symbols, and four of the milestones after this one are built on those tools.
