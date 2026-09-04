@@ -28,9 +28,11 @@ our code while the program is compiled, and a `print` from that interpreter
 comes out on the compiler's output. So this is the compromise, stated plainly:
 **every format error is found while the program is compiled and reported as a
 line on the compiler's output, and then the program behaves exactly like Go at
-run time.** Inside this repository `pixi run lint` turns that line into a build
-failure. Outside it, a line while you build is what you get, and the run time
-output is Go's marker for the same mistake, byte for byte:
+run time.** Inside this repository the build of the test suite turns that line
+into a failure, which is where it has to happen: compiling a package on its own
+elaborates nothing, so there is nothing to see until something calls the code.
+Outside it, a line while you build is what you get, and the run time output is
+Go's marker for the same mistake, byte for byte:
 
 ```
 %!d(string=hi)      a verb the argument cannot be printed with
