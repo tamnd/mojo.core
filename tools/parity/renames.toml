@@ -235,6 +235,12 @@ Saturday = "SATURDAY"
 "Duration.String" = "Duration.write_to"
 "Month.String" = "Month.write_to"
 "Weekday.String" = "Weekday.write_to"
+# The location half. `String` becomes `write_to` on the same rule as the three
+# above. `UTC` is a function here rather than a value, because a `Location`
+# holds two lists and a list cannot live at module scope, so it is spelled the
+# way every other function is instead of staying in capitals.
+"Location.String" = "Location.write_to"
+UTC = "utc"
 # The operators. Mojo has a spelling for each of these and Go does not, since
 # Go's `==` on a `Time` compares the fields rather than the instant and so
 # could not be `Equal`.

@@ -39,3 +39,34 @@ url = "https://www.unicode.org/Public/15.0.0/ucd/PropertyValueAliases.txt"
 sha256 = "13a7666843abea5c6b7eb8c057c57ab9bb2ba96cfc936e204224dd67d71cafad"
 licence = "Unicode-3.0, https://www.unicode.org/license.txt"
 # The long names for the general categories, which become CategoryAliases.
+
+[corpus."go-time/2020b_Europe_Berlin"]
+url = "https://raw.githubusercontent.com/golang/go/go1.26.7/src/time/testdata/2020b_Europe_Berlin"
+sha256 = "a7fd9932d785d4d690900b834c3563c1810c1cf2e01711bcc0926af6c0767cb7"
+licence = "BSD-3-Clause, https://go.googlesource.com/go/+/refs/tags/go1.26.7/LICENSE"
+# A slim TZif file from tzdata 2020b, which is the release that started writing
+# them. Berlin is the ordinary case: the file stops in 1996 and the TZ string on
+# the last line is what answers every question after that.
+
+[corpus."go-time/2021a_America_Nuuk"]
+url = "https://raw.githubusercontent.com/golang/go/go1.26.7/src/time/testdata/2021a_America_Nuuk"
+sha256 = "0b42754798ac17186a2bb75f4d56dc45af94d2c4afece8b739741bf74fcd55ba"
+licence = "BSD-3-Clause, https://go.googlesource.com/go/+/refs/tags/go1.26.7/LICENSE"
+# Greenland, which moved its daylight change to a rule the TZ string can only
+# express with a negative hour in it. The reason `_tzset_offset` accepts one.
+
+[corpus."go-time/2021a_Asia_Gaza"]
+url = "https://raw.githubusercontent.com/golang/go/go1.26.7/src/time/testdata/2021a_Asia_Gaza"
+sha256 = "5b611b79d03907f74f0942ef95c016197062ab0b281f62641d5dcb484689d1f0"
+licence = "BSD-3-Clause, https://go.googlesource.com/go/+/refs/tags/go1.26.7/LICENSE"
+# A file whose rules change often enough that tzdata keeps writing explicit
+# transitions rather than a rule, so it has both and the two have to agree at
+# the join.
+
+[corpus."go-time/2021a_Europe_Dublin"]
+url = "https://raw.githubusercontent.com/golang/go/go1.26.7/src/time/testdata/2021a_Europe_Dublin"
+sha256 = "f9322e295fd6c1d0b48c43a69bd43808760bcd12b68feabbcc4b0316c5c2de2e"
+licence = "BSD-3-Clause, https://go.googlesource.com/go/+/refs/tags/go1.26.7/LICENSE"
+# Ireland, the one location whose daylight flag runs backwards: its summer time
+# is the standard clock and its winter is the saving one, so `is_dst` is true in
+# January and false in July.
