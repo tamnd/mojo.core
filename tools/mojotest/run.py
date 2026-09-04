@@ -66,7 +66,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.cold import environment
-from lib.native import shim
+from lib.native import link_flags, shim
 from lib.tree import ROOT, report
 
 TESTS = ROOT / "tests"
@@ -245,11 +245,11 @@ def build_and_run(scratch: Path, quiet: bool, race: bool = False) -> tuple[int, 
     because Mojo reports the absolute one and nothing in a terminal can be
     clicked when it is prefixed by somebody's home directory.
 
-    The core.errors slot is linked into every suite, whether or not the suite
-    touches core.errors. It is a few hundred bytes and it makes the link line
-    the same everywhere, which is worth more than the bytes: a test that only
-    fails when some other test happens to be in the same build is the kind of
-    thing that costs a day.
+    Both shims are linked into every suite, whether or not the suite touches
+    the packages that need them. They are a few hundred bytes and they make the
+    link line the same everywhere, which is worth more than the bytes: a test
+    that only fails when some other test happens to be in the same build is the
+    kind of thing that costs a day.
 
     Quiet is for the selftest, whose fixtures are supposed to fail. Printing
     that failure would put the word FAIL in the log of a build that passed,
@@ -268,14 +268,15 @@ def build_and_run(scratch: Path, quiet: bool, race: bool = False) -> tuple[int, 
     empty so that a suite built twice says it twice. See tools/lib/cold.py and
     section 10 of docs/design.md.
     """
-    slot = shim(scratch)
-    if isinstance(slot, str):
-        return 1, "", [slot]
+    objects = shim(scratch)
+    if isinstance(objects, str):
+        return 1, "", [objects]
 
     binary = scratch / "suite"
     flags = ["--sanitize", "thread"] if race else []
     built = subprocess.run(
-        ["mojo", "build", "-I", str(ROOT), *flags, "-o", str(binary), "-Xlinker", str(slot), str(MAIN)],
+        ["mojo", "build", "-I", str(ROOT), *flags, "-o", str(binary),
+         *link_flags(objects), str(MAIN)],
         capture_output=True,
         text=True,
         env=environment(scratch / "cache"),

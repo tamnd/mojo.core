@@ -128,7 +128,9 @@ On x86-64 and on standard AArch64 the two conventions agree for integer argument
 
 That is the worst shape a portability bug can have: right on two of the three platforms, wrong on the one most of the development happens on, and silent on all three. `probes/variadic_call.mojo` pins both halves, so it fails if Apple silicon starts working and also if a platform that works today stops.
 
-The consequence for the library is small but not nothing. `open` with a creation mode, `fcntl` with an argument, and `ioctl` are variadic, and none of them can be reached from Mojo directly. They need a non variadic C wrapper, which is a second file next to the one section 4 already needs, and the reasoning for adding it is on issue #139. Everything else `core.syscall` binds has a fixed prototype and is called straight through.
+The fix is a wrapper with a real prototype that names the arguments and passes them on. `core/syscall/shim/varargs.c` has two of them, for `open` with a creation mode and `fcntl` with an argument, and its README says why it is a second C file rather than an addition to the one section 4 needs: the two exist for unrelated reasons and live next to the packages that need them. `ioctl` is variadic too and is not wrapped, because nothing calls it and a wrapper written before it has a caller is a guess about which argument type the caller wants. Everything else `core.syscall` binds has a fixed prototype and is called straight through, `open` without a mode included, since a call with no anonymous arguments has nothing to get wrong.
+
+The alternatives were all worse. `creat` has a fixed prototype but is `O_CREAT | O_WRONLY | O_TRUNC` and nothing else, so `O_EXCL`, `O_RDWR` and `O_APPEND` on a file being created would be out of reach and `core.os` needs every one of them. Creating a file and then fixing its permissions with `chmod` leaves a window where the file exists with the wrong ones. Building `O_EXCL` out of a `stat` and a `creat` gets wrong the one flag whose whole purpose is that the check and the creation are a single operation.
 
 ## 12. A Mojo string is not a C string
 

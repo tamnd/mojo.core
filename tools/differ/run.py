@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lib.native import shim
+from lib.native import link_flags, shim
 from lib.tree import ROOT, report
 
 CASES = Path(__file__).parent / "cases.toml"
@@ -54,18 +54,18 @@ def missing_tools(area: dict) -> list[str]:
 def our_command(name: str, area: dict, scratch: Path) -> tuple[list[str], list[str]]:
     """The command that runs our side. Gives back the command, and the problems.
 
-    An area whose driver touches `core.errors` cannot be `mojo run`, because the
-    thread local slot the error record lives in is fifteen lines of C that have
+    An area whose driver touches `core.errors` or `core.syscall` cannot be
+    `mojo run`, because the two shims those packages are built on are C that has
     to be linked in. Such an area declares `build` rather than `mojo` and this
-    compiles the slot and the driver into a scratch directory first. The same
+    compiles the shims and the driver into a scratch directory first. The same
     thing `tools/mojotest/run.py` does for the test suite, for the same reason.
     """
     source = area.get("build")
     if source is None:
         return area["mojo"], []
-    slot = shim(scratch)
-    if isinstance(slot, str):
-        return [], [f"{name}: {slot}"]
+    objects = shim(scratch)
+    if isinstance(objects, str):
+        return [], [f"{name}: {objects}"]
     binary = scratch / Path(source).stem
     built = subprocess.run(
         [
@@ -75,8 +75,7 @@ def our_command(name: str, area: dict, scratch: Path) -> tuple[list[str], list[s
             str(ROOT),
             "-o",
             str(binary),
-            "-Xlinker",
-            str(slot),
+            *link_flags(objects),
             str(ROOT / source),
         ],
         capture_output=True,

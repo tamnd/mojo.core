@@ -1,8 +1,10 @@
 # The thread local slot
 
-There is one C file in this library. This is it, and this is why.
+There are two C files in this library. This is the first, and this is why.
 
-It lives under `core/errors` because that is what needed it first and because a
+The other is [`core/syscall/shim/varargs.c`](../../syscall/shim/README.md), and the two have nothing in common beyond both being C. That one exists because a calling convention cannot be expressed in Mojo. This one exists because a piece of state cannot be. Neither directory is a general place to put C, and each lives next to the package that needs it, which is why they are not in one directory together: putting them side by side would suggest a shared cause that is not there.
+
+This one lives under `core/errors` because that is what needed it first and because a
 tier zero package is the only place every other package can reach. Two packages
 use it now. The second is `core.math.rand`, which is why that package depends on
 `core.errors` and has nothing else to say to it.

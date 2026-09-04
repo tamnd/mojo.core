@@ -44,7 +44,7 @@ from codec import tags as tagging
 from codec.emit import emit
 from codec.plan import plan, snake
 from docjson.read import index
-from lib.native import shim
+from lib.native import link_flags, shim
 from lib.tree import ROOT, packages, report
 
 TESTDATA = Path(__file__).resolve().parent / "testdata"
@@ -128,9 +128,9 @@ def compile_and_run(home: Path, driver: Path) -> list[str]:
     outside this repository, built by the compiler with warnings showing, and
     run, which is the only evidence that any of it works that is worth having.
     """
-    slot = shim(home)
-    if isinstance(slot, str):
-        return [slot]
+    objects = shim(home)
+    if isinstance(objects, str):
+        return [objects]
     binary = home / "driver"
     built = subprocess.run(
         [
@@ -142,8 +142,7 @@ def compile_and_run(home: Path, driver: Path) -> list[str]:
             str(home),
             "-o",
             str(binary),
-            "-Xlinker",
-            str(slot),
+            *link_flags(objects),
             str(driver),
         ],
         capture_output=True,

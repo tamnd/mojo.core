@@ -65,7 +65,7 @@ def test_write_to_is_the_message() raises:
 
 def test_a_failing_call_leaves_the_right_number() raises:
     try:
-        _ = open("/nonexistent/nothing/here", 0)
+        _ = open("/nonexistent/nothing/here", 0, 0)
         raise Error("opening a path that is not there should have failed")
     except e:
         assert_equal(field(e, "errno").value(), String(ENOENT))
