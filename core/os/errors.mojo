@@ -75,6 +75,23 @@ def is_permission(e: Error) -> Bool:
     return _says(e, ErrPermission)
 
 
+def is_timeout(e: Error) -> Bool:
+    """Whether `e` says the call gave up waiting. Go's `IsTimeout`.
+
+    True for `EAGAIN`, `EWOULDBLOCK` and `ETIMEDOUT`, which is what a deadline
+    on a descriptor produces and what a non blocking read produces when there
+    was nothing to read.
+
+    The odd one of the four predicates, because it asks the errno and nothing
+    else. The other three have a sentinel behind them and this one does not:
+    Go's `IsTimeout` looks for a `Timeout() bool` method rather than for an
+    error value, and there is no `ErrTimeout` in `io/fs` to match against. So
+    this is `PathError.timeout` asked of any error, including one that never
+    became a `PathError`.
+    """
+    return _timeout(_errno_of(e))
+
+
 struct LinkError(Copyable, Movable, Writable):
     """A call on two paths that failed. Go's `os.LinkError`.
 

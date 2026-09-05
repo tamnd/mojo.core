@@ -21,8 +21,8 @@ be written in.
 `stat` and `lstat` ask the host about a file without opening it and give back a
 `FileInfo`. `FileMode` says what kind of file it is and who may do what to it.
 `PathError`, `LinkError` and `SyscallError` say what failed and why, and
-`is_exist`, `is_not_exist` and `is_permission` ask the question a caller
-usually has.
+`is_exist`, `is_not_exist`, `is_permission` and `is_timeout` ask the question a
+caller usually has.
 
 `File` is one open file, and `open`, `create`, `open_file` and `new_file` are
 the four ways to get one. It closes itself when it is destroyed and it is a
@@ -41,6 +41,13 @@ is the whole reason the type is not a `FileInfo`.
 in that package reaches a real disk: `core.io.fs.walk_dir`, `core.io.fs.glob`
 and `core.io.fs.sub` all take one. It is a name rule and not a sandbox, and
 `dirfs.mojo` says exactly what it does and does not promise.
+
+`open_root` is the sandbox. A `Root` is a directory a program can work inside
+and cannot work outside, whatever the names it is handed and whatever symbolic
+links are on the disk, and it has the same methods as this package does with
+the path taken relative to it. `open_in_root` is one open through one, and
+`Root.fs` is a `Root` as a `core.io.fs.FS`. `copy_fs` goes the other way and
+copies a whole file system onto the disk.
 
 `mkdir`, `remove`, `rename`, `link`, `symlink`, `readlink`, `chmod`, `chown`,
 `lchown`, `chtimes`, `truncate`, `chdir` and `getwd` are the calls that take a
@@ -80,8 +87,6 @@ That is the low layer, an argument vector and a table of descriptors with no
 `PATH` search and no reading of the child's output. `core.os.exec` is the layer
 above it that does all three, and `core.os.signal` is how a program arranges to
 hear about a signal sent to itself.
-
-Issue #28 tracks the rest.
 
 ## Names from `core.io.fs`
 
@@ -132,6 +137,7 @@ from .errors import (
     is_exist,
     is_not_exist,
     is_permission,
+    is_timeout,
     new_syscall_error,
 )
 from .calls import (
@@ -149,6 +155,7 @@ from .calls import (
     symlink,
     truncate,
 )
+from .copyfs import copy_fs
 from .dir import read_dir
 from .dirfs import DirFS, dir_fs
 from .dirs import temp_dir, user_cache_dir, user_config_dir, user_home_dir
@@ -187,6 +194,7 @@ from .process import (
     pipe,
 )
 from .readfile import read_file, write_file
+from .root import Root, RootFS, open_in_root, open_root
 from .spawn import (
     INTERRUPT,
     KILL,
