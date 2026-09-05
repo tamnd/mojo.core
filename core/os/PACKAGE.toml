@@ -12,5 +12,6 @@ deps = [
   "core.errors",
   "core.io",
   "core.io.fs",
+  "core.sort",
   "core.syscall",
 ]

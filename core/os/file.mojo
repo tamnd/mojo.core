@@ -45,10 +45,12 @@ from core.io import (
     Writer as IoWriter,
     WriterAt,
 )
-from core.io.fs import FileInfo, FileMode, MODE_PERM, MODE_SETGID, MODE_SETUID
-from core.io.fs import MODE_STICKY
+from core.io.fs import DirEntry, FileInfo, FileMode, MODE_PERM, MODE_SETGID
+from core.io.fs import MODE_SETUID, MODE_STICKY
+from core.io.fs.direntry import _entry_of, _is_dot
 from core.io.fs.errors import _errno_of, _path_error_from
 from core.syscall import (
+    Dirent,
     EINTR,
     F_GETFL,
     O_APPEND,
@@ -62,7 +64,10 @@ from core.syscall import (
     Stat,
 )
 from core.syscall import close as _sys_close
+from core.syscall import closedir as _sys_closedir
+from core.syscall import dup as _sys_dup
 from core.syscall import fchdir as _sys_fchdir
+from core.syscall import fdopendir as _sys_fdopendir
 from core.syscall import fchmod as _sys_fchmod
 from core.syscall import fcntl as _sys_fcntl
 from core.syscall import fstat as _sys_fstat
@@ -73,6 +78,7 @@ from core.syscall import open as _sys_open
 from core.syscall import pread as _sys_pread
 from core.syscall import pwrite as _sys_pwrite
 from core.syscall import read
+from core.syscall import readdir as _sys_readdir
 from core.syscall import write as _sys_write
 
 # Every one of those carries a `_sys_` prefix because this file declares its
@@ -83,6 +89,10 @@ from core.syscall import write as _sys_write
 
 comptime _CLOSED = -1
 """What `_fd` holds once the descriptor is gone. No real one is negative."""
+
+comptime _NO_DIR = 0
+"""What `_dir` holds before a directory has been opened. A `DIR *` is not null.
+"""
 
 
 def _refused[
@@ -205,12 +215,23 @@ struct File(
     streams, which name descriptors the process was given and did not open.
     """
 
+    var _dir: Int
+    """The directory handle the three directory methods read through.
+
+    `_NO_DIR` until one of them is called, and it is kept afterwards because
+    Go's `Readdir(n)` reads a directory a piece at a time and the position
+    between two calls has to live somewhere. It holds a `dup` of `_fd` rather
+    than `_fd` itself, since `closedir` closes the descriptor it was given and
+    this file has not finished with its own.
+    """
+
     def __init__(out self, fd: Int, var name: String, append: Bool, owns: Bool):
         """Take a descriptor. Private; `new_file` is the public door."""
         self._fd = fd
         self._name = name^
         self._append = append
         self._owns = owns
+        self._dir = _NO_DIR
 
     def __deinit__(deinit self):
         """Close the descriptor if this file still owns one.
@@ -224,6 +245,11 @@ struct File(
         earlier than Go's `defer` would be. A file read to the end and then not
         mentioned again is already closed by the next statement.
         """
+        if self._dir != _NO_DIR:
+            try:
+                _sys_closedir(self._dir)
+            except:
+                pass
         if self._owns and self._fd != _CLOSED:
             try:
                 _sys_close(self._fd)
@@ -262,6 +288,13 @@ struct File(
             raise _closed("close", self._name)
         var fd = self._fd
         self._fd = _CLOSED
+        if self._dir != _NO_DIR:
+            var dir = self._dir
+            self._dir = _NO_DIR
+            try:
+                _sys_closedir(dir)
+            except:
+                pass
         try:
             _sys_close(fd)
         except e:
@@ -506,6 +539,91 @@ struct File(
             _sys_fchdir(self._fd)
         except e:
             raise _path_error_from("chdir", self._name, e)
+
+    def _directory(mut self) raises -> Int:
+        """The directory handle, opened on the first call and kept after it.
+
+        A `dup` of the descriptor rather than the descriptor itself, because
+        `closedir` closes what it was given and this file is still using its
+        own. That costs one descriptor for as long as the file is open, which
+        is the price of reading a directory a piece at a time through the C
+        library rather than through a raw `getdents`.
+        """
+        if self._dir != _NO_DIR:
+            return self._dir
+        var copy = 0
+        try:
+            copy = _sys_dup(self._fd)
+        except e:
+            raise _path_error_from("readdirent", self._name, e)
+        try:
+            self._dir = _sys_fdopendir(copy)
+        except e:
+            try:
+                _sys_close(copy)
+            except:
+                pass
+            raise _path_error_from("readdirent", self._name, e)
+        return self._dir
+
+    def read_dir(mut self, n: Int) raises -> List[DirEntry]:
+        """The next `n` entries, or all of them. Go's `ReadDir`.
+
+        A positive `n` reads at most that many and raises `EOF` when there are
+        none left, so a loop ends on the error rather than on an empty list.
+        Anything else reads what remains and stops at the end without raising,
+        which is the one call most programs want.
+
+        The position is kept on this file, so two calls of five entries read
+        the first five and the second five. `.` and `..` are never among them.
+        """
+        if self._fd == _CLOSED:
+            raise _closed("readdirent", self._name)
+        var handle = self._directory()
+        var entries = List[DirEntry]()
+        while n <= 0 or len(entries) < n:
+            var found = Optional[Dirent]()
+            try:
+                found = _sys_readdir(handle)
+            except e:
+                raise _path_error_from("readdirent", self._name, e)
+            if not found:
+                break
+            var entry = found.take()
+            if _is_dot(entry.name):
+                continue
+            entries.append(_entry_of(self._name, entry))
+        if n > 0 and len(entries) == 0:
+            raise Report(
+                "readdirent " + self._name + ": end of input"
+            ).with_code(EOF).error()
+        return entries^
+
+    def readdir(mut self, n: Int) raises -> List[FileInfo]:
+        """The same entries, as infos rather than as names. Go's `Readdir`.
+
+        One `lstat` per entry, which is what makes it the expensive one and
+        why Go's own documentation points at `ReadDir` instead. It is here
+        because a program that needs the size or the modification time of
+        everything in a directory needs those calls anyway.
+        """
+        var entries = self.read_dir(n)
+        var out = List[FileInfo]()
+        for ref entry in entries:
+            out.append(entry.info())
+        return out^
+
+    def readdirnames(mut self, n: Int) raises -> List[String]:
+        """Just the names. Go's `Readdirnames`.
+
+        The cheapest of the three, and the one to reach for when the question
+        is what a directory holds rather than what any of it is.
+        """
+        var entries = self.read_dir(n)
+        var out = List[String]()
+        for ref entry in entries:
+            out.append(entry.name())
+        return out^
 
     def capabilities(self) -> Int:
         """Neither fast path, for now.

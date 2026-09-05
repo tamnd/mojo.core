@@ -343,6 +343,26 @@ def opendir(path: String) raises -> Int:
     return handle
 
 
+def fdopendir(fd: Int) raises -> Int:
+    """Start reading the directory an open descriptor already names.
+
+    The same handle `opendir` gives back, from a descriptor rather than from a
+    path, which is how a caller who already holds a directory reads it without
+    resolving its name a second time and getting whatever holds that name now.
+
+    The handle takes the descriptor over. `closedir` closes it, so a caller who
+    wants to keep using the descriptor afterwards passes a `dup` of it in and
+    keeps the original, which is what `core.os.File` does.
+
+    The descriptor has to have been opened for reading and has to be a
+    directory. Anything else fails with `ENOTDIR` or `EBADF`.
+    """
+    var handle = external_call["fdopendir", Int](Int32(fd))
+    if handle == 0:
+        _fail("fdopendir", errno())
+    return handle
+
+
 def readdir(dir: Int) raises -> Optional[Dirent]:
     """The next entry, or nothing at the end of the directory.
 

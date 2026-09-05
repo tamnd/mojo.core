@@ -30,11 +30,14 @@ from core.syscall import (
     DT_UNKNOWN,
     ENOENT,
     ENOTDIR,
+    O_RDONLY,
     close,
     closedir,
     create,
+    fdopendir,
     getpid,
     mkdir,
+    open,
     opendir,
     readdir,
     rmdir,
@@ -255,4 +258,40 @@ def test_an_entry_prints_its_name_and_its_type() raises:
     )
 
     unlink(String(place, "/shown.txt"))
+    rmdir(place)
+
+
+def test_fdopendir_reads_the_directory_a_descriptor_names() raises:
+    # The same entries opendir would give, from a descriptor the caller
+    # already holds, which is how a reader avoids resolving the name twice.
+    var place = _scratch("fdopen")
+    close(create(String(place, "/one.txt"), 0o644))
+
+    var fd = open(place, O_RDONLY, 0)
+    var dir = fdopendir(fd)
+    var found = List[String]()
+    while True:
+        var entry = readdir(dir)
+        if not entry:
+            break
+        found.append(entry.value().name)
+    # closedir closes the descriptor it was given, so nothing closes fd here.
+    closedir(dir)
+
+    assert_equal(len(found), 3)
+    unlink(String(place, "/one.txt"))
+    rmdir(place)
+
+
+def test_fdopendir_refuses_a_descriptor_that_is_not_a_directory() raises:
+    var place = _scratch("fdopenfile")
+    var path = String(place, "/plain.txt")
+    var fd = create(path, 0o644)
+    try:
+        _ = fdopendir(fd)
+        raise Error("fdopendir of a regular file should have failed")
+    except e:
+        assert_equal(field(e, "op").value(), "fdopendir")
+    close(fd)
+    unlink(path)
     rmdir(place)
