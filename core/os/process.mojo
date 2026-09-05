@@ -22,7 +22,10 @@ destructor, which is the one thing in this file worth reading twice.
 from std.sys import CompilationTarget
 from std.sys import argv as _argv
 
+from core.syscall import FD_CLOEXEC, F_SETFD
+from core.syscall import close as _sys_close
 from core.syscall import exit as _sys_exit
+from core.syscall import fcntl as _sys_fcntl
 from core.syscall import getcwd as _sys_getcwd
 from core.syscall import getegid as _sys_getegid
 from core.syscall import geteuid as _sys_geteuid
@@ -210,6 +213,14 @@ def pipe() raises -> Tuple[File, File]:
     program that reads until the end and never closes its own write end waits
     forever.
 
+    Both ends are close on exec, which Go's `os.Pipe` also does and its
+    `syscall.Pipe` does not. It matters as soon as this library can start a
+    program: a child that inherited the write end of its own input would hold
+    the pipe open against itself, so it would never read the end of it and
+    would never exit, and the parent waiting for it would wait forever. The
+    descriptors that cross into a new program are the ones named in the
+    descriptor table handed to `start_process`, and nothing else.
+
     Neither end is opened for appending, so neither refuses `write_at`, though
     seeking on either of them fails at the platform, which is what a pipe is.
 
@@ -226,6 +237,21 @@ def pipe() raises -> Tuple[File, File]:
     try:
         ends = _sys_pipe()
     except e:
+        raise _wrapped("pipe", e)
+    try:
+        _ = _sys_fcntl(ends[0], F_SETFD, FD_CLOEXEC)
+        _ = _sys_fcntl(ends[1], F_SETFD, FD_CLOEXEC)
+    except e:
+        # Two descriptors that nobody has been given yet, so closing them here
+        # is the whole of the cleanup, and a failure closing one of them says
+        # nothing the caller can use. Linux has `pipe2` and could ask for this
+        # in the call that makes the pair, macOS does not, and one code path
+        # that works on both is worth more than one call saved on one of them.
+        try:
+            _sys_close(ends[0])
+            _sys_close(ends[1])
+        except:
+            pass
         raise _wrapped("pipe", e)
     var reader = File(ends[0], String("|0"), False, True)
     var writer = File(ends[1], String("|1"), False, True)

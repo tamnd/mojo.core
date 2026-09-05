@@ -47,12 +47,22 @@ No call here retries on `EINTR`, and no path is checked for an interior zero
 byte. Both are policy, both belong to whoever is deciding what a failure means,
 and that is `core.os` rather than this.
 
-Sockets and signals are not bound yet, and neither is starting or waiting for a
-process. What is bound of the process is the part that only asks questions:
-`getpid`, `getppid`, the four user and group ids, `getgroups`, `getpagesize`,
-`gethostname`, `pipe` and `exit`. The constants for the rest are already in
-`abi.mojo`, because the C program that records them costs nothing extra and a
-constant recorded early is one nobody types by hand later.
+Sockets are not bound yet. The constants for them are already in `abi.mojo`,
+because the C program that records them costs nothing extra and a constant
+recorded early is one nobody types by hand later.
+
+## Processes and signals
+
+`spawn` starts one and `waitpid` collects it, and both are in `spawn.mojo` with
+the arithmetic that takes a wait status apart. `signal_catch` and its
+neighbours are in `signal.mojo`, and a caught signal arrives as a byte on the
+descriptor `signal_pipe` gives back.
+
+Two of the four files under `shim/` are for these. The child between the fork
+and the exec, and the body of a signal handler, are both places where the list
+of calls that are safe is fixed by POSIX and allocating is not on it, and
+nothing in Mojo promises not to allocate. Each of the two files says so at
+length above the code, and they are the ones to read before changing any of it.
 """
 
 from .abi import (
@@ -281,4 +291,28 @@ from .calls import (
 )
 from .dir import Dirent
 from .errno import Errno, errno, set_errno
+from .signal import (
+    signal_catch,
+    signal_ignore,
+    signal_ignored,
+    signal_name,
+    signal_pipe,
+    signal_restore,
+)
+from .spawn import (
+    SPAWN_SETPGID,
+    SPAWN_SETSID,
+    core_dumped,
+    exit_status,
+    exited,
+    getpgid,
+    kill,
+    setpgid,
+    signaled,
+    spawn,
+    stop_signal,
+    stopped,
+    term_signal,
+    waitpid,
+)
 from .stat import Stat, Timespec

@@ -425,3 +425,46 @@ and a caller who asked for one never wanted the other.
 
 Owned by `core.time`. Go has no sentinel for it.
 """
+
+comptime ErrProcessDone = Code(44)
+"""The process has already finished, so there is nothing left to signal. A process
+id is reused by the operating system once the entry for the old one has been
+collected, so a signal sent to a process that has been waited for would
+eventually reach somebody else's program. `Process` therefore remembers that it
+has been collected and refuses rather than making the call, which is what Go
+does with the same sentinel.
+
+Owned by `core.os`, answering for Go's `os.ErrProcessDone`.
+"""
+
+comptime ErrNotFound = Code(45)
+"""No executable of that name was found. `look_path` raises it when the name has
+no slash in it and no directory on `PATH` holds a file that can be run, and
+when the name does have a slash and the file it names cannot be run. The
+failure is about the search rather than about one file, which is why it is a
+sentinel and not the `ENOENT` of the last directory that was looked in.
+
+Owned by `core.os.exec`, answering for Go's `exec.ErrNotFound`.
+"""
+
+comptime ErrDot = Code(46)
+"""The executable was found in the current directory because `PATH` said to look
+there. Running it is almost never what was meant: a directory whose contents
+somebody else can write is a directory where a program named `ls` can be
+waiting. Go started refusing this in 1.19 and this refuses too, and a caller
+who really did mean the file in front of them says so by putting a `./` on the
+front of the name, which is a path and not a search.
+
+Owned by `core.os.exec`, answering for Go's `exec.ErrDot`.
+"""
+
+comptime ErrExit = Code(47)
+"""The program ran and did not exit with zero. Go has no sentinel for this and
+returns an `*exec.ExitError` instead, which a caller type asserts; there is
+nothing to assert against here, so the status goes on the record and
+`ExitError.of` reads it back. It means the command was found, started and
+finished, which is the thing that tells it apart from every other failure this
+package raises.
+
+Owned by `core.os.exec`. Go has no sentinel for it.
+"""

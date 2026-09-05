@@ -4,6 +4,11 @@ go = "os/signal"
 verdict = "Adapt"
 tier = 5
 unsafe = false
+# `core.os` is here for `Signal`, which is the type every call takes, and
+# `core.syscall` is here for the four shim calls underneath. Go's own package
+# depends on `os` and `syscall` for the same two reasons and adds `sync` and
+# `context`, neither of which this needs: there is no goroutine here to
+# synchronise with and no context package yet.
 deps = [
   "core.os",
   "core.syscall",

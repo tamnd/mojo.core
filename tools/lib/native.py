@@ -1,12 +1,14 @@
 """The two places this repository needs a C compiler.
 
 One is `pixi run baseline`, which asks the platform's own headers what a
-structure's layout is. The other is the two shims, which are the only C in the
-library and which are C because neither of them can be written in Mojo: the
-thread local slot core.errors is built on needs global mutable state, which
-Mojo does not have at all, and the wrappers core.syscall calls need a fixed C
-prototype for a variadic function, which `external_call` cannot emit. Each shim
-has a README next to it saying that at length.
+structure's layout is. The other is the shims, which are the only C in the
+library and which are C because none of them can be written in Mojo: the thread
+local slot core.errors is built on needs global mutable state, which Mojo does
+not have at all; the wrappers core.syscall calls need a fixed C prototype for a
+variadic function, which `external_call` cannot emit; and the child of a fork
+and the body of a signal handler are both places where allocating is a
+deadlock, which nothing in Mojo promises not to do. Each shim has a README next
+to it saying that at length.
 
 Neither uses a compiler from the environment lockfile, because both want the
 answer the host itself would give. A conda toolchain would answer for its own
@@ -35,6 +37,8 @@ SHIMS = (
     CORE / "errors" / "shim" / "slot.c",
     CORE / "syscall" / "shim" / "varargs.c",
     CORE / "syscall" / "shim" / "environ.c",
+    CORE / "syscall" / "shim" / "spawn.c",
+    CORE / "syscall" / "shim" / "signal.c",
 )
 
 

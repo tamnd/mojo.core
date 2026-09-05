@@ -4,14 +4,17 @@ go = "os/exec"
 verdict = "Adapt"
 tier = 6
 unsafe = false
+# `core.os` is the whole of what this is built on: `start_process`, `Process`,
+# `ProcessState`, `File`, the temporary file and the environment calls.
+# `core.path.filepath` is for the `PATH` search, which joins directories to
+# names and asks whether one is absolute, and Go's own package depends on it for
+# the same reason. `core.strings` is for asking whether a name already has a
+# separator in it, and `core.syscall` is for the descriptor calls the capture
+# loops make.
 deps = [
-  "core.bytes",
   "core.errors",
-  "core.io",
   "core.os",
   "core.path.filepath",
-  "core.strconv",
   "core.strings",
   "core.syscall",
-  "core.time",
 ]
