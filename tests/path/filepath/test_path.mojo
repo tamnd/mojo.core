@@ -10,9 +10,10 @@ appending one to the other.
 
 `localizetests` is the one hand port, and the comment on it says why.
 
-Go's `TestWalk`, `TestGlob`, `TestAbs`, `TestEvalSymlinks` and the rest of the
-file are not here. Every one of them builds a tree on a disk first, and the
-functions they read are the half of this package that is not written yet.
+Go's `TestWalk`, `TestGlob`, `TestAbs` and `TestEvalSymlinks` are not here.
+Every one of them builds a tree on a disk first, so none of them is a table,
+and they are in `test_walk.mojo`, `test_glob.mojo` and `test_disk.mojo`
+written against a tree of their own.
 """
 
 from std.testing import assert_equal, assert_false, assert_raises, assert_true

@@ -13,7 +13,14 @@ archive, a directory and a map in a test all answer the same questions. That is
 the bulk of this package and it is not written yet. What is here is everything
 those implementations will have to speak in: the rule about names, what a
 file's mode is, what is known about a file, what one entry in a directory is,
-and what a failed operation on a path looks like.
+what a failed operation on a path looks like, and what a walk over a tree
+calls.
+
+`WalkDirFunc`, `SkipDir` and `SkipAll` are that last one, with `skip_dir` and
+`skip_all` to raise the two of them. The walk over an `FS` is not written yet
+either, and the type is here rather than beside the one walk that does exist,
+`core.path.filepath.walk_dir`, so that a callback written once works with
+both.
 
 `os` says all four of these in Go too. It does not repeat them: `os.FileMode`
 is a declared alias for `fs.FileMode` and `os.ErrNotExist` is the same value as
@@ -45,6 +52,8 @@ from core.errors.codes import (
     ErrInvalid,
     ErrNotExist,
     ErrPermission,
+    SkipAll,
+    SkipDir,
 )
 
 from .direntry import DirEntry, file_info_to_dir_entry, format_dir_entry
@@ -69,3 +78,4 @@ from .mode import (
     FileMode,
 )
 from .name import valid_path
+from .walk import WalkDirFunc, skip_all, skip_dir
