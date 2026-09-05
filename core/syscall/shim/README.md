@@ -22,16 +22,17 @@ creates a file with mode 0644 on both Linux machines and mode zero on this lapto
 
 ## What is here
 
-Two functions with real prototypes that name the arguments and pass them on.
+Three functions with real prototypes that name the arguments and pass them on.
 
 | Symbol | What it does |
 | --- | --- |
 | `core_syscall_open3` | `open` with a creation mode |
+| `core_syscall_openat4` | `openat` with a creation mode |
 | `core_syscall_fcntl` | `fcntl` with its argument |
 
 `open` without a mode is not here, because a call with no anonymous arguments has nothing to get wrong and `core.syscall` makes it directly.
 
-`ioctl` is not here either. It is variadic and it would need the same treatment, but nothing in this library calls it yet, and a wrapper written before it has a caller is a guess about which of the argument types the caller will want. Adding a third function to a file that already exists is a one line change on the day something needs it. What was worth thinking about was whether the file should exist at all.
+`ioctl` is not here either. It is variadic and it would need the same treatment, but nothing in this library calls it yet, and a wrapper written before it has a caller is a guess about which of the argument types the caller will want. Adding another function to a file that already exists is a one line change on the day something needs it, which is how `openat` arrived. What was worth thinking about was whether the file should exist at all.
 
 Nothing here checks a flag, reads an errno or supplies a default. All of that is Mojo, in `core/syscall/calls.mojo`, for the same reason it is Mojo in the other shim: a decision that will change should not live in the file that has to be recompiled for each platform and cannot be reached by the test suite.
 
@@ -43,4 +44,4 @@ The alternatives were worse. `creat` covers `O_CREAT | O_WRONLY | O_TRUNC` with 
 
 ## If the language changes
 
-The day `external_call` learns the variadic convention, this directory goes away and the two calls in `calls.mojo` become ordinary `external_call`s. `variadic_call.mojo` is the thing that will tell us, and it is a probe that is good news the day it fails.
+The day `external_call` learns the variadic convention, this directory goes away and the three calls in `calls.mojo` become ordinary `external_call`s. `variadic_call.mojo` is the thing that will tell us, and it is a probe that is good news the day it fails.

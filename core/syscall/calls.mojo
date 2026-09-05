@@ -33,11 +33,12 @@ and a count is a `size_t`. `read` and `write` are the exception: Mojo's own
 standard library declares both symbols with an index sized descriptor, and two
 declarations of one symbol in a module do not link, so those two match it.
 
-Two calls do not reach libc directly. `open` and `fcntl` are variadic in C, and
-`external_call` emits a call of fixed arity, which is the wrong convention for
-an anonymous argument on Apple silicon and the right one everywhere else. Both
-go through a wrapper with a real prototype in `core/syscall/shim/varargs.c`,
-whose README says why that file exists and what the alternatives were.
+Three calls do not reach libc directly. `open`, `openat` and `fcntl` are
+variadic in C, and `external_call` emits a call of fixed arity, which is the
+wrong convention for an anonymous argument on Apple silicon and the right one
+everywhere else. All three go through a wrapper with a real prototype in
+`core/syscall/shim/varargs.c`, whose README says why that file exists and what
+the alternatives were.
 """
 
 from std.ffi import external_call
@@ -109,6 +110,26 @@ def open(path: String, flags: Int, mode: Int) raises -> Int:
     )
     if fd < 0:
         _fail("open", errno())
+    return Int(fd)
+
+
+def openat(dirfd: Int, path: String, flags: Int, mode: Int) raises -> Int:
+    """Open a name relative to an already open directory. Gives the descriptor.
+
+    `AT_FDCWD` for `dirfd` means the process working directory and makes this
+    `open`. Anything else means the name is resolved inside that directory and
+    nowhere else, which is what a walk wants: a path resolved a second time can
+    name something else by then, and on a shared machine that is not a
+    theoretical worry.
+
+    Goes through the same shim `open` does, and for the same reason.
+    """
+    var raw = _cstr(path)
+    var fd = external_call["core_syscall_openat4", Int32](
+        Int32(dirfd), raw.unsafe_ptr(), Int32(flags), UInt32(mode)
+    )
+    if fd < 0:
+        _fail("openat", errno())
     return Int(fd)
 
 
@@ -280,6 +301,60 @@ def ftruncate(fd: Int, size: Int) raises:
     """Set the length of an open file, growing it with zeros if need be."""
     if external_call["ftruncate", Int32](Int32(fd), size) < 0:
         _fail("ftruncate", errno())
+
+
+def truncate(path: String, size: Int) raises:
+    """Set the length of a file named by path, growing it with zeros if need be.
+
+    The same call as `ftruncate` against a name rather than a descriptor, and
+    it opens nothing, so it works on a file the caller has no right to open for
+    writing but does have the right to shorten. Growing a file this way leaves
+    a hole rather than blocks, exactly as a write past the end does.
+    """
+    var raw = _cstr(path)
+    if external_call["truncate", Int32](raw.unsafe_ptr(), size) < 0:
+        _fail("truncate", errno())
+
+
+def chown(path: String, uid: Int, gid: Int) raises:
+    """Set the owner and the group of a path. Follows a symbolic link.
+
+    `-1` for either one leaves it alone, which is how the platform says change
+    one and not the other, and it is why these are signed here even though the
+    ids themselves are not. An ordinary user can only give a file to the owner
+    it already has, so anything else is `EPERM` for everybody but root.
+    """
+    var raw = _cstr(path)
+    var failed = external_call["chown", Int32](
+        raw.unsafe_ptr(), Int32(uid), Int32(gid)
+    )
+    if failed < 0:
+        _fail("chown", errno())
+
+
+def lchown(path: String, uid: Int, gid: Int) raises:
+    """Set the owner and the group of a path, on the link rather than through it.
+
+    The `lstat` of `chown`. A symbolic link has an owner of its own, and it is
+    what decides who may remove the link out of a sticky directory, so the two
+    calls are not interchangeable even though the link's own permissions mean
+    nothing.
+    """
+    var raw = _cstr(path)
+    var failed = external_call["lchown", Int32](
+        raw.unsafe_ptr(), Int32(uid), Int32(gid)
+    )
+    if failed < 0:
+        _fail("lchown", errno())
+
+
+def fchown(fd: Int, uid: Int, gid: Int) raises:
+    """Set the owner and the group of an already open file."""
+    var failed = external_call["fchown", Int32](
+        Int32(fd), Int32(uid), Int32(gid)
+    )
+    if failed < 0:
+        _fail("fchown", errno())
 
 
 def fsync(fd: Int) raises:

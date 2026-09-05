@@ -21,15 +21,19 @@ from core.syscall import (
     ENOENT,
     ENOTDIR,
     ENOTEMPTY,
+    EPERM,
     Errno,
     FD_CLOEXEC,
     F_GETFD,
     F_GETFL,
     F_SETFD,
+    AT_FDCWD,
+    AT_REMOVEDIR,
     O_ACCMODE,
     O_CREAT,
     O_EXCL,
     O_RDONLY,
+    O_DIRECTORY,
     O_RDWR,
     O_WRONLY,
     SEEK_CUR,
@@ -37,22 +41,26 @@ from core.syscall import (
     SEEK_SET,
     chdir,
     chmod,
+    chown,
     close,
     create,
     dup,
     fchdir,
     fchmod,
+    fchown,
     fcntl,
     fstat,
     fsync,
     ftruncate,
     getcwd,
     getpid,
+    lchown,
     link,
     lseek,
     lstat,
     mkdir,
     open,
+    openat,
     pread,
     pwrite,
     read,
@@ -61,6 +69,8 @@ from core.syscall import (
     rmdir,
     stat,
     symlink,
+    truncate,
+    unlinkat,
     unlink,
     write,
 )
@@ -572,6 +582,171 @@ def test_chmod_and_fchmod() raises:
     assert_equal(fstat(fd).permissions(), 0o600)
     close(fd)
     _clear(place, ["perm.txt"])
+
+
+def test_openat_resolves_inside_the_directory_it_was_given() raises:
+    # The point of the call. The same name is opened twice, once relative to
+    # the scratch directory and once relative to the working directory, and
+    # only the first one finds anything.
+    var place = _scratch("openat")
+    var path = String(place, "/inside.txt")
+    var fd = create(path, 0o644)
+    _ = write(fd, "inside".as_bytes())
+    close(fd)
+
+    var dir = open(place, O_RDONLY | O_DIRECTORY, 0)
+    var found = openat(dir, "inside.txt", O_RDONLY, 0)
+    var room = List[Byte](length=16, fill=0)
+    assert_equal(read(found, Span(room)), 6)
+    close(found)
+
+    try:
+        _ = openat(AT_FDCWD, "inside.txt", O_RDONLY, 0)
+        raise Error(
+            "openat from the working directory should have found nothing"
+        )
+    except e:
+        assert_equal(field(e, "op").value(), "openat")
+        assert_equal(field(e, "errno").value(), String(ENOENT))
+
+    close(dir)
+    _clear(place, ["inside.txt"])
+
+
+def test_openat_creates_with_the_mode_that_was_asked_for() raises:
+    # The same assertion `open` carries, for the same reason: the mode is the
+    # anonymous argument, and it is what the shim exists to get right.
+    var place = _scratch("openatmode")
+    var dir = open(place, O_RDONLY | O_DIRECTORY, 0)
+    var made = openat(dir, "made.txt", O_CREAT | O_WRONLY, 0o640)
+    close(made)
+    close(dir)
+    assert_equal(stat(String(place, "/made.txt")).permissions(), 0o640)
+    _clear(place, ["made.txt"])
+
+
+def test_unlinkat_removes_a_name_relative_to_a_directory() raises:
+    # Both halves: a file with no flags, and a directory with AT_REMOVEDIR,
+    # which is the flag that makes this an rmdir instead.
+    var place = _scratch("unlinkat")
+    close(create(String(place, "/gone.txt"), 0o644))
+    mkdir(String(place, "/gonedir"), 0o700)
+
+    var dir = open(place, O_RDONLY | O_DIRECTORY, 0)
+    unlinkat(dir, "gone.txt", 0)
+    unlinkat(dir, "gonedir", AT_REMOVEDIR)
+    close(dir)
+
+    try:
+        _ = stat(String(place, "/gone.txt"))
+        raise Error("the file should have gone")
+    except e:
+        assert_equal(field(e, "errno").value(), String(ENOENT))
+
+    _remove(place)
+
+
+def test_truncate_shortens_and_lengthens_a_file() raises:
+    var place = _scratch("truncate")
+    var path = String(place, "/sized.txt")
+    var fd = create(path, 0o644)
+    var text = String("twelve bytes").as_bytes()
+    _ = write(fd, text)
+    close(fd)
+    assert_equal(stat(path).size(), 12)
+
+    truncate(path, 4)
+    assert_equal(stat(path).size(), 4)
+
+    # Growing leaves a hole, which reads back as zeros rather than as whatever
+    # was there before the file was shortened.
+    truncate(path, 8)
+    assert_equal(stat(path).size(), 8)
+    var back = open(path, O_RDONLY, 0)
+    var into = List[Byte](length=8, fill=0)
+    assert_equal(read(back, into), 8)
+    close(back)
+    assert_equal(Int(into[3]), ord("l"))
+    assert_equal(Int(into[4]), 0)
+    assert_equal(Int(into[7]), 0)
+
+    _clear(place, ["sized.txt"])
+
+
+def test_truncate_of_a_path_that_is_not_there_fails() raises:
+    var place = _scratch("truncmiss")
+    try:
+        truncate(String(place, "/nowhere"), 0)
+        raise Error("truncating a file that is not there should have failed")
+    except e:
+        assert_equal(field(e, "op").value(), "truncate")
+        assert_equal(field(e, "errno").value(), String(ENOENT))
+    _remove(place)
+
+
+def test_chown_to_the_owner_a_file_already_has() raises:
+    # The only change an ordinary user is allowed to make, and it is worth
+    # making because it is the case that proves the arguments are in the right
+    # order and are the right width. A uid passed as the wrong type would be a
+    # different number and this would fail with EPERM.
+    var place = _scratch("chown")
+    var path = String(place, "/owned.txt")
+    close(create(path, 0o644))
+    var before = stat(path)
+    chown(path, Int(before.uid()), Int(before.gid()))
+    assert_equal(stat(path).uid(), before.uid())
+    assert_equal(stat(path).gid(), before.gid())
+
+    # And -1 for both, which is the platform's way of saying change neither.
+    chown(path, -1, -1)
+    assert_equal(stat(path).uid(), before.uid())
+
+    var fd = open(path, O_RDONLY, 0)
+    fchown(fd, Int(before.uid()), Int(before.gid()))
+    assert_equal(fstat(fd).uid(), before.uid())
+    close(fd)
+
+    _clear(place, ["owned.txt"])
+
+
+def test_chown_to_somebody_else_is_refused() raises:
+    # Root is allowed to do this and CI runs some jobs as root, so the test
+    # asserts the refusal only when the process is not root. What it always
+    # asserts is that the call either worked or failed for the one reason it
+    # is allowed to fail for here.
+    var place = _scratch("chownother")
+    var path = String(place, "/owned.txt")
+    close(create(path, 0o644))
+    var mine = stat(path).uid()
+    var other = 0 if mine != 0 else 65534
+    try:
+        chown(path, other, -1)
+        assert_equal(stat(path).uid(), UInt32(other))
+    except e:
+        assert_equal(field(e, "op").value(), "chown")
+        assert_equal(field(e, "errno").value(), String(EPERM))
+    _clear(place, ["owned.txt"])
+
+
+def test_lchown_names_the_link_rather_than_the_target() raises:
+    # A link has an owner of its own. Asserting that is hard without root, so
+    # what this asserts is that the call reaches the link at all: lchown of a
+    # link to nothing succeeds, where chown of the same link fails, because
+    # chown follows it and there is nothing at the other end.
+    var place = _scratch("lchown")
+    var link = String(place, "/pointer")
+    symlink("nowhere", link)
+    var mine = lstat(link)
+    lchown(link, Int(mine.uid()), Int(mine.gid()))
+
+    try:
+        chown(link, Int(mine.uid()), Int(mine.gid()))
+        raise Error("chown through a link to nothing should have failed")
+    except e:
+        assert_equal(field(e, "op").value(), "chown")
+        assert_equal(field(e, "errno").value(), String(ENOENT))
+
+    _clear(place, ["pointer"])
 
 
 def test_getcwd_and_chdir() raises:

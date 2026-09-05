@@ -14,8 +14,8 @@
  *
  * docs/design.md section 11 has the reasoning and
  * tools/probe/probes/variadic_call.mojo pins the fact. The day that probe says
- * the anonymous arguments arrive on macOS, this file can go and the two calls
- * below become ordinary `external_call`s.
+ * the anonymous arguments arrive on macOS, this file can go and the calls below
+ * become ordinary `external_call`s.
  *
  * Each function here does one thing: name the arguments in a fixed prototype
  * and pass them on. No flag is checked, no errno is touched, no default is
@@ -36,6 +36,18 @@
  */
 int core_syscall_open3(const char *path, int flags, unsigned int mode) {
     return open(path, flags, (mode_t)mode);
+}
+
+/*
+ * `openat` is variadic for the same reason `open` is and needs the same
+ * treatment. It is here rather than left out because removing a tree safely
+ * means walking it by descriptor: a name resolved a second time can name
+ * something else by the time the call happens, and that is how a remove ends
+ * up outside the directory it was asked about.
+ */
+int core_syscall_openat4(int dirfd, const char *path, int flags,
+                         unsigned int mode) {
+    return openat(dirfd, path, flags, (mode_t)mode);
 }
 
 /*
