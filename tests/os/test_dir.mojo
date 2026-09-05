@@ -233,6 +233,23 @@ def test_reading_everything_at_the_end_is_an_empty_list() raises:
     _clear(place, ["one"])
 
 
+def _holds(got: List[String], want: List[String]) raises:
+    """Assert a listing holds exactly these names, in whatever order.
+
+    The three methods on `File` hand entries back in the order the file system
+    keeps them, which is Go's rule for the same three, so a test that expects
+    them sorted is testing the file system rather than this library. Sorting is
+    what the package level `read_dir` is for, and it has its own test.
+    """
+    assert_equal(len(got), len(want))
+    for ref name in want:
+        var found = False
+        for ref entry in got:
+            if entry == name:
+                found = True
+        assert_true(found, String("expected ", name, " in the listing"))
+
+
 def test_readdir_and_readdirnames() raises:
     var place = _scratch("names")
     _touch(String(place, "/second"))
@@ -241,16 +258,15 @@ def test_readdir_and_readdirnames() raises:
     var dir = open(place)
     var names = dir.readdirnames(0)
     dir.close()
-    assert_equal(len(names), 2)
-    assert_equal(names[0], "first")
-    assert_equal(names[1], "second")
+    _holds(names, ["first", "second"])
 
     var again = open(place)
     var infos = again.readdir(0)
     again.close()
-    assert_equal(len(infos), 2)
-    assert_equal(infos[0].name(), "first")
-    assert_equal(infos[1].name(), "second")
+    var from_infos = List[String]()
+    for ref info in infos:
+        from_infos.append(info.name())
+    _holds(from_infos, ["first", "second"])
 
     _clear(place, ["first", "second"])
 

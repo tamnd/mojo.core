@@ -576,6 +576,13 @@ struct File(
 
         The position is kept on this file, so two calls of five entries read
         the first five and the second five. `.` and `..` are never among them.
+
+        The order is the file system's own and nothing here changes it, which
+        is Go's rule for the same method. Two directories holding the same
+        names on two machines can list them differently, and the same
+        directory can list them differently after a file is removed, so a
+        caller that needs an order sorts, or calls the `read_dir` in this
+        package, which sorts by name.
         """
         if self._fd == _CLOSED:
             raise _closed("readdirent", self._name)
