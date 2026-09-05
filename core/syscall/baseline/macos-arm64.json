@@ -157,6 +157,8 @@
   "S_ISGID": 1024,
   "S_ISUID": 2048,
   "S_ISVTX": 512,
+  "UTIME_NOW": -1,
+  "UTIME_OMIT": -2,
   "WNOHANG": 1,
   "WUNTRACED": 2,
   "sizeof(blkcnt_t)": 8,

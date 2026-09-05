@@ -20,6 +20,7 @@ from std.testing import (
     assert_true,
 )
 
+from core.syscall.abi import SIZEOF_TIMESPEC
 from core.syscall import (
     Errno,
     S_IFDIR,
@@ -263,3 +264,34 @@ def test_an_untouched_stat_reads_as_zeros() raises:
     assert_false(empty.is_regular())
     assert_false(empty.is_dir())
     assert_equal(empty.mtime(), Timespec(0, 0))
+
+
+def test_a_timespec_writes_the_bytes_it_reads() raises:
+    # The write is what hands a time to utimensat, and the only check that it
+    # laid the fields out where the platform keeps them is reading them back
+    # through the code that already reads a real one off a real call.
+    var room = List[Byte](length=SIZEOF_TIMESPEC, fill=0)
+    Timespec(1_700_000_000, 123_456_789).platform_bytes(Span(room), 0)
+    assert_equal(
+        Timespec(platform_bytes=Span(room)),
+        Timespec(1_700_000_000, 123_456_789),
+    )
+
+
+def test_a_timespec_writes_a_second_before_the_epoch() raises:
+    # time_t is signed and a file can be older than 1970, so a negative second
+    # has to survive the round trip rather than come back enormous.
+    var room = List[Byte](length=SIZEOF_TIMESPEC, fill=0)
+    Timespec(-2, 5).platform_bytes(Span(room), 0)
+    assert_equal(Timespec(platform_bytes=Span(room)), Timespec(-2, 5))
+
+
+def test_a_timespec_writes_where_it_is_told_to() raises:
+    # utimensat takes an array of two, so the second one is written at an
+    # offset and must not touch the first.
+    var room = List[Byte](length=2 * SIZEOF_TIMESPEC, fill=0)
+    Timespec(7, 8).platform_bytes(Span(room), SIZEOF_TIMESPEC)
+    assert_equal(Timespec(platform_bytes=Span(room)), Timespec(0, 0))
+    assert_equal(
+        Timespec(platform_bytes=Span(room)[SIZEOF_TIMESPEC:]), Timespec(7, 8)
+    )

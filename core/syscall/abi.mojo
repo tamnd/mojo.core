@@ -163,6 +163,13 @@ comptime AT_FDCWD: Int = -2 if _MACOS else -100
 comptime AT_REMOVEDIR: Int = 128 if _MACOS else 512
 comptime AT_SYMLINK_NOFOLLOW: Int = 32 if _MACOS else 256
 
+# The two values `utimensat` takes in a nanosecond field in place of a time.
+# `UTIME_NOW` means read the clock and `UTIME_OMIT` means leave that timestamp
+# as it is. macOS spells them -1 and -2 and Linux spells them a billion and
+# change, so neither is a number to type by hand.
+comptime UTIME_NOW: Int = -1 if _MACOS else 1073741823
+comptime UTIME_OMIT: Int = -2 if _MACOS else 1073741822
+
 # Commands for `fcntl`, and the one descriptor flag it reads and sets.
 comptime FD_CLOEXEC: Int = 1
 comptime F_DUPFD: Int = 0

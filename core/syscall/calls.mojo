@@ -622,6 +622,32 @@ def fchmod(fd: Int, mode: Int) raises:
         _fail("fchmod", errno())
 
 
+def utimensat(
+    dirfd: Int, path: String, atime: Timespec, mtime: Timespec, flags: Int
+) raises:
+    """Set the access and modification times on a path.
+
+    `atime` is the first time and `mtime` the second, in that order, because
+    that is the order the C array is in and swapping them is a mistake nothing
+    would report. A nanosecond field of `UTIME_OMIT` leaves that one timestamp
+    alone and `UTIME_NOW` sets it to the clock, and those two are the only
+    values outside the range zero to a billion that are not an error.
+
+    `dirfd` is `AT_FDCWD` for a path resolved from the working directory, and
+    `flags` is `AT_SYMLINK_NOFOLLOW` to set the times on a symlink itself
+    rather than on what it points at.
+    """
+    var raw = _cstr(path)
+    var times = List[Byte](length=2 * SIZEOF_TIMESPEC, fill=0)
+    atime.platform_bytes(Span(times), 0)
+    mtime.platform_bytes(Span(times), SIZEOF_TIMESPEC)
+    var failed = external_call["utimensat", Int32](
+        Int32(dirfd), raw.unsafe_ptr(), times.unsafe_ptr(), Int32(flags)
+    )
+    if failed < 0:
+        _fail("utimensat", errno())
+
+
 def getpid() -> Int:
     """This process. It cannot fail, which is why it does not raise."""
     return Int(external_call["getpid", Int32]())

@@ -39,6 +39,8 @@ from core.syscall import (
     SEEK_CUR,
     SEEK_END,
     SEEK_SET,
+    Timespec,
+    UTIME_OMIT,
     chdir,
     chmod,
     chown,
@@ -72,6 +74,7 @@ from core.syscall import (
     truncate,
     unlinkat,
     unlink,
+    utimensat,
     write,
 )
 
@@ -810,4 +813,81 @@ def test_the_error_carries_the_call_that_failed() raises:
         assert_equal(field(e, "op").value(), "open")
         assert_equal(field(e, "errno").value(), String(ENOENT))
         assert_false(field(e, "nothing"))
+    _remove(place)
+
+
+def test_utimensat_sets_both_times() raises:
+    # The two times go in the order the C array is in, access first, and
+    # swapping them is a mistake nothing would report, so the two numbers here
+    # are far enough apart to tell which is which.
+    var place = _scratch("times")
+    var path = String(place, "/dated.txt")
+    close(create(path, 0o600))
+
+    utimensat(
+        AT_FDCWD,
+        path,
+        Timespec(1_600_000_000, 0),
+        Timespec(1_700_000_000, 0),
+        0,
+    )
+
+    var got = stat(path)
+    assert_equal(got.atime().sec, 1_600_000_000)
+    assert_equal(got.mtime().sec, 1_700_000_000)
+    _clear(place, ["dated.txt"])
+
+
+def test_utimensat_omits_the_time_it_is_told_to() raises:
+    var place = _scratch("omit")
+    var path = String(place, "/half.txt")
+    close(create(path, 0o600))
+
+    utimensat(
+        AT_FDCWD,
+        path,
+        Timespec(1_500_000_000, 0),
+        Timespec(1_500_000_001, 0),
+        0,
+    )
+    utimensat(
+        AT_FDCWD, path, Timespec(0, UTIME_OMIT), Timespec(1_600_000_000, 0), 0
+    )
+
+    var got = stat(path)
+    assert_equal(got.atime().sec, 1_500_000_000)
+    assert_equal(got.mtime().sec, 1_600_000_000)
+    _clear(place, ["half.txt"])
+
+
+def test_utimensat_keeps_the_nanoseconds_the_file_system_keeps() raises:
+    # Both platforms of this matrix keep nanoseconds on their temporary file
+    # system, so this asserts the field arrived rather than that every file
+    # system in the world would keep it.
+    var place = _scratch("nsec")
+    var path = String(place, "/fine.txt")
+    close(create(path, 0o600))
+
+    utimensat(
+        AT_FDCWD, path, Timespec(1, 0), Timespec(1_700_000_000, 123_456_789), 0
+    )
+
+    assert_equal(stat(path).mtime(), Timespec(1_700_000_000, 123_456_789))
+    _clear(place, ["fine.txt"])
+
+
+def test_utimensat_on_a_path_that_is_not_there() raises:
+    var place = _scratch("notimes")
+    try:
+        utimensat(
+            AT_FDCWD,
+            String(place, "/absent.txt"),
+            Timespec(1, 0),
+            Timespec(1, 0),
+            0,
+        )
+        raise Error("setting the times on a missing file should have failed")
+    except e:
+        assert_equal(field(e, "op").value(), "utimensat")
+        assert_equal(field(e, "errno").value(), String(ENOENT))
     _remove(place)

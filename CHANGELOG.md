@@ -4,6 +4,20 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 ## Unreleased
 
+Temporary names, and the times on a file. `core.os` gains `create_temp`, `mkdir_temp` and `chtimes`, `core.syscall` gains `utimensat` and the two `UTIME_` constants, and `core.os` now depends on `core.math.rand` and on `core.time`.
+
+`create_temp` and `mkdir_temp` are the same idea twice. The caller gives a directory and a pattern, the last `*` in the pattern is replaced with a random number, and the file or directory is created with `O_EXCL`, so the creation itself is what decides whether the name was free. Nothing checks a name and then creates it, because a check followed by a create is a race with every other program on the machine, and on a directory everybody can write to that race is the one an attacker wins. A name that was taken is not a failure: the call tries again with a new number, up to ten thousand times, which is Go's bound and is there so that a directory that cannot be written to for some other reason fails in a moment rather than spinning.
+
+The file comes back open for reading and writing with mode 0600 and the directory is made 0700, which is the other half of the argument. An unguessable name is worth nothing if the thing it names is readable by everybody, and tight permissions are worth nothing if the name was predictable, so both are needed and both are here. Neither call removes what it made, since only the caller knows when it is finished with it.
+
+A pattern is a name and not a path, so a pattern holding a path separator is refused with `ErrInvalid` and nothing is created. Letting one through would put the file somewhere the caller did not name, and a caller that wants a subdirectory passes it as the directory. The random part comes from `core.math.rand`, which is seeded from the operating system and keeps a generator per thread, and that is the same source Go uses here.
+
+`chtimes` sets the access and the modification time on a path and is the call that finally makes `core.os` depend on `core.time`, which its `PACKAGE.toml` had been saying it would since the package was started. A zero `Time` for either one leaves that timestamp alone, which the platform spells as `UTIME_OMIT` in the nanosecond field of a `struct timespec`.
+
+Where this differs from Go is the range. Go puts the time through `Time.UnixNano`, which stops working outside 1678 to 2262 because that is as far as a signed count of nanoseconds reaches, and a date beyond it is quietly set to a wrong one. Here the seconds and the nanoseconds go down as the two numbers they already are, so a file can be given any date a `Time` can hold. The precision is still the file system's: one that keeps whole seconds rounds the nanoseconds away and reading the time back gives what was stored.
+
+`UTIME_NOW` and `UTIME_OMIT` are recorded from the host's own headers like everything else in `core.syscall`, and they are a good argument for why that machinery exists: macOS spells them -1 and -2 and Linux spells them 1073741823 and 1073741822, so either one typed by hand from one platform's manual page is a silently wrong number on the other.
+
 What the process can say about itself. `core.os` gains `getpid`, `getppid`, `getuid`, `geteuid`, `getgid`, `getegid`, `getgroups`, `getpagesize`, `hostname`, `executable`, `args`, `pipe` and `exit`, and `core.syscall` gains the bindings underneath all of them.
 
 The eight ids cannot fail and none of them raises. That is worth stating rather than leaving a reader to notice, because a call that cannot fail and raises anyway makes every caller write a `try` that can never be taken, and a reader who sees one starts wondering what the failure would mean. `getgroups` is the exception among the group calls and does raise, since it asks twice: once with a size of zero, which POSIX defines as a request for the count, and once for that many, because the limit is 16 on macOS and 65,536 on Linux and a buffer sized for either is the wrong size on the other.

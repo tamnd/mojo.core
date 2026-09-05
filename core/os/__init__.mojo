@@ -38,9 +38,10 @@ a time. An entry knows what kind of file it names without a second call, which
 is the whole reason the type is not a `FileInfo`.
 
 `mkdir`, `remove`, `rename`, `link`, `symlink`, `readlink`, `chmod`, `chown`,
-`lchown`, `truncate`, `chdir` and `getwd` are the calls that take a path and do
-something to it. `mkdir_all` and `remove_all` are the two that walk one, and
-`read_file` and `write_file` are a whole file in one call in each direction.
+`lchown`, `chtimes`, `truncate`, `chdir` and `getwd` are the calls that take a
+path and do something to it. `mkdir_all` and `remove_all` are the two that walk
+one, and `read_file` and `write_file` are a whole file in one call in each
+direction.
 
 `getenv`, `lookup_env`, `setenv`, `unsetenv`, `clearenv` and `environ` are the
 environment, read through the C library every time rather than out of a copy
@@ -56,8 +57,13 @@ machine calls itself, `executable` is where this program was loaded from, `args`
 is the command line, `pipe` is a pair of files joined end to end, and `exit`
 ends the process without running a destructor.
 
-The temporary files and anything to do with starting another program are still
-to come. Issue #28 tracks the rest.
+`create_temp` and `mkdir_temp` make a file or a directory with a name nobody
+else has, in a directory everybody can write to, without ever checking a name
+and then creating it. The name is random and the creation uses `O_EXCL`, so the
+creation itself is what decides whether the name was free.
+
+Anything to do with starting another program is still to come. Issue #28 tracks
+the rest.
 
 ## Names from `core.io.fs`
 
@@ -112,6 +118,7 @@ from .calls import (
     chdir,
     chmod,
     chown,
+    chtimes,
     getwd,
     lchown,
     link,
@@ -160,3 +167,4 @@ from .process import (
 )
 from .readfile import read_file, write_file
 from .stat import lstat, same_file, stat
+from .temp import create_temp, mkdir_temp
