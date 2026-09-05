@@ -140,7 +140,7 @@ def waivers() -> dict[str, str]:
 # exported, which is exactly backwards, and it happened silently the first time
 # `core.io` grew past the column limit.
 REEXPORT = re.compile(
-    r"^from\s+\S+\s+import\s+(?:\(([^)]*)\)|([^(\n]+))$", re.MULTILINE
+    r"^from\s+(\S+)\s+import\s+(?:\(([^)]*)\)|([^(\n]+))$", re.MULTILINE
 )
 
 
@@ -154,6 +154,13 @@ def reexported(package: Package) -> set[str]:
     without this every one of them measures as missing while being importable
     exactly as Go's `io.EOF` is.
 
+    A re-exported type brings its members with it. `os.FileMode` is Go's
+    `fs.FileMode` under a second name, and `os.FileMode.IsDir` is a symbol Go's
+    manifest owes `os`, so counting the type and not its methods would report
+    a package as missing five methods it exports. The members come from the
+    package the type was imported from, which is why this resolves the module
+    on the left of the import rather than only reading the names on the right.
+
     Only `__init__.mojo`, because that file is the package's public surface and
     an import anywhere else is a private dependency rather than a promise.
     """
@@ -161,12 +168,47 @@ def reexported(package: Package) -> set[str]:
     if not init.is_file():
         return set()
     names: set[str] = set()
-    for parenthesised, plain in REEXPORT.findall(init.read_text()):
+    for module, parenthesised, plain in REEXPORT.findall(init.read_text()):
+        imported = set()
         for name in (parenthesised or plain).split(","):
             name = name.strip().strip("()").split(" as ")[-1].strip()
             if name and not PRIVATE.match(name):
-                names.add(name)
+                imported.add(name)
+        names |= imported
+        names |= members(module, imported)
     return names
+
+
+def members(module: str, owners: set[str]) -> set[str]:
+    """`Owner.member` for every re-exported owner, read where it is declared.
+
+    Nothing comes back for a module that is not a package in this tree, which
+    covers a relative import of a file inside the package doing the importing.
+    `mojo doc` already reported those, since they are declarations in the
+    directory it was asked about.
+    """
+    path = ROOT / Path(module.replace(".", "/"))
+    if not module.startswith("core.") or not (path / "PACKAGE.toml").is_file():
+        return set()
+    return {
+        name
+        for name in source(path)
+        if "." in name and name.split(".", 1)[0] in owners
+    }
+
+
+SOURCES: dict[Path, set[str]] = {}
+
+
+def source(path: Path) -> set[str]:
+    """What one package declares, remembered.
+
+    A `mojo doc` run is seconds, and the packages that publish a type other
+    packages re-export are the ones asked about repeatedly.
+    """
+    if path not in SOURCES:
+        SOURCES[path] = doc(path)
+    return SOURCES[path]
 
 
 def declared(node: object, owner: str = "") -> set[str]:
@@ -198,6 +240,26 @@ def declared(node: object, owner: str = "") -> set[str]:
     return names
 
 
+def doc(path: Path) -> set[str]:
+    """Every public name one directory declares, according to `mojo doc`."""
+    # `-I ROOT` because a package that imports another one cannot be read
+    # without somewhere to find it, and every import in this tree is absolute
+    # from the root. Without it the first package with a dependency reports
+    # zero symbols and looks like a package nobody has started.
+    out = subprocess.run(
+        ["mojo", "doc", "-I", str(ROOT), "-o", "-", str(path)],
+        capture_output=True,
+        text=True,
+    )
+    if out.returncode != 0:
+        # The compiler's own message, because "doc failed" on its own leaves
+        # the reader to reproduce it by hand to find out what went wrong.
+        print(f"parity: mojo doc failed for {path}", file=sys.stderr)
+        print(out.stderr.strip(), file=sys.stderr)
+        return set()
+    return declared(json.loads(out.stdout).get("decl", {}))
+
+
 def exported(package: Package) -> set[str] | None:
     """What our package exports, according to `mojo doc`.
 
@@ -216,22 +278,7 @@ def exported(package: Package) -> set[str] | None:
             print("parity: mojo is not on PATH, so nothing can be measured", file=sys.stderr)
             TOLD = True
         return None
-    # `-I ROOT` because a package that imports another one cannot be read
-    # without somewhere to find it, and every import in this tree is absolute
-    # from the root. Without it the first package with a dependency reports
-    # zero symbols and looks like a package nobody has started.
-    out = subprocess.run(
-        ["mojo", "doc", "-I", str(ROOT), "-o", "-", str(package.path)],
-        capture_output=True,
-        text=True,
-    )
-    if out.returncode != 0:
-        # The compiler's own message, because "doc failed" on its own leaves
-        # the reader to reproduce it by hand to find out what went wrong.
-        print(f"parity: mojo doc failed for {package.name}", file=sys.stderr)
-        print(out.stderr.strip(), file=sys.stderr)
-        return set()
-    return declared(json.loads(out.stdout).get("decl", {})) | reexported(package)
+    return source(package.path) | reexported(package)
 
 
 def measure(go: dict[str, list[tuple[str, str]]]) -> tuple[list[Result], list[str]]:

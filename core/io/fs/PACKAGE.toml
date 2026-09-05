@@ -2,9 +2,17 @@
 name = "core.io.fs"
 go = "io/fs"
 verdict = "Adapt"
-tier = 2
+tier = 3
 unsafe = false
+# `core.syscall` is here and is not in Go's own graph. Go's `FileInfo.Sys`
+# returns `any` and the caller asserts it to a `*syscall.Stat_t`; there is no
+# `any` here, so the field is typed and the dependency is real. It buys a
+# platform record a caller can read without a cast, and it costs this package a
+# tier. `core.time` is Go's own dependency, for `ModTime`.
 deps = [
+  "core.errors",
   "core.io",
+  "core.syscall",
+  "core.time",
   "core.unicode.utf8",
 ]

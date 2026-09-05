@@ -2,7 +2,7 @@
 name = "core.expvar"
 go = "expvar"
 verdict = "Adapt"
-tier = 5
+tier = 6
 unsafe = false
 deps = [
   "core.encoding.json",

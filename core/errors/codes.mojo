@@ -72,7 +72,54 @@ in M4, per issue #112.
 Owned by `core.io`, answering for Go's `io.ErrClosedPipe`.
 """
 
-comptime ErrBufferFull = Code(8)
+comptime ErrInvalid = Code(8)
+"""An argument was not usable: a nil file, a name with a NUL in it, a negative
+offset. It says the call was wrong rather than that the file system refused, so
+it is the one of these five that never comes from a failed system call.
+
+Owned by `core.io.fs`, answering for Go's `fs.ErrInvalid`.
+"""
+
+comptime ErrPermission = Code(9)
+"""The caller is not allowed to do this. `EACCES` when the file's own bits or a
+directory along the way said no, and `EPERM` when the operation is reserved to
+a privileged process whatever the bits say. Ask with `is_permission` rather
+than comparing an errno, since which of the two arrives depends on the
+operation.
+
+Owned by `core.io.fs`, answering for Go's `fs.ErrPermission`.
+"""
+
+comptime ErrExist = Code(10)
+"""Something is already there. `EEXIST` for a create that was told not to
+overwrite, and `ENOTEMPTY` for a remove or a rename that would have had to
+destroy a directory's contents to succeed. Both mean the file system declined
+rather than failed, and `is_exist` is the question.
+
+Owned by `core.io.fs`, answering for Go's `fs.ErrExist`.
+"""
+
+comptime ErrNotExist = Code(11)
+"""Nothing is there. `ENOENT`, which covers a missing final element and a missing
+directory anywhere along the path. The commonest failure in the package and the
+one `is_not_exist` exists for, because a caller who wants to create a file when
+it is absent has to be able to tell this from every other reason an open can
+fail.
+
+Owned by `core.io.fs`, answering for Go's `fs.ErrNotExist`.
+"""
+
+comptime ErrClosed = Code(12)
+"""The file was already closed. Not a system call failure: the descriptor is gone,
+so there was nothing to call, and this is raised before anything reaches the
+kernel. Reaching a closed file is a bug in the caller rather than a condition
+of the file system, and saying so plainly is better than passing a stale
+descriptor down and reporting whatever `EBADF` the kernel invents for it.
+
+Owned by `core.io.fs`, answering for Go's `fs.ErrClosed`.
+"""
+
+comptime ErrBufferFull = Code(13)
 """A delimiter was not found and the buffer is full, so `read_slice` cannot make
 progress without a bigger one. The bytes stay buffered and a caller can retry
 with `read_bytes`, which grows instead.
@@ -80,7 +127,7 @@ with `read_bytes`, which grows instead.
 Owned by `core.bufio`, answering for Go's `bufio.ErrBufferFull`.
 """
 
-comptime ErrInvalidUnreadByte = Code(9)
+comptime ErrInvalidUnreadByte = Code(14)
 """`unread_byte` was called when the last operation was not a successful
 `read_byte`. There is nothing to put back, and quietly moving the position
 instead would corrupt the stream for the next reader.
@@ -88,7 +135,7 @@ instead would corrupt the stream for the next reader.
 Owned by `core.bufio`, answering for Go's `bufio.ErrInvalidUnreadByte`.
 """
 
-comptime ErrInvalidUnreadRune = Code(10)
+comptime ErrInvalidUnreadRune = Code(15)
 """`unread_rune` was called when the last operation was not a successful
 `read_rune`. The same rule as `ErrInvalidUnreadByte`, kept separate because the
 width to put back is different.
@@ -96,7 +143,7 @@ width to put back is different.
 Owned by `core.bufio`, answering for Go's `bufio.ErrInvalidUnreadRune`.
 """
 
-comptime ErrNegativeCount = Code(11)
+comptime ErrNegativeCount = Code(16)
 """A count that has to be zero or more was negative. `peek` and `discard` raise
 this rather than treating it as zero, because a negative count is arithmetic
 that went wrong somewhere above.
@@ -104,7 +151,7 @@ that went wrong somewhere above.
 Owned by `core.bufio`, answering for Go's `bufio.ErrNegativeCount`.
 """
 
-comptime ErrTooLong = Code(12)
+comptime ErrTooLong = Code(17)
 """A scanner token grew past the maximum it was allowed. The default ceiling is
 `MAX_SCAN_TOKEN_SIZE`, and `Scanner.buffer` raises it for input that
 legitimately needs more; the ceiling exists so that a stream with no delimiter
@@ -113,7 +160,7 @@ in it cannot be turned into an allocation the size of the stream.
 Owned by `core.bufio`, answering for Go's `bufio.ErrTooLong`.
 """
 
-comptime ErrNegativeAdvance = Code(13)
+comptime ErrNegativeAdvance = Code(18)
 """A split function asked the scanner to move backwards. That is a bug in the
 split function, and it is reported rather than clamped because clamping turns
 it into an infinite loop.
@@ -121,14 +168,14 @@ it into an infinite loop.
 Owned by `core.bufio`, answering for Go's `bufio.ErrNegativeAdvance`.
 """
 
-comptime ErrAdvanceTooFar = Code(14)
+comptime ErrAdvanceTooFar = Code(19)
 """A split function asked the scanner to move past the end of the data it was
 given. Also a bug in the split function, and also fatal rather than clamped.
 
 Owned by `core.bufio`, answering for Go's `bufio.ErrAdvanceTooFar`.
 """
 
-comptime ErrBadReadCount = Code(15)
+comptime ErrBadReadCount = Code(20)
 """A reader returned more bytes than the span it was handed could hold. Nothing
 can be done with that answer except refuse it: the bytes are already somewhere
 they do not belong, and believing the count would read past the buffer.
@@ -136,7 +183,7 @@ they do not belong, and believing the count would read past the buffer.
 Owned by `core.bufio`, answering for Go's `bufio.ErrBadReadCount`.
 """
 
-comptime ErrTooLarge = Code(16)
+comptime ErrTooLarge = Code(21)
 """A `Buffer` was asked to grow past what can be allocated. Go panics with this
 value; here it is raised, because a buffer that has run out of memory is a
 condition the caller can report and the caller is the only one who knows
@@ -145,7 +192,7 @@ whether the input that caused it was theirs or somebody else's.
 Owned by `core.bytes`, answering for Go's `bytes.ErrTooLarge`.
 """
 
-comptime ErrRange = Code(17)
+comptime ErrRange = Code(22)
 """A number was well formed but too big or too small for the type it was asked
 for. Go returns the clamped value alongside this, the largest magnitude the bit
 size can hold with the right sign, and a raise cannot carry a value, so the
@@ -154,7 +201,7 @@ caller computes it from the bit size and the sign if they want it.
 Owned by `core.strconv`, answering for Go's `strconv.ErrRange`.
 """
 
-comptime ErrSyntax = Code(18)
+comptime ErrSyntax = Code(23)
 """A string was not a number of the kind that was asked for. This is the only
 failure that means the input was wrong rather than merely out of reach, so it
 is the one to report back to whoever supplied the text.
@@ -162,7 +209,7 @@ is the one to report back to whoever supplied the text.
 Owned by `core.strconv`, answering for Go's `strconv.ErrSyntax`.
 """
 
-comptime ErrBase = Code(19)
+comptime ErrBase = Code(24)
 """A base outside 0 and 2 through 36 was asked for. Go raises this from its
 internal package and then throws the sentinel away, so a caller cannot tell an
 impossible base from a malformed number without reading the message. This keeps
@@ -172,14 +219,14 @@ from the program and the digits came from its input.
 Owned by `core.strconv`. Go has no sentinel for it.
 """
 
-comptime ErrBitSize = Code(20)
+comptime ErrBitSize = Code(25)
 """A bit size below 0 or above 64 was asked for. Kept for the same reason as
 `ErrBase`, and it means the same thing: the argument is wrong, not the text.
 
 Owned by `core.strconv`. Go has no sentinel for it.
 """
 
-comptime ErrDivideByZero = Code(21)
+comptime ErrDivideByZero = Code(26)
 """A divisor was zero. Go's `Div` and `Rem` panic with the runtime's `integer
 divide by zero` here, and a package this far down cannot be the one that ends
 the process, so it raises instead. The three `div` functions and the three
@@ -188,7 +235,7 @@ the process, so it raises instead. The three `div` functions and the three
 Owned by `core.math.bits`. Go has no sentinel for it.
 """
 
-comptime ErrOverflow = Code(22)
+comptime ErrOverflow = Code(27)
 """A quotient did not fit the width it was asked for. `div64(hi, lo, y)` raises
 this when `y <= hi`, which is Go's `integer overflow` panic and means the
 answer needs more than 64 bits. No `rem` raises it, because a remainder always
@@ -197,7 +244,7 @@ fits, which is the whole reason Go has `Rem` beside `Div`.
 Owned by `core.math.bits`. Go has no sentinel for it.
 """
 
-comptime ErrInvalidArgument = Code(23)
+comptime ErrInvalidArgument = Code(28)
 """A bound was not a bound. Every `n` function needs a range with something in it,
 so `int64_n` and its siblings want a positive argument and `uint64_n` and its
 siblings want a non zero one, `shuffle` and `perm` want a count that is not
@@ -209,7 +256,7 @@ worse than a raise.
 Owned by `core.math.rand`. Go has no sentinel for it.
 """
 
-comptime ErrInvalidEncoding = Code(24)
+comptime ErrInvalidEncoding = Code(29)
 """A marshalled generator state was not one this can read back. The length is
 wrong, the tag at the front is wrong, or the counter in it is past where a
 counter can be. Go has this as two unexported error values, one per generator,
@@ -219,7 +266,7 @@ here and the message says which generator refused.
 Owned by `core.math.rand`. Go has no sentinel for it.
 """
 
-comptime ErrNaN = Code(25)
+comptime ErrNaN = Code(30)
 """An operation on `Float` values has no answer: adding infinities of opposite
 signs, subtracting two infinities of the same sign, multiplying an infinity by
 a zero, dividing zero by zero or infinity by infinity, or taking the square
@@ -231,7 +278,7 @@ returning it.
 Owned by `core.math.big`, answering for Go's `big.ErrNaN`.
 """
 
-comptime ErrBadPattern = Code(26)
+comptime ErrBadPattern = Code(31)
 """A pattern handed to `match` was malformed: a character class with nothing in
 it, one that was never closed, a backslash at the very end with nothing to
 escape, or a byte in a class that is not the start of a character. It says the
@@ -242,7 +289,7 @@ pattern is wrong rather than that the name failed to match, which is why
 Owned by `core.path`, answering for Go's `path.ErrBadPattern`.
 """
 
-comptime ErrRelPath = Code(27)
+comptime ErrRelPath = Code(32)
 """There is no relative route from one path to the other that can be worked out by
 reading the two strings. That is `rel("..", ".")`, where the answer depends on
 what the working directory is called, and `rel("/a", "a")`, where one path
@@ -254,7 +301,7 @@ mixed an absolute path with a relative one and wants to see which is which.
 Owned by `core.path.filepath`. Go has no sentinel for it.
 """
 
-comptime ErrInvalidPath = Code(28)
+comptime ErrInvalidPath = Code(33)
 """A slash separated name will not become a path on this host. Either it is not a
 name `core.io.fs.valid_path` accepts, which means it is empty, absolute,
 uncleaned or not valid UTF-8, or it holds a byte the host cannot have in a file
@@ -267,7 +314,7 @@ different file.
 Owned by `core.path.filepath`. Go has no sentinel for it.
 """
 
-comptime ErrBadLocationName = Code(29)
+comptime ErrBadLocationName = Code(34)
 """A name handed to `load_location` is not one it will look up. No IANA zone name
 contains two dots in a row and none begins with a slash or a backslash, so a
 name that does is a path someone assembled rather than a zone, and the lookup
@@ -278,7 +325,7 @@ unexported `errLocation`.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrUnknownZone = Code(30)
+comptime ErrUnknownZone = Code(35)
 """No source had a zone by that name. Every directory in the search was consulted
 and every one of them said the file was not there, which is the ordinary answer
 for a misspelt name and for a host with no zone database at all. A source that
@@ -288,7 +335,7 @@ search finished and found nothing.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrZoneFileTooLarge = Code(31)
+comptime ErrZoneFileTooLarge = Code(36)
 """A file in the zone search was larger than ten megabytes and was abandoned
 rather than read into memory. No real zone file is within three orders of
 magnitude of that, so this means the name resolved to something that is not
@@ -298,7 +345,7 @@ pieces. Go stops at the same size with an unexported error type.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrBadZoneData = Code(32)
+comptime ErrBadZoneData = Code(37)
 """The bytes handed to `load_location_from_tz_data` are not a compiled zone file
 this can read. The magic is wrong, the version byte is one this does not know,
 a count in the header runs past the end of the data, an index names a zone the
@@ -310,7 +357,7 @@ out, and a caller who passed the right bytes never sees it.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrParseTime = Code(33)
+comptime ErrParseTime = Code(38)
 """A string did not say what the layout it was read with said it would. The text
 between the pieces was not there, a piece was not a number where a number was
 wanted, a name was not a month or a weekday, a field was outside its range, the
@@ -323,7 +370,7 @@ record is the detail behind it.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrMarshalTime = Code(34)
+comptime ErrMarshalTime = Code(39)
 """An instant cannot be written in the form that was asked for. RFC 3339 wants a
 year of exactly four digits, so an instant before the year 0 or after 9999 has
 no spelling in it, and it wants a zone offset whose hour is under 24, which a
@@ -336,7 +383,7 @@ fact about the instant rather than about the caller's buffer.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrUnmarshalTime = Code(35)
+comptime ErrUnmarshalTime = Code(40)
 """The bytes handed to one of the unmarshalling methods are not an instant this
 can read. For the binary form that is no data at all, a version byte this does
 not know, or a length that does not match the version. For the JSON form it is
@@ -347,7 +394,7 @@ caller wants to know which of the two went wrong.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrParseDuration = Code(36)
+comptime ErrParseDuration = Code(41)
 """A string handed to `parse_duration` was not a duration. It was empty, it had a
 number with no unit after it, it had a unit this does not know, or the total
 did not fit. Go has this as an unexported error type whose message says which

@@ -33,6 +33,18 @@ ErrShortBuffer = { go = "io.ErrShortBuffer", doc = "A read needed a longer buffe
 ErrUnexpectedEOF = { go = "io.ErrUnexpectedEOF", doc = "Input ended in the middle of something that was supposed to be whole. `read_full` raises this when it has read some bytes and then hit the end, and `EOF` when it read none, which is the distinction that lets a caller tell an empty stream from a truncated one." }
 ErrClosedPipe = { go = "io.ErrClosedPipe", doc = "The pipe was closed at the other end. Reserved now so that the number exists where the rest of the io sentinels are; the pipe itself waits for `core.sync` in M4, per issue #112." }
 
+# The five below are one set of values in Go, declared in `internal/oserror`
+# and named by `io/fs` and `os` alike, which is why `os.ErrNotExist` and
+# `fs.ErrNotExist` are the same thing and comparing against either works. They
+# are here once for the same reason: a code is a number, and two numbers for
+# one meaning is the collision this file exists to prevent.
+["core.io.fs"]
+ErrInvalid = { go = "fs.ErrInvalid", doc = "An argument was not usable: a nil file, a name with a NUL in it, a negative offset. It says the call was wrong rather than that the file system refused, so it is the one of these five that never comes from a failed system call." }
+ErrPermission = { go = "fs.ErrPermission", doc = "The caller is not allowed to do this. `EACCES` when the file's own bits or a directory along the way said no, and `EPERM` when the operation is reserved to a privileged process whatever the bits say. Ask with `is_permission` rather than comparing an errno, since which of the two arrives depends on the operation." }
+ErrExist = { go = "fs.ErrExist", doc = "Something is already there. `EEXIST` for a create that was told not to overwrite, and `ENOTEMPTY` for a remove or a rename that would have had to destroy a directory's contents to succeed. Both mean the file system declined rather than failed, and `is_exist` is the question." }
+ErrNotExist = { go = "fs.ErrNotExist", doc = "Nothing is there. `ENOENT`, which covers a missing final element and a missing directory anywhere along the path. The commonest failure in the package and the one `is_not_exist` exists for, because a caller who wants to create a file when it is absent has to be able to tell this from every other reason an open can fail." }
+ErrClosed = { go = "fs.ErrClosed", doc = "The file was already closed. Not a system call failure: the descriptor is gone, so there was nothing to call, and this is raised before anything reaches the kernel. Reaching a closed file is a bug in the caller rather than a condition of the file system, and saying so plainly is better than passing a stale descriptor down and reporting whatever `EBADF` the kernel invents for it." }
+
 ["core.bufio"]
 ErrBufferFull = { go = "bufio.ErrBufferFull", doc = "A delimiter was not found and the buffer is full, so `read_slice` cannot make progress without a bigger one. The bytes stay buffered and a caller can retry with `read_bytes`, which grows instead." }
 ErrInvalidUnreadByte = { go = "bufio.ErrInvalidUnreadByte", doc = "`unread_byte` was called when the last operation was not a successful `read_byte`. There is nothing to put back, and quietly moving the position instead would corrupt the stream for the next reader." }

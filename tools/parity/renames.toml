@@ -284,3 +284,48 @@ Local = "local"
 "Time.Before" = "Time.__lt__"
 "Time.After" = "Time.__gt__"
 "Time.Equal" = "Time.__eq__"
+
+["io/fs"]
+# The fifteen mode bits are `comptime` values, and a constant is spelled in
+# capitals here, which is the rule that gave `io` its seek constants and `time`
+# its units theirs. The rule cannot derive these because `ModeDir` is already
+# the shape a Mojo type name has, so it leaves it alone.
+#
+# The words also come apart differently from the way Go joined them.
+# `ModeNamedPipe` is three words and `ModeSetgid` is two, since `setgid` is one
+# word in every place it is written down outside this constant.
+ModeDir = "MODE_DIR"
+ModeAppend = "MODE_APPEND"
+ModeExclusive = "MODE_EXCLUSIVE"
+ModeTemporary = "MODE_TEMPORARY"
+ModeSymlink = "MODE_SYMLINK"
+ModeDevice = "MODE_DEVICE"
+ModeNamedPipe = "MODE_NAMED_PIPE"
+ModeSocket = "MODE_SOCKET"
+ModeSetuid = "MODE_SETUID"
+ModeSetgid = "MODE_SETGID"
+ModeCharDevice = "MODE_CHAR_DEVICE"
+ModeSticky = "MODE_STICKY"
+ModeIrregular = "MODE_IRREGULAR"
+ModeType = "MODE_TYPE"
+ModePerm = "MODE_PERM"
+
+["os"]
+# The same fifteen again. Go declares them in `io/fs` and re-exports them from
+# `os`, and this library does the same thing, so the two sections say the same
+# thing about one set of constants.
+ModeDir = "MODE_DIR"
+ModeAppend = "MODE_APPEND"
+ModeExclusive = "MODE_EXCLUSIVE"
+ModeTemporary = "MODE_TEMPORARY"
+ModeSymlink = "MODE_SYMLINK"
+ModeDevice = "MODE_DEVICE"
+ModeNamedPipe = "MODE_NAMED_PIPE"
+ModeSocket = "MODE_SOCKET"
+ModeSetuid = "MODE_SETUID"
+ModeSetgid = "MODE_SETGID"
+ModeCharDevice = "MODE_CHAR_DEVICE"
+ModeSticky = "MODE_STICKY"
+ModeIrregular = "MODE_IRREGULAR"
+ModeType = "MODE_TYPE"
+ModePerm = "MODE_PERM"
