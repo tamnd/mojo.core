@@ -2,7 +2,7 @@
 name = "core.crypto.hpke"
 go = "crypto/hpke"
 verdict = "Wrap"
-tier = 6
+tier = 7
 unsafe = true
 deps = [
   "core.crypto",

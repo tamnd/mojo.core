@@ -2,7 +2,7 @@
 name = "core.os.user"
 go = "os/user"
 verdict = "Port"
-tier = 4
+tier = 5
 unsafe = false
 deps = [
   "core.errors",

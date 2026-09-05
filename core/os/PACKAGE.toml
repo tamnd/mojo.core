@@ -2,12 +2,14 @@
 name = "core.os"
 go = "os"
 verdict = "Adapt"
-tier = 3
+tier = 4
 unsafe = true
+# `core.io` and `core.time` come back with `File`, which reads and writes and
+# has a deadline. Nothing here needs either yet, and the lint is right to say
+# so: a declared dependency nothing imports is a claim about the graph that
+# happens not to be true.
 deps = [
   "core.errors",
-  "core.io",
   "core.io.fs",
   "core.syscall",
-  "core.time",
 ]
