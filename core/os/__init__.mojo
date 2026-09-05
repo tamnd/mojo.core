@@ -32,8 +32,13 @@ file. `stdin`, `stdout` and `stderr` are the three descriptors the process
 started with, as functions rather than as variables because this library has no
 package level state.
 
-Directory reading, the environment and anything to do with processes are still
-to come. Issue #28 tracks the rest.
+`read_dir` lists a directory and gives back `DirEntry` values sorted by name,
+and `File.read_dir`, `File.readdir` and `File.readdirnames` read one a piece at
+a time. An entry knows what kind of file it names without a second call, which
+is the whole reason the type is not a `FileInfo`.
+
+The environment and anything to do with processes are still to come. Issue #28
+tracks the rest.
 
 ## Names from `core.io.fs`
 
@@ -66,6 +71,7 @@ from core.io.fs import (
     ErrInvalid,
     ErrNotExist,
     ErrPermission,
+    DirEntry,
     FileInfo,
     FileMode,
     PathError,
@@ -83,6 +89,7 @@ from .errors import (
     is_permission,
     new_syscall_error,
 )
+from .dir import read_dir
 from .file import File, create, new_file, open, open_file, stderr, stdin, stdout
 from .path import (
     DEV_NULL,

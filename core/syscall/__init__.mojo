@@ -228,6 +228,7 @@ from .calls import (
     fchdir,
     fchmod,
     fcntl,
+    fdopendir,
     fstat,
     fsync,
     ftruncate,

@@ -12,8 +12,8 @@ Go's `fs.FS` is the interface a tree of files is reached through, so that a zip
 archive, a directory and a map in a test all answer the same questions. That is
 the bulk of this package and it is not written yet. What is here is everything
 those implementations will have to speak in: the rule about names, what a
-file's mode is, what is known about a file, and what a failed operation on a
-path looks like.
+file's mode is, what is known about a file, what one entry in a directory is,
+and what a failed operation on a path looks like.
 
 `os` says all four of these in Go too. It does not repeat them: `os.FileMode`
 is a declared alias for `fs.FileMode` and `os.ErrNotExist` is the same value as
@@ -47,6 +47,7 @@ from core.errors.codes import (
     ErrPermission,
 )
 
+from .direntry import DirEntry, file_info_to_dir_entry, format_dir_entry
 from .errors import PathError
 from .info import FileInfo
 from .mode import (
