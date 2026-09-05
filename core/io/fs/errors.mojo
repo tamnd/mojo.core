@@ -75,7 +75,12 @@ def _timeout(err: Errno) -> Bool:
 
 def _path_error[
     o: ImmOrigin
-](op: StringSlice[ImmStaticOrigin], path: StringSlice[o], err: Errno) -> Error:
+](
+    op: StringSlice[ImmStaticOrigin],
+    path: StringSlice[o],
+    err: Errno,
+    count: Int = -1,
+) -> Error:
     """The raise every path operation in this library makes.
 
     One place, so the message and the three fields cannot drift apart and
@@ -86,15 +91,22 @@ def _path_error[
     `op` is a static string because it names the call and is a literal at every
     site. `path` is a slice because it is passed on the way in and only the
     failing call ever copies it.
+
+    `count` is how many bytes moved before the failure, for the callers that
+    have one: a write that got half way through has to say so or the caller can
+    neither resume nor report honestly. Minus one means there is nothing to
+    say, which is every call that is not a read or a write.
     """
-    return (
+    var report = (
         Report(String(op) + " " + String(path) + ": " + err.message())
         .with_code(_sentinel(err))
         .with_field("op", String(op))
         .with_field("path", String(path))
         .with_field("errno", String(err.value))
-        .error()
     )
+    if count >= 0:
+        return report^.with_count(count).error()
+    return report^.error()
 
 
 def _errno_of(e: Error) -> Errno:
@@ -116,7 +128,10 @@ def _errno_of(e: Error) -> Errno:
 def _path_error_from[
     o: ImmOrigin
 ](
-    op: StringSlice[ImmStaticOrigin], path: StringSlice[o], cause: Error
+    op: StringSlice[ImmStaticOrigin],
+    path: StringSlice[o],
+    cause: Error,
+    count: Int = -1,
 ) -> Error:
     """A `PathError` for a `core.syscall` failure that has just been caught.
 
@@ -125,8 +140,11 @@ def _path_error_from[
     and the path in front of it. The errno is carried across rather than
     reread, because by the time this runs the platform's own `errno` may have
     been overwritten by anything the catch site did.
+
+    `count` is passed on to `_path_error`, for a read or a write that moved
+    something before it failed.
     """
-    return _path_error(op, path, _errno_of(cause))
+    return _path_error(op, path, _errno_of(cause), count)
 
 
 struct PathError(Copyable, Movable, Writable):

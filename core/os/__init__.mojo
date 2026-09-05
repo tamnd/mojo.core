@@ -24,8 +24,16 @@ be written in.
 `is_exist`, `is_not_exist` and `is_permission` ask the question a caller
 usually has.
 
-`File` itself is not written yet, and neither is the environment or anything to
-do with processes. Issue #28 tracks the rest.
+`File` is one open file, and `open`, `create`, `open_file` and `new_file` are
+the four ways to get one. It closes itself when it is destroyed and it is a
+`core.io` `Reader`, `Writer`, `Seeker`, `Closer`, `ReaderAt`, `WriterAt` and
+`StringWriter`, so everything written against those traits works over a real
+file. `stdin`, `stdout` and `stderr` are the three descriptors the process
+started with, as functions rather than as variables because this library has no
+package level state.
+
+Directory reading, the environment and anything to do with processes are still
+to come. Issue #28 tracks the rest.
 
 ## Names from `core.io.fs`
 
@@ -63,6 +71,10 @@ from core.io.fs import (
     PathError,
 )
 
+from core.syscall import O_APPEND, O_EXCL, O_RDONLY, O_RDWR, O_SYNC, O_TRUNC
+from core.syscall import O_CREAT as O_CREATE
+from core.syscall import O_WRONLY
+
 from .errors import (
     LinkError,
     SyscallError,
@@ -70,5 +82,12 @@ from .errors import (
     is_not_exist,
     is_permission,
     new_syscall_error,
+)
+from .file import File, create, new_file, open, open_file, stderr, stdin, stdout
+from .path import (
+    DEV_NULL,
+    PATH_LIST_SEPARATOR,
+    PATH_SEPARATOR,
+    is_path_separator,
 )
 from .stat import lstat, same_file, stat

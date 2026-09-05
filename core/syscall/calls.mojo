@@ -182,6 +182,48 @@ def write[o: Origin](fd: Int, data: Span[Byte, o]) raises -> Int:
     return n
 
 
+def pread[
+    o: Origin[mut=True]
+](fd: Int, into: Span[Byte, o], offset: Int) raises -> Int:
+    """Read into the span from a stated offset, leaving the file offset alone.
+
+    Gives back how many bytes arrived, zero at the end of the file, and may be
+    fewer than the span holds exactly as `read` may. The descriptor's own
+    offset is not consulted and not moved, which is what makes this the call to
+    build `io.ReaderAt` on: two readers can share one descriptor and neither
+    disturbs the other.
+
+    A pipe, a socket or a terminal has no offset to read from and fails with
+    `ESPIPE`.
+    """
+    var n = external_call["pread", Int](
+        Int32(fd), into.unsafe_ptr(), len(into), offset
+    )
+    if n < 0:
+        _fail("pread", errno())
+    return n
+
+
+def pwrite[o: Origin](fd: Int, data: Span[Byte, o], offset: Int) raises -> Int:
+    """Write the span at a stated offset, leaving the file offset alone.
+
+    The counterpart of `pread` and the same caveats: a short write is not an
+    error, and a descriptor with no offset fails with `ESPIPE`.
+
+    A descriptor opened with `O_APPEND` ignores the offset on Linux and writes
+    at the end anyway, which POSIX allows and Go documents rather than works
+    around. `core.os` says the same thing in `File.write_at` and refuses the
+    call instead, because a write that lands somewhere other than where it was
+    asked to is worse than one that does not happen.
+    """
+    var n = external_call["pwrite", Int](
+        Int32(fd), data.unsafe_ptr(), len(data), offset
+    )
+    if n < 0:
+        _fail("pwrite", errno())
+    return n
+
+
 def lseek(fd: Int, offset: Int, whence: Int) raises -> Int:
     """Move the file offset. Gives back where it ended up.
 
@@ -456,6 +498,18 @@ def chdir(path: String) raises:
     var raw = _cstr(path)
     if external_call["chdir", Int32](raw.unsafe_ptr()) < 0:
         _fail("chdir", errno())
+
+
+def fchdir(fd: Int) raises:
+    """Move the process working directory to an already open directory.
+
+    Process wide in the same way `chdir` is. What it buys over `chdir` is that
+    the destination is the directory the caller already holds rather than a
+    name that has to be resolved again, so nothing can have moved underneath it
+    in between.
+    """
+    if external_call["fchdir", Int32](Int32(fd)) < 0:
+        _fail("fchdir", errno())
 
 
 def chmod(path: String, mode: Int) raises:

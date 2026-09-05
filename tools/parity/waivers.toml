@@ -175,3 +175,18 @@ HasPrefix = "Deprecated in Go. Ignores path boundaries. Use rel and is_local."
 # type, so there is no method to put the message behind. The message is on the
 # report, which is what a caller reads either way.
 "ErrNaN.Error" = "ErrNaN is an error code here, not a struct, so the message is on the report rather than behind a method."
+
+["os"]
+# Go's own documentation on all three is one line: "Deprecated: Use
+# io.SeekStart, io.SeekCurrent, and io.SeekEnd." They predate the `io`
+# constants and were left behind when `Seeker` was given its own three, so a
+# program that uses them is passing `os`'s numbers to a method declared in
+# `io`.
+#
+# `core.io` has `SEEK_START`, `SEEK_CURRENT` and `SEEK_END`, which are the
+# three `File.seek` documents and the three every other `Seeker` in this
+# library takes. Carrying a second spelling of the same numbers would mean two
+# names for one argument in a call that already has two ways to be got wrong.
+SEEK_SET = "Deprecated in Go. Use core.io.SEEK_START."
+SEEK_CUR = "Deprecated in Go. Use core.io.SEEK_CURRENT."
+SEEK_END = "Deprecated in Go. Use core.io.SEEK_END."
