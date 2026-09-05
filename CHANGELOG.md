@@ -4,6 +4,18 @@ Notable changes, newest first. This project follows semantic versioning from 1.0
 
 ## Unreleased
 
+What the process can say about itself. `core.os` gains `getpid`, `getppid`, `getuid`, `geteuid`, `getgid`, `getegid`, `getgroups`, `getpagesize`, `hostname`, `executable`, `args`, `pipe` and `exit`, and `core.syscall` gains the bindings underneath all of them.
+
+The eight ids cannot fail and none of them raises. That is worth stating rather than leaving a reader to notice, because a call that cannot fail and raises anyway makes every caller write a `try` that can never be taken, and a reader who sees one starts wondering what the failure would mean. `getgroups` is the exception among the group calls and does raise, since it asks twice: once with a size of zero, which POSIX defines as a request for the count, and once for that many, because the limit is 16 on macOS and 65,536 on Linux and a buffer sized for either is the wrong size on the other.
+
+`executable` is the one that is a different question on each platform. Linux reads the link at `/proc/self/exe`, so a container with no `/proc` mounted fails here, and macOS asks `_NSGetExecutablePath` and joins the answer to the working directory when it comes back relative, which is what Go does. The path is absolute and it is not promised to still name the running program, since a file can be renamed or removed while it runs, and Go makes the same non promise about the same call.
+
+`args` is a function where Go has a package level variable, the same choice `stdin` and the other two descriptors already made. The practical difference is that Go's can be assigned to, which some programs do to hide a flag from a library they call, and this cannot, so a caller that wants a modified list makes one.
+
+`pipe` gives back both ends as files that close themselves, and the ends are used where they sit rather than moved into two names. A `File` cannot be copied and Mojo cannot move a value out of a tuple, so reading, writing, closing and handing an end to anything that takes a `Reader` or a `Writer` all work, and giving one end away to something that wants to own it does not. The signature is already the one that will work the day the language allows it.
+
+`exit` ends the process without running a single destructor. It is C's `_exit` rather than its `exit`, so no `atexit` handler runs either, which is what Go does and is the right end of the choice: a program ending itself deliberately should not be running teardown that some other piece of code arranged for a different reason. A program that has written something closes it and returns from `main`.
+
 The environment, and the four directories the environment names. `core.os` gains `getenv`, `lookup_env`, `setenv`, `unsetenv`, `clearenv`, `environ`, `expand` and `expand_env`, and `temp_dir`, `user_home_dir`, `user_cache_dir` and `user_config_dir`.
 
 Nothing about the environment is cached here, which is the one place this differs from Go on purpose. Go copies the environment into a slice at start up and answers every read from that copy, so `os.Setenv` and a `setenv` from a C library linked into the same program disagree from the moment either of them runs, and they never agree again. Reading through to libc every time costs a call and a copy per lookup and is always right, and a library that cannot see the other half of its own process is worse than a slow one. None of it is safe against another thread changing the environment at the same time, and that is not fixable at this layer, because the array libc keeps can be replaced from C and there is no lock either side of that boundary to take.

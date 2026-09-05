@@ -223,6 +223,20 @@ def new_syscall_error(
     )
 
 
+def _wrapped(call: StringSlice[ImmStaticOrigin], e: Error) -> Error:
+    """A `SyscallError` for a failed call with no path, or the error unchanged.
+
+    Go wraps a call like this in `NewSyscallError`, and the wrapping is what
+    puts the call's name in front of the platform's own wording. There is
+    nothing else to add: the environment and the process calls name no file, so
+    a `PathError` would have an empty field where the useful one goes.
+    """
+    var reported = new_syscall_error(call, _errno_of(e))
+    if reported:
+        return reported.take()
+    return e
+
+
 def _link_error[
     a: ImmOrigin, b: ImmOrigin
 ](

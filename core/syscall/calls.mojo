@@ -42,6 +42,7 @@ the alternatives were.
 """
 
 from std.ffi import external_call
+from std.sys import CompilationTarget
 
 from core.errors import Report
 
@@ -624,6 +625,209 @@ def fchmod(fd: Int, mode: Int) raises:
 def getpid() -> Int:
     """This process. It cannot fail, which is why it does not raise."""
     return Int(external_call["getpid", Int32]())
+
+
+def getppid() -> Int:
+    """The process that started this one. Cannot fail.
+
+    The answer changes underneath a program: when the parent exits first, the
+    child is handed to init and this starts saying 1. So it is a fact about
+    right now rather than about how the program was started, and code that
+    wants to know who started it has to ask before the parent can go away.
+    """
+    return Int(external_call["getppid", Int32]())
+
+
+def getuid() -> Int:
+    """The real user id, which is who started the program. Cannot fail."""
+    return Int(external_call["getuid", UInt32]())
+
+
+def geteuid() -> Int:
+    """The effective user id, which is whose permissions apply. Cannot fail.
+
+    The two differ on a set-user-id program, where the real id is the person
+    at the keyboard and the effective id is the owner of the file. A check
+    about whether something can be opened wants this one, and even then the
+    honest way to find out is to open it and read the failure.
+    """
+    return Int(external_call["geteuid", UInt32]())
+
+
+def getgid() -> Int:
+    """The real group id. Cannot fail. See `getuid`."""
+    return Int(external_call["getgid", UInt32]())
+
+
+def getegid() -> Int:
+    """The effective group id. Cannot fail. See `geteuid`."""
+    return Int(external_call["getegid", UInt32]())
+
+
+def getgroups() raises -> List[Int]:
+    """Every group this process belongs to. Go's `syscall.Getgroups`.
+
+    Asked twice, because there is no fixed size to ask with: the limit is 16 on
+    macOS and 65,536 on Linux, and a buffer sized for either is the wrong size
+    on the other. The first call passes a size of zero, which POSIX defines as
+    a request for the count and leaves the buffer alone, and the second asks
+    for that many.
+
+    Whether the effective group id is in the list is the platform's business
+    and not the same answer everywhere, so a caller that wants to know about it
+    should ask `getegid` rather than search this.
+    """
+    var ignored = Array[UInt32, 1](fill=0)
+    var count = external_call["getgroups", Int32](
+        Int32(0), Pointer(to=ignored[0])
+    )
+    if count < 0:
+        _fail("getgroups", errno())
+    var out = List[Int]()
+    if count == 0:
+        return out^
+    var room = List[UInt32](capacity=Int(count))
+    for _ in range(Int(count)):
+        room.append(0)
+    var got = external_call["getgroups", Int32](count, room.unsafe_ptr())
+    if got < 0:
+        _fail("getgroups", errno())
+    for i in range(Int(got)):
+        out.append(Int(room[i]))
+    return out^
+
+
+def getpagesize() -> Int:
+    """How many bytes the kernel maps at a time. Cannot fail.
+
+    4,096 on Linux x86-64 and 16,384 on Apple silicon, and neither number is
+    worth writing down anywhere, which is why this is a call rather than a
+    constant in `abi.mojo`: the same binary runs on machines that disagree.
+    """
+    return Int(external_call["getpagesize", Int32]())
+
+
+comptime _HOSTNAME_ROOM: Int = 512
+"""How much room `gethostname` is given.
+
+Not a number out of a header, which is why it is here and not in `abi.mojo`.
+Linux caps a host name at 64 bytes and macOS at 255, so anything at or above
+256 is enough on every host in the matrix, and this is doubled again because
+the cost of the extra bytes is a stack frame nobody will notice and the cost of
+being wrong is a truncated name that looks real.
+"""
+
+
+def gethostname() raises -> String:
+    """The name this machine calls itself.
+
+    Not in Go's `syscall` on every platform, which is why `os.Hostname` is the
+    one worth reaching for. It is a name the machine was configured with rather
+    than anything the network agrees on, so it is not a way to find an address
+    and is not promised to be unique outside one administrator's idea of it.
+
+    A name too long for the buffer is reported rather than handed back short,
+    because the platforms disagree about whether truncation is an error and
+    about whether what they wrote is even terminated.
+    """
+    var room = Array[Byte, _HOSTNAME_ROOM](fill=0)
+    var failed = external_call["gethostname", Int32](
+        Pointer(to=room[0]), Int(_HOSTNAME_ROOM)
+    )
+    if failed < 0:
+        _fail("gethostname", errno())
+    var out = String()
+    var ended = False
+    for i in range(_HOSTNAME_ROOM):
+        if room[i] == 0:
+            ended = True
+            break
+        out += chr(Int(room[i]))
+    if not ended:
+        raise Report(
+            String(
+                "gethostname: the name fills all ",
+                _HOSTNAME_ROOM,
+                " bytes and there is no way to ask how much longer it is",
+            )
+        ).error()
+    return out
+
+
+def pipe() raises -> Tuple[Int, Int]:
+    """A pipe. Gives back the read end and then the write end, in that order.
+
+    Go's `syscall.Pipe` fills a two element array and this returns the pair,
+    because the array form only exists in C to work around C not having one.
+
+    Both ends are ordinary descriptors and both have to be closed. The one that
+    catches everybody is that a reader sees the end of the pipe only when every
+    copy of the write end is closed, including the copy a forked child still
+    holds and the copy the writer forgot it kept.
+    """
+    var ends = Array[Int32, 2](fill=0)
+    if external_call["pipe", Int32](Pointer(to=ends[0])) < 0:
+        _fail("pipe", errno())
+    return (Int(ends[0]), Int(ends[1]))
+
+
+def exit(code: Int):
+    """End the process now. Go's `syscall.Exit`. Does not return.
+
+    This is C's `_exit` rather than its `exit`, so no `atexit` handler runs and
+    nothing buffered in C's own standard library is flushed. That is what Go
+    does and it is the right end of the choice: a library ending a process
+    should not be running teardown that some other library registered.
+
+    Nothing on the Mojo side is cleaned up either. No destructor runs, so a
+    `File` holding an unwritten buffer loses it. A program that has written
+    something closes it and returns from `main`, and calls this only when there
+    is a status to report and nothing left to save.
+    """
+    external_call["_exit", NoneType](Int32(code))
+
+
+def _ns_get_executable_path() raises -> String:
+    """What macOS says this program was loaded from. Not a system call.
+
+    `_NSGetExecutablePath` is in libSystem and has no Go counterpart, which is
+    why the name is private: `core.os.executable` is the public way to ask, and
+    it is the one that knows Linux answers the same question by reading a link
+    in `/proc`. The buffer sizing is here because a buffer is a C problem.
+
+    The path is whatever the loader was handed. It can be relative, it can hold
+    `..` and it can name a symbolic link, and none of that is fixed up here.
+
+    The whole body is behind a `comptime if`, so on Linux there is no reference
+    to the symbol left to link against. A caller there gets the raise, and the
+    only caller there is is `core.os.executable`, which reads `/proc/self/exe`
+    on that platform and never comes here.
+    """
+    comptime if not CompilationTarget.is_macos():
+        raise Report(
+            "executable: _NSGetExecutablePath is a macOS function and this is"
+            " not macOS"
+        ).error()
+    var room = Array[Byte, PATH_MAX](fill=0)
+    var room_size = UInt32(PATH_MAX)
+    var failed = external_call["_NSGetExecutablePath", Int32](
+        Pointer(to=room[0]), Pointer(to=room_size)
+    )
+    if failed != 0:
+        raise Report(
+            String(
+                "executable: the path is ",
+                room_size,
+                " bytes long, which is more than this platform's own limit of ",
+                PATH_MAX,
+            )
+        ).error()
+    var out = String()
+    for i in range(PATH_MAX):
+        if room[i] == 0:
+            break
+        out += chr(Int(room[i]))
+    return out
 
 
 def getenv(name: String) -> Optional[String]:

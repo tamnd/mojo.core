@@ -23,14 +23,13 @@ the reason anybody wants it.
 
 from core.errors import Report
 from core.errors.codes import ErrInvalid
-from core.io.fs.errors import _errno_of
 from core.syscall import clearenv as _sys_clearenv
 from core.syscall import environ as _sys_environ
 from core.syscall import getenv as _sys_getenv
 from core.syscall import setenv as _sys_setenv
 from core.syscall import unsetenv as _sys_unsetenv
 
-from .errors import new_syscall_error
+from .errors import _wrapped
 from .file import _has_nul
 
 
@@ -295,17 +294,3 @@ def expand_env(s: String) -> String:
         return getenv(name)
 
     return expand[from_env](s)
-
-
-def _wrapped(call: StringSlice[ImmStaticOrigin], e: Error) -> Error:
-    """A `SyscallError` for a failed environment call, or the error unchanged.
-
-    Go wraps each of these in `NewSyscallError`, and the wrapping is what puts
-    the call's name in front of the platform's own wording. There is nothing
-    else to add: none of these has a path, so a `PathError` would have an empty
-    field where the useful one goes.
-    """
-    var reported = new_syscall_error(call, _errno_of(e))
-    if reported:
-        return reported.take()
-    return e
