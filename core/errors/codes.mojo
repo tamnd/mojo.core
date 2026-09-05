@@ -242,7 +242,32 @@ pattern is wrong rather than that the name failed to match, which is why
 Owned by `core.path`, answering for Go's `path.ErrBadPattern`.
 """
 
-comptime ErrBadLocationName = Code(27)
+comptime ErrRelPath = Code(27)
+"""There is no relative route from one path to the other that can be worked out by
+reading the two strings. That is `rel("..", ".")`, where the answer depends on
+what the working directory is called, and `rel("/a", "a")`, where one path
+starts at the root and the other does not, so nothing lexical can say how far
+apart they are. Go returns an `errors.New` naming both paths and this raises
+with both of them on the record, because a caller who gets this has usually
+mixed an absolute path with a relative one and wants to see which is which.
+
+Owned by `core.path.filepath`. Go has no sentinel for it.
+"""
+
+comptime ErrInvalidPath = Code(28)
+"""A slash separated name will not become a path on this host. Either it is not a
+name `core.io.fs.valid_path` accepts, which means it is empty, absolute,
+uncleaned or not valid UTF-8, or it holds a byte the host cannot have in a file
+name, which here is NUL and on Windows would be a backslash or a colon. Go has
+this as the unexported `errInvalidPath` behind `filepath.Localize` and it is
+the whole failure mode of that function: a name that arrived from an archive or
+an untrusted request is refused rather than turned into something that names a
+different file.
+
+Owned by `core.path.filepath`. Go has no sentinel for it.
+"""
+
+comptime ErrBadLocationName = Code(29)
 """A name handed to `load_location` is not one it will look up. No IANA zone name
 contains two dots in a row and none begins with a slash or a backslash, so a
 name that does is a path someone assembled rather than a zone, and the lookup
@@ -253,7 +278,7 @@ unexported `errLocation`.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrUnknownZone = Code(28)
+comptime ErrUnknownZone = Code(30)
 """No source had a zone by that name. Every directory in the search was consulted
 and every one of them said the file was not there, which is the ordinary answer
 for a misspelt name and for a host with no zone database at all. A source that
@@ -263,7 +288,7 @@ search finished and found nothing.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrZoneFileTooLarge = Code(29)
+comptime ErrZoneFileTooLarge = Code(31)
 """A file in the zone search was larger than ten megabytes and was abandoned
 rather than read into memory. No real zone file is within three orders of
 magnitude of that, so this means the name resolved to something that is not
@@ -273,7 +298,7 @@ pieces. Go stops at the same size with an unexported error type.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrBadZoneData = Code(30)
+comptime ErrBadZoneData = Code(32)
 """The bytes handed to `load_location_from_tz_data` are not a compiled zone file
 this can read. The magic is wrong, the version byte is one this does not know,
 a count in the header runs past the end of the data, an index names a zone the
@@ -285,7 +310,7 @@ out, and a caller who passed the right bytes never sees it.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrParseTime = Code(31)
+comptime ErrParseTime = Code(33)
 """A string did not say what the layout it was read with said it would. The text
 between the pieces was not there, a piece was not a number where a number was
 wanted, a name was not a month or a weekday, a field was outside its range, the
@@ -298,7 +323,7 @@ record is the detail behind it.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrMarshalTime = Code(32)
+comptime ErrMarshalTime = Code(34)
 """An instant cannot be written in the form that was asked for. RFC 3339 wants a
 year of exactly four digits, so an instant before the year 0 or after 9999 has
 no spelling in it, and it wants a zone offset whose hour is under 24, which a
@@ -311,7 +336,7 @@ fact about the instant rather than about the caller's buffer.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrUnmarshalTime = Code(33)
+comptime ErrUnmarshalTime = Code(35)
 """The bytes handed to one of the unmarshalling methods are not an instant this
 can read. For the binary form that is no data at all, a version byte this does
 not know, or a length that does not match the version. For the JSON form it is
@@ -322,7 +347,7 @@ caller wants to know which of the two went wrong.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrParseDuration = Code(34)
+comptime ErrParseDuration = Code(36)
 """A string handed to `parse_duration` was not a duration. It was empty, it had a
 number with no unit after it, it had a unit this does not know, or the total
 did not fit. Go has this as an unexported error type whose message says which

@@ -127,6 +127,20 @@ Title = "Deprecated in Go. The word boundary rule breaks on Unicode punctuation;
 # line loop over spaces.
 Title = "Deprecated in Go. The word boundary rule breaks on Unicode punctuation; x/text/cases replaces it."
 
+["path/filepath"]
+# Go's own documentation says not to use this one, in those words, and gives
+# the two reasons: it does not respect path boundaries, so `/us` is a prefix of
+# `/usr`, and it does not ignore case on Windows, so it answers differently on
+# two hosts where the paths name the same file. Both of those make it wrong for
+# the only thing anyone reaches for it for, which is asking whether one path is
+# inside another.
+#
+# `rel` is what answers that question properly. `rel(dir, name)` either fails,
+# which says there is no route, or gives a path, and `is_local` of that path is
+# true exactly when `name` is inside `dir`. That is two calls instead of one and
+# it is right about `/us` and `/usr`.
+HasPrefix = "Deprecated in Go. Ignores path boundaries. Use rel and is_local."
+
 ["math/big"]
 # Both are Go's run time formatting interfaces. `Format` implements
 # `fmt.Formatter`, which is handed a `fmt.State` and a verb rune and decides

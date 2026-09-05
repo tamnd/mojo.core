@@ -2,7 +2,7 @@
 name = "core.runtime.pprof"
 go = "runtime/pprof"
 verdict = "Adapt"
-tier = 7
+tier = 5
 unsafe = false
 deps = [
   "core.bufio",

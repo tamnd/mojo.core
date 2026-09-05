@@ -2,7 +2,7 @@
 name = "core.net.smtp"
 go = "net/smtp"
 verdict = "Port"
-tier = 11
+tier = 8
 unsafe = false
 deps = [
   "core.crypto.hmac",

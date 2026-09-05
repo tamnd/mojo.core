@@ -2,7 +2,7 @@
 name = "core.crypto.mlkem"
 go = "crypto/mlkem"
 verdict = "Wrap"
-tier = 8
+tier = 5
 unsafe = true
 deps = [
   "core.crypto",

@@ -2,7 +2,7 @@
 name = "core.testing.fstest"
 go = "testing/fstest"
 verdict = "Adapt"
-tier = 10
+tier = 8
 unsafe = false
 deps = [
   "core.errors",

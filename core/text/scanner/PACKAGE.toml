@@ -2,7 +2,7 @@
 name = "core.text.scanner"
 go = "text/scanner"
 verdict = "Port"
-tier = 7
+tier = 4
 unsafe = false
 deps = [
   "core.errors",

@@ -2,7 +2,7 @@
 name = "core.html.template"
 go = "html/template"
 verdict = "Adapt"
-tier = 9
+tier = 7
 unsafe = false
 deps = [
   "core.encoding.json",

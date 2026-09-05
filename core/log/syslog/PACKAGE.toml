@@ -2,7 +2,7 @@
 name = "core.log.syslog"
 go = "log/syslog"
 verdict = "Port"
-tier = 8
+tier = 6
 unsafe = false
 deps = [
   "core.errors",

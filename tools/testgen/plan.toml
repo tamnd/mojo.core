@@ -175,6 +175,46 @@ tables = [
   "matchTests",
 ]
 
+[harvest.fs]
+go = "io/fs"
+file = "fs_test.go"
+# The one table in the package that can be read without a tree of files to read
+# it against: the names `ValidPath` accepts and the ones it refuses. The rest of
+# the package's tests build a filesystem first, so they arrive when the `fs.FS`
+# trait does.
+tables = [
+  "isValidPathTests",
+]
+
+[harvest.filepath]
+go = "path/filepath"
+# The lexical tables, which is every table in the package that does not need a
+# tree on a disk to be read against. The `win` and `plan9` ones are left out
+# because they are answers for hosts this library does not target, and the
+# `nonwin` ones are in because this is one of the hosts they are for. Go splits
+# `splittests` and `cleantests` that way and this file has to put the halves
+# back together, which is what the two `nonwin` names below are doing.
+#
+# `localizetests` is not here and is ported by hand in the test file, because
+# one of its rows is the string `a\xffb` and a Mojo string literal holds text
+# rather than bytes, so that row has to be built as bytes to exist at all.
+tables = [
+  "cleantests",
+  "nonwincleantests",
+  "slashtests",
+  "unixsplittests",
+  "jointests",
+  "nonwinjointests",
+  "exttests",
+  "basetests",
+  "dirtests",
+  "nonwindirtests",
+  "isabstests",
+  "islocaltests",
+  "splitlisttests",
+  "reltests",
+]
+
 [harvest.time]
 go = "time"
 # The tables Go's own time tests are driven by, less the ones whose rows hold a

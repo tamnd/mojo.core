@@ -44,12 +44,14 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/printer"
 	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -152,10 +154,27 @@ func extract(dir string, tables, skip []string) (string, error) {
 // routinely built out of another, `ceilSC` is `append(ceilBaseSC, ...)`, and
 // following that would be a dependency walk this does not need to do: an
 // unused package level variable is not an error in Go.
-func readDecls(dir string) ([]ast.Decl, map[string]string, error) {
-	paths, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
+//
+// Only the files that belong to the host this is running on are read, which is
+// go/build's own decision and not a rule invented here. A table under a build
+// tag for another operating system holds that system's answers and is of no
+// use to a library that does not target it, and path/filepath's Windows test
+// file also declares a variable built from internal/godebug, which nothing
+// outside Go's own tree is allowed to import.
+func readDecls(dir string) ([]ast.Decl, map[string][]string, error) {
+	found, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
 	if err != nil {
 		return nil, nil, err
+	}
+	var paths []string
+	for _, path := range found {
+		ok, err := build.Default.MatchFile(dir, filepath.Base(path))
+		if err != nil {
+			return nil, nil, err
+		}
+		if ok {
+			paths = append(paths, path)
+		}
 	}
 	sort.Strings(paths)
 
@@ -180,15 +199,18 @@ func readDecls(dir string) ([]ast.Decl, map[string]string, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		imports[path] = "."
+		imports[path] = append(imports[path], ".")
 	}
 	return decls, imports, nil
 }
 
 // gather takes the declarations and the imports out of a set of files.
-func gather(files []*ast.File) ([]ast.Decl, map[string]string) {
+//
+// A path keeps every name it was imported under rather than the last one, so
+// that a package two files brought in two ways is available both ways.
+func gather(files []*ast.File) ([]ast.Decl, map[string][]string) {
 	var decls []ast.Decl
-	imports := map[string]string{}
+	imports := map[string][]string{}
 	for _, file := range files {
 		for _, decl := range file.Decls {
 			gen, ok := decl.(*ast.GenDecl)
@@ -201,7 +223,10 @@ func gather(files []*ast.File) ([]ast.Decl, map[string]string) {
 			if spec.Name != nil {
 				alias = spec.Name.Name
 			}
-			imports[strings.Trim(spec.Path.Value, `"`)] = alias
+			path := strings.Trim(spec.Path.Value, `"`)
+			if !slices.Contains(imports[path], alias) {
+				imports[path] = append(imports[path], alias)
+			}
 		}
 	}
 	return decls, imports
@@ -400,7 +425,7 @@ func needsDot(decls []ast.Decl) bool {
 // unchanged, `dump.go` names the tables that were asked for, and `emit.go` is
 // the reflection and the Mojo writing, which is static and lives at the bottom
 // of this file.
-func writeProgram(work string, decls []ast.Decl, imports map[string]string, tables []string) error {
+func writeProgram(work string, decls []ast.Decl, imports map[string][]string, tables []string) error {
 	var tablesGo bytes.Buffer
 	tablesGo.WriteString("package main\n\n")
 	tablesGo.WriteString(importBlock(imports, qualifiers(decls), needsDot(decls)))
@@ -442,7 +467,13 @@ func writeProgram(work string, decls []ast.Decl, imports map[string]string, tabl
 // `needsDot` decides. A named import is kept only when a copied declaration
 // qualifies something with it, since Go refuses to compile an unused import and
 // most of these came in for the test functions, which did not come along.
-func importBlock(imports map[string]string, used map[string]bool, dot bool) string {
+//
+// One package can arrive under more than one name, and path/filepath is where
+// that shows up: its match_test.go dot imports it so a table can say
+// `ErrBadPattern`, and its path_test.go imports it plainly so another can say
+// `filepath.ListSeparator`. Both files are copied here, so both names have to
+// exist, and Go is happy to import one package twice under two of them.
+func importBlock(imports map[string][]string, used map[string]bool, dot bool) string {
 	paths := make([]string, 0, len(imports))
 	for path := range imports {
 		paths = append(paths, path)
@@ -452,21 +483,24 @@ func importBlock(imports map[string]string, used map[string]bool, dot bool) stri
 	var out strings.Builder
 	out.WriteString("import (\n")
 	for _, path := range paths {
-		alias := imports[path]
-		name := alias
-		if name == "" {
-			name = path[strings.LastIndex(path, "/")+1:]
-		}
-		switch {
-		case alias == ".":
-			if dot {
-				fmt.Fprintf(&out, "\t. %q\n", path)
+		aliases := append([]string{}, imports[path]...)
+		sort.Strings(aliases)
+		for _, alias := range aliases {
+			name := alias
+			if name == "" {
+				name = path[strings.LastIndex(path, "/")+1:]
 			}
-		case !used[name]:
-		case alias == "":
-			fmt.Fprintf(&out, "\t%q\n", path)
-		default:
-			fmt.Fprintf(&out, "\t%s %q\n", alias, path)
+			switch {
+			case alias == ".":
+				if dot {
+					fmt.Fprintf(&out, "\t. %q\n", path)
+				}
+			case !used[name]:
+			case alias == "":
+				fmt.Fprintf(&out, "\t%q\n", path)
+			default:
+				fmt.Fprintf(&out, "\t%s %q\n", alias, path)
+			}
 		}
 	}
 	out.WriteString(")\n\n")

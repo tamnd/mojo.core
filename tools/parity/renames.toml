@@ -199,6 +199,14 @@ NewChaCha8 = "new_chacha8"
 # module name is a keyword too.
 Match = "is_match"
 
+["path/filepath"]
+# The same keyword, the same way out, for the same reason as in `path`.
+Match = "is_match"
+# Two `comptime` values, and a constant is spelled in capitals here, which is
+# the rule that gave `io` its seek constants and `time` its units theirs.
+Separator = "SEPARATOR"
+ListSeparator = "LIST_SEPARATOR"
+
 ["time"]
 # The twenty five constants go into capitals on the rule that gave `io` its
 # seek constants theirs: they are `comptime` values, and a constant is spelled

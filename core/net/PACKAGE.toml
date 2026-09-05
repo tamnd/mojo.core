@@ -2,7 +2,7 @@
 name = "core.net"
 go = "net"
 verdict = "Adapt"
-tier = 7
+tier = 5
 unsafe = true
 deps = [
   "core.context",
