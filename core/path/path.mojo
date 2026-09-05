@@ -32,7 +32,8 @@ character class has to know what a character is.
 """
 
 from core.io import Byte
-from core.strings import last_index_byte
+
+from .scan import _last_index_byte
 
 comptime _SLASH = Byte(ord("/"))
 comptime _DOT = Byte(ord("."))
@@ -161,7 +162,7 @@ def split[
     it gives an empty directory and the whole path as the name.
     """
     var n = path.byte_length()
-    var i = last_index_byte(path, _SLASH)
+    var i = _last_index_byte(path, _SLASH)
     return (path[byte = 0 : i + 1], path[byte = i + 1 : n])
 
 

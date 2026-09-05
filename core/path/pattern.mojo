@@ -38,11 +38,12 @@ the input happened to rule it out first, and this does the same: the answer to
 `is_match` does not depend on the name when the pattern is not a pattern.
 """
 
-from core.bytes import index_byte
 from core.errors import Report
 from core.errors.codes import ErrBadPattern
 from core.io import Byte
 from core.unicode.utf8 import RUNE_ERROR, decode_rune
+
+from .scan import _index_byte
 
 comptime _SLASH = Byte(ord("/"))
 comptime _STAR = Byte(ord("*"))
@@ -101,7 +102,7 @@ def is_match[
         if star and len(chunk) == 0:
             # A trailing `*`, which takes whatever is left as long as it is
             # still one element.
-            return index_byte(s, _SLASH) < 0
+            return _index_byte(s, _SLASH) < 0
 
         # Try the chunk where the name stands now. If the chunk is the last of
         # the pattern then it also has to reach the end of the name, since a

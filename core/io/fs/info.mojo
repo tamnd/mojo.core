@@ -13,40 +13,11 @@ host reported on, empty for a file system that has no host underneath it, which
 is exactly the set of cases where Go's assertion would have failed.
 """
 
-from core.io import Byte
+from core.path import base as _path_base
 from core.syscall import Stat
-from core.time import Time, unix
+from core.time import RFC3339, Time, unix
 
 from .mode import FileMode, _of_platform_mode
-
-comptime _SEP = Byte(ord("/"))
-
-
-def _base(path: StringSlice) -> String:
-    """The last element of a slash separated path. Go's `filepathlite.Base`.
-
-    Go keeps this in `internal/filepathlite` rather than calling `path.Base`,
-    and the reason carries over: `core.path` sits above this package and pulls
-    `core.bytes` and `core.strings` in with it, and a loop over one string is
-    not worth putting those two underneath the file system.
-
-    Empty gives `.` and a path of nothing but slashes gives `/`, which are the
-    two answers that stop a name from ever coming back empty.
-    """
-    var raw = path.as_bytes()
-    if len(raw) == 0:
-        return String(".")
-
-    var end = len(raw)
-    while end > 0 and raw[end - 1] == _SEP:
-        end -= 1
-    if end == 0:
-        return String("/")
-
-    var i = end - 1
-    while i >= 0 and raw[i] != _SEP:
-        i -= 1
-    return String(from_utf8_lossy=raw[i + 1 : end])
 
 
 struct FileInfo(Copyable, Movable):
@@ -108,9 +79,11 @@ struct FileInfo(Copyable, Movable):
 
         `path` is the whole path the call was made with and the name kept is
         its last element, which is what Go does and what makes a directory
-        listing read the way a listing should.
+        listing read the way a listing should. The last element is
+        `core.path.base`, which this package can name because `core.path` sits
+        underneath it, the same place Go's `path` sits underneath Go's `io/fs`.
         """
-        self._name = _base(path)
+        self._name = _path_base(path)
         self._size = stat.size()
         self._mode = _of_platform_mode(stat.mode())
         var written = stat.mtime()
@@ -158,3 +131,34 @@ struct FileInfo(Copyable, Movable):
         marked as such.
         """
         return self._sys.copy()
+
+
+def format_file_info(info: FileInfo) -> String:
+    """An info as one line of a long listing. Go's `FormatFileInfo`.
+
+    ```mojo
+    from core.io.fs import FileInfo, FileMode, format_file_info
+    from core.time import unix
+
+    var info = FileInfo(
+        name="notes.txt", size=12, mode=FileMode(0o644), mod_time=unix(0, 0)
+    )
+    print(format_file_info(info))
+    # => -rw-r--r-- 12 1970-01-01T00:00:00Z notes.txt
+    ```
+
+    The mode, the size, the modification time as RFC 3339 and the name, with a
+    slash after the name if it is a directory. Go's order and Go's separators,
+    so a listing printed here reads as one printed there.
+
+    A function rather than the way `DirEntry` prints itself, because Go's
+    `FileInfo` is an interface and this is the helper an implementation of it
+    calls from its own `String`. Here the type is concrete and printing it
+    directly is the obvious thing, so this stays a function to keep the name Go
+    gave it findable.
+    """
+    var line = String(info.mode()) + " " + String(info.size()) + " "
+    line += info.mod_time().format(RFC3339) + " " + info.name()
+    if info.is_dir():
+        line += "/"
+    return line^

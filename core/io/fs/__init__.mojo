@@ -2,25 +2,29 @@
 Go's `io/fs`.
 
 ```mojo
-from core.io.fs import MODE_DIR, FileMode, valid_path
+from core.io import Byte
+from core.io.fs import FS, read_file
 
-print(valid_path("a/b/c"))  # => True
-print(FileMode(0o755) | MODE_DIR)  # => drwxr-xr-x
+
+def config[F: FS](fsys: F) raises -> List[Byte]:
+    return read_file(fsys, "etc/config.toml")
 ```
 
 Go's `fs.FS` is the interface a tree of files is reached through, so that a zip
-archive, a directory and a map in a test all answer the same questions. That is
-the bulk of this package and it is not written yet. What is here is everything
-those implementations will have to speak in: the rule about names, what a
-file's mode is, what is known about a file, what one entry in a directory is,
-what a failed operation on a path looks like, and what a walk over a tree
-calls.
+archive, a directory and a map in a test all answer the same questions. It is a
+trait here and it is the point of the package: `open` is the only method that
+has to be written, and `read_dir`, `stat`, `read_file`, `glob`, `walk_dir` and
+`sub` all work on anything that has one. `fs.mojo` says how a file system that
+can answer one of those faster says so, which is a bit rather than Go's type
+assertion.
 
-`WalkDirFunc`, `SkipDir` and `SkipAll` are that last one, with `skip_dir` and
-`skip_all` to raise the two of them. The walk over an `FS` is not written yet
-either, and the type is here rather than beside the one walk that does exist,
-`core.path.filepath.walk_dir`, so that a callback written once works with
-both.
+Around it is the vocabulary a file is described in: the rule about names, what
+a file's mode is, what is known about a file, what one entry in a directory is,
+what a failed operation on a path looks like, and what a walk over a tree
+calls. `WalkDirFunc`, `SkipDir` and `SkipAll` are that last one, with `skip_dir`
+and `skip_all` to raise the two of them, and they are shared with
+`core.path.filepath.walk_dir` so that a callback written once works with both
+walks.
 
 `os` says all four of these in Go too. It does not repeat them: `os.FileMode`
 is a declared alias for `fs.FileMode` and `os.ErrNotExist` is the same value as
@@ -58,7 +62,25 @@ from core.errors.codes import (
 
 from .direntry import DirEntry, file_info_to_dir_entry, format_dir_entry
 from .errors import PathError
-from .info import FileInfo
+from .fs import (
+    GLOB_FS,
+    READ_DIR_FILE,
+    READ_DIR_FS,
+    READ_FILE_FS,
+    READ_LINK_FS,
+    STAT_FS,
+    FS,
+    File,
+    GlobFS,
+    ReadDirFile,
+    ReadDirFS,
+    ReadFileFS,
+    ReadLinkFS,
+    StatFS,
+    SubFS,
+)
+from .glob import glob
+from .info import FileInfo, format_file_info
 from .mode import (
     MODE_APPEND,
     MODE_CHAR_DEVICE,
@@ -78,4 +100,6 @@ from .mode import (
     FileMode,
 )
 from .name import valid_path
-from .walk import WalkDirFunc, skip_all, skip_dir
+from .read import lstat, read_dir, read_file, read_link, stat
+from .sub import Subtree, sub
+from .walk import WalkDirFunc, skip_all, skip_dir, walk_dir

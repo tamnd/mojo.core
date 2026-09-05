@@ -73,6 +73,15 @@ def _timeout(err: Errno) -> Bool:
     )
 
 
+def _message(op: String, path: String, why: String) -> String:
+    """The one sentence every failure in this library is reported in.
+
+    Go's, to the character: the operation, a space, the path, a colon and what
+    went wrong. Four callers build it and this is why they cannot drift.
+    """
+    return op + " " + path + ": " + why
+
+
 def _path_error[
     o: ImmOrigin
 ](
@@ -98,7 +107,7 @@ def _path_error[
     say, which is every call that is not a read or a write.
     """
     var report = (
-        Report(String(op) + " " + String(path) + ": " + err.message())
+        Report(_message(String(op), String(path), err.message()))
         .with_code(_sentinel(err))
         .with_field("op", String(op))
         .with_field("path", String(path))
@@ -107,6 +116,32 @@ def _path_error[
     if count >= 0:
         return report^.with_count(count).error()
     return report^.error()
+
+
+def _refused[
+    o: ImmOrigin
+](
+    op: StringSlice[ImmStaticOrigin],
+    path: StringSlice[o],
+    why: StringSlice[ImmStaticOrigin],
+    code: Code,
+) -> Error:
+    """A failure this package decided on, with no call made and no errno.
+
+    A file system that cannot answer a question is the case: `read_dir` on a
+    file system that has no directories, `read_link` on one that has no links.
+    Nothing was asked of a platform, so there is no number to carry and
+    `PathError.of` comes back without an `errno` field, which is the honest
+    answer rather than an omission. `matches(e, ErrUnsupported)` and
+    `errors.field(e, "path")` both answer as they do for any other failure.
+    """
+    return (
+        Report(_message(String(op), String(path), String(why)))
+        .with_code(code)
+        .with_field("op", String(op))
+        .with_field("path", String(path))
+        .error()
+    )
 
 
 def _errno_of(e: Error) -> Errno:
@@ -242,7 +277,49 @@ struct PathError(Copyable, Movable, Writable):
 
         `open /no/such/file: no such file or directory`.
         """
-        return self.op + " " + self.path + ": " + self.err.message()
+        return _message(self.op, self.path, self.err.message())
 
     def write_to[W: Writer](self, mut writer: W):
         writer.write(self.error())
+
+
+def _with_path[o: ImmOrigin](cause: Error, path: StringSlice[o]) -> Error:
+    """`cause` again, naming `path` instead of the path it was raised with.
+
+    For a file system that rewrites a name before passing it down, which is
+    what `sub` and `os.dir_fs` both do: they join a root onto every name, so a
+    failure from underneath names a file the caller never wrote and cannot
+    open. Go's `subFS.fixErr` edits the `Path` field of the `*PathError` in
+    place; nothing is edited in place here, so the record is built again with
+    the code, the operation and the errno kept.
+
+    An error with no operation and no path on it comes back untouched, since
+    there is nothing to rewrite and no reason to think it came from here. So
+    does one whose message is not the one `_message` builds, which is how a
+    caller's own wrapping survives being passed through.
+    """
+    var held = capture(cause)
+    var op = held.field("op")
+    var was = held.field("path")
+    if not op or not was:
+        return cause
+
+    var head = _message(op.value(), was.value(), "")
+    var text = held.message()
+    if (
+        text.byte_length() < head.byte_length()
+        or text[byte = : head.byte_length()] != head
+    ):
+        return cause
+    var why = String(text[byte = head.byte_length() :])
+
+    var report = (
+        Report(_message(op.value(), String(path), why))
+        .with_code(held.code())
+        .with_field("op", op.value())
+        .with_field("path", String(path))
+    )
+    var errno = held.field("errno")
+    if errno:
+        return report^.with_field("errno", errno.value()).error()
+    return report^.error()
