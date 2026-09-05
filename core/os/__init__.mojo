@@ -37,6 +37,11 @@ and `File.read_dir`, `File.readdir` and `File.readdirnames` read one a piece at
 a time. An entry knows what kind of file it names without a second call, which
 is the whole reason the type is not a `FileInfo`.
 
+`mkdir`, `remove`, `rename`, `link`, `symlink`, `readlink`, `chmod`, `chown`,
+`lchown`, `truncate`, `chdir` and `getwd` are the calls that take a path and do
+something to it. `mkdir_all` and `remove_all` are the two that walk one, and
+`read_file` and `write_file` are a whole file in one call in each direction.
+
 The environment and anything to do with processes are still to come. Issue #28
 tracks the rest.
 
@@ -89,6 +94,20 @@ from .errors import (
     is_permission,
     new_syscall_error,
 )
+from .calls import (
+    chdir,
+    chmod,
+    chown,
+    getwd,
+    lchown,
+    link,
+    mkdir,
+    readlink,
+    remove,
+    rename,
+    symlink,
+    truncate,
+)
 from .dir import read_dir
 from .file import File, create, new_file, open, open_file, stderr, stdin, stdout
 from .path import (
@@ -96,5 +115,8 @@ from .path import (
     PATH_LIST_SEPARATOR,
     PATH_SEPARATOR,
     is_path_separator,
+    mkdir_all,
+    remove_all,
 )
+from .readfile import read_file, write_file
 from .stat import lstat, same_file, stat
