@@ -40,16 +40,30 @@ and copying a `Time` costs an atomic increment. The default is the location that
 points at no table, which is UTC and allocates nothing, so a `Time` nobody gave
 a location to is exactly as cheap as it was before locations existed.
 
+## This module and `parse.mojo` import each other
+
+Every other module in this package is in a strict order, and this pair is the
+exception. `unmarshal_text` has to read RFC 3339 back, the reader is `parse`,
+and `parse` needs the `Time` that lives here in order to produce one. Mojo
+allows two modules of one package to import each other and the package graph
+check is about packages rather than modules, so nothing has to move. Go has the
+same mutual dependency between `time.go` and `format.go` and cannot notice it,
+because a Go package is one namespace with no order inside it.
+
 ## What is not here yet
 
 The timers, which want somewhere to run a callback and so want `core.sync`
-first, and the marshalling methods, which are `format` and `parse` over RFC 3339
-with a pair of quotes around the outside and are next.
+first.
 """
 
+from core.errors import Report
+from core.errors.codes import ErrMarshalTime, ErrUnmarshalTime
 from core.syscall import CLOCK_MONOTONIC, CLOCK_REALTIME, clock_gettime
 
 from .calendar import (
+    DECEMBER,
+    JANUARY,
+    _MONTH_NAMES,
     Month,
     Weekday,
     SECONDS_PER_DAY,
@@ -75,9 +89,11 @@ from .duration import (
     _less_than_half,
 )
 from .divide import _quo, _rem
-from .format import _append_format, _append_int
+from .format import RFC3339, RFC3339_NANO, _append_format, _append_int
+from .load import local
+from .parse import _quote, parse
 from .tzset import _ALPHA, _OMEGA
-from .zone import Location
+from .zone import Location, fixed_zone
 
 
 struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
@@ -678,6 +694,396 @@ struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
             _append_int(out, m % 1_000_000_000, 9)
 
         writer.write(String(from_utf8_lossy=Span(out)))
+
+    def go_string(self) -> String:
+        """The `date` call that would build this instant. Go's `GoString`.
+
+        ```mojo
+        from core.time import MARCH, date
+
+        print(date(2024, MARCH, 9, 14, 5, 6, 0).go_string())
+        # => date(2024, MARCH, 9, 14, 5, 6, 0, utc())
+        ```
+
+        Go writes `time.Date(...)` here because that is what `%#v` should print
+        for a value: source that would build it again. This writes the same
+        call in this library's spelling, so it can be pasted into a test.
+
+        The location is the part Go could not solve and neither can this. Go
+        writes `time.Location("Europe/Berlin")`, which is not a constructor and
+        does not compile, and its own comment says the alternatives are all
+        worse. `utc()` and `local()` do compile and are used where they apply,
+        and anything else gets `location("name")`, which is Go's admission in
+        this library's spelling. Go tells its three cases apart by comparing
+        pointers and this compares names, so a location that was loaded under
+        the name `Local` prints as `local()`, which is what it is.
+        """
+        var year, month, day = self.date()
+        var hour, minute, second = self.clock()
+
+        var out = List[UInt8]()
+        out.extend("date(".as_bytes())
+        _append_int(out, year, 0)
+        out.extend(", ".as_bytes())
+        if JANUARY.value <= month.value and month.value <= DECEMBER.value:
+            # Upper cased here rather than kept in a second table, because a
+            # constant is spelled in capitals in this library and `March` is
+            # the name the formatter needs.
+            var name = materialize[_MONTH_NAMES]()[Int(month.value) - 1]
+            for i in range(len(name.as_bytes())):
+                var c = name.as_bytes()[i]
+                if UInt8(ord("a")) <= c and c <= UInt8(ord("z")):
+                    c -= 32
+                out.append(c)
+        else:
+            # Go guards this too. Reaching it means a month outside one and
+            # twelve, which the calendar never produces and a hand built value
+            # could.
+            _append_int(out, Int(month.value), 0)
+        for field in [day, hour, minute, second, self.nsec]:
+            out.extend(", ".as_bytes())
+            _append_int(out, field, 0)
+        out.extend(", ".as_bytes())
+
+        var name = self.loc.name()
+        if not self.loc.table:
+            out.extend("utc()".as_bytes())
+        elif name == "Local":
+            out.extend("local()".as_bytes())
+        else:
+            out.extend("location(".as_bytes())
+            out.extend(_quote(name).as_bytes())
+            out.extend(")".as_bytes())
+        out.extend(")".as_bytes())
+        return String(from_utf8_lossy=Span(out))
+
+    def is_dst(self) -> Bool:
+        """Whether the zone in force here is a daylight saving one. Go's
+        `IsDST`.
+
+        ```mojo
+        from core.time import JULY, date, fixed_zone
+
+        print(date(2024, JULY, 1, 12, 0, 0, 0, fixed_zone("CET", 3600)).is_dst())
+        # => False
+        ```
+
+        The zone file says so, one flag per zone, so this is a fact about what
+        the place called it rather than a guess from the offset. A fixed zone is
+        never one, whatever it is named, because nobody told it that it was.
+        """
+        return self._lookup()[4]
+
+    def local(self) -> Self:
+        """The same instant, read against the host's own zone. Go's `Local`.
+
+        `in_location(local())`, which is all Go's is. Worth knowing that the
+        host's zone is loaded on every call here and once ever in Go, for the
+        reason `local` gives: there is nowhere to keep it.
+        """
+        return self.in_location(local())
+
+    def append_binary(self, mut dst: List[UInt8]) raises -> Int:
+        """This instant in Go's binary form, appended to `dst`, and how many
+        bytes that took. Go's `AppendBinary`.
+
+        Fifteen bytes, or sixteen. A version byte, then the seconds since the
+        year 1 as eight bytes most significant first, then the nanoseconds as
+        four, then the zone offset in whole minutes as two. An offset of -1
+        minute cannot occur and so is the marker for UTC, which is why a value
+        in UTC and a value in a fixed zone of zero are not the same bytes.
+
+        The sixteenth byte appears when the offset is not a whole number of
+        minutes, which is version 2 and exists for the local mean time entries
+        at the start of most zone files: Kathmandu before 1920 was 5 hours 41
+        minutes and 16 seconds east, and the seconds have nowhere else to go.
+
+        Nothing is appended when this raises, so a list that was handed to a
+        failing call is the list it was.
+        """
+        var offset_min = -1
+        var offset_sec = 0
+        var version = 1
+
+        if self.loc.table:
+            var offset = self._offset()
+            if offset % 60 != 0:
+                version = 2
+                offset_sec = _rem(offset, 60)
+            offset = _quo(offset, 60)
+            if offset < -32768 or offset == -1 or offset > 32767:
+                raise (
+                    Report("Time.marshal_binary: unexpected zone offset")
+                    .with_code(ErrMarshalTime)
+                    .with_field("offset", String(self._offset()))
+                    .error()
+                )
+            offset_min = offset
+
+        var start = len(dst)
+        dst.append(UInt8(version))
+        for shift in reversed(range(0, 64, 8)):
+            dst.append(UInt8((UInt64(self.sec) >> UInt64(shift)) & 0xFF))
+        for shift in reversed(range(0, 32, 8)):
+            dst.append(UInt8((UInt64(self.nsec) >> UInt64(shift)) & 0xFF))
+        dst.append(UInt8((UInt64(offset_min) >> 8) & 0xFF))
+        dst.append(UInt8(UInt64(offset_min) & 0xFF))
+        if version == 2:
+            dst.append(UInt8(UInt64(offset_sec) & 0xFF))
+        return len(dst) - start
+
+    def marshal_binary(self) raises -> List[UInt8]:
+        """This instant in Go's binary form. Go's `MarshalBinary`."""
+        var out = List[UInt8](capacity=16)
+        _ = self.append_binary(out)
+        return out^
+
+    def unmarshal_binary[o: ImmOrigin](mut self, data: Span[UInt8, o]) raises:
+        """Set this from Go's binary form. Go's `UnmarshalBinary`.
+
+        The zone comes back as one of three things, which is Go's rule and is
+        why a round trip keeps a zone name only by luck. The UTC marker gives
+        UTC. An offset that is what the host's own zone was using at that
+        instant gives the host's zone, name and all. Anything else gives a
+        nameless fixed zone at that offset, which reads every field correctly
+        and cannot say what the place was called, because the name was never
+        written down.
+
+        Nothing is written to `self` unless the whole input is accepted.
+        """
+        if len(data) == 0:
+            raise (
+                Report("Time.unmarshal_binary: no data")
+                .with_code(ErrUnmarshalTime)
+                .error()
+            )
+
+        var version = Int(data[0])
+        if version != 1 and version != 2:
+            raise (
+                Report("Time.unmarshal_binary: unsupported version")
+                .with_code(ErrUnmarshalTime)
+                .with_field("version", String(version))
+                .error()
+            )
+
+        var want = 15 if version == 1 else 16
+        if len(data) != want:
+            raise (
+                Report("Time.unmarshal_binary: invalid length")
+                .with_code(ErrUnmarshalTime)
+                .with_field("length", String(len(data)))
+                .error()
+            )
+
+        # Every number in these bytes is two's complement, most significant
+        # byte first, and the sign is put back by hand rather than by a cast,
+        # because widening an unsigned value is a conversion and keeps the
+        # magnitude: 0xffff read as sixteen bits and widened is 65535, and what
+        # is wanted is -1.
+        var sec = _signed(data[1])
+        for i in range(2, 9):
+            sec = (sec << 8) | Int(data[i])
+
+        var nsec = 0
+        for i in range(9, 13):
+            nsec = (nsec << 8) | Int(data[i])
+
+        var offset = ((_signed(data[13]) << 8) | Int(data[14])) * 60
+        if version == 2:
+            offset += _signed(data[15])
+
+        var loc = Location()
+        if offset != -60:
+            var host = local()
+            if host.lookup(sec + _INTERNAL_TO_UNIX)[1] == offset:
+                loc = host^
+            else:
+                loc = fixed_zone("", offset)
+
+        self = Self(internal_sec=sec, nsec=nsec, loc=loc^)
+
+    def gob_encode(self) raises -> List[UInt8]:
+        """This instant in the form Go's `encoding/gob` writes. Go's
+        `GobEncode`.
+
+        The same bytes as `marshal_binary`. Go keeps both names and says it
+        would like to drop these two in a Go 2, and until then a program that
+        looks for them by name finds them.
+        """
+        return self.marshal_binary()
+
+    def gob_decode[o: ImmOrigin](mut self, data: Span[UInt8, o]) raises:
+        """Set this from the form Go's `encoding/gob` writes. Go's `GobDecode`.
+
+        The same function as `unmarshal_binary`, under the other name.
+        """
+        self.unmarshal_binary(data)
+
+    def _append_rfc3339(self, mut dst: List[UInt8]) raises -> Int:
+        """This instant as RFC 3339 with nanoseconds, and how many bytes.
+
+        Go's `appendStrictRFC3339`, and the two checks are the whole of why the
+        text methods can fail at all. Not every `Time` has an RFC 3339
+        spelling: the year has to be four digits, so anything outside 0 to 9999
+        is refused rather than written as something no reader will take back,
+        and the zone offset hour has to be under 24, which a fixed zone built
+        with a whole day in it is not.
+
+        The layout does the work. Go keeps a hand written writer beside the
+        layout language because RFC 3339 is over half of all the formats
+        anybody names, and the output is the same either way.
+        """
+        var out = List[UInt8](capacity=40)
+        _ = self.append_format(out, RFC3339_NANO)
+
+        if out[4] != UInt8(ord("-")):
+            raise (
+                Report("year outside of range [0,9999]")
+                .with_code(ErrMarshalTime)
+                .with_field("year", String(self.date()[0]))
+                .error()
+            )
+
+        if out[len(out) - 1] != UInt8(ord("Z")):
+            # The sign is six back from the end in `-07:00`. A digit there
+            # means the hour took three columns, which is an offset of at least
+            # a hundred hours and cannot be written at all.
+            var sign = out[len(out) - 6]
+            var hour = Int(out[len(out) - 5] - UInt8(ord("0"))) * 10 + Int(
+                out[len(out) - 4] - UInt8(ord("0"))
+            )
+            if (
+                UInt8(ord("0")) <= sign and sign <= UInt8(ord("9"))
+            ) or hour >= 24:
+                raise (
+                    Report("timezone hour outside of range [0,23]")
+                    .with_code(ErrMarshalTime)
+                    .with_field("offset", String(self._offset()))
+                    .error()
+                )
+
+        var start = len(dst)
+        dst.extend(out^)
+        return len(dst) - start
+
+    def append_text(self, mut dst: List[UInt8]) raises -> Int:
+        """This instant as RFC 3339 with nanoseconds, appended to `dst`, and
+        how many bytes that took. Go's `AppendText`.
+
+        ```mojo
+        from core.time import MARCH, date
+
+        var buf = List[UInt8]()
+        _ = date(2024, MARCH, 9, 14, 5, 6, 0).append_text(buf)
+        ```
+
+        Nothing is appended when this raises. `_append_rfc3339` says which two
+        instants have no RFC 3339 spelling and why.
+        """
+        try:
+            return self._append_rfc3339(dst)
+        except e:
+            raise Report(String("Time.append_text: ", e)).with_code(
+                ErrMarshalTime
+            ).error()
+
+    def marshal_text(self) raises -> List[UInt8]:
+        """This instant as RFC 3339 with nanoseconds. Go's `MarshalText`."""
+        var out = List[UInt8](capacity=40)
+        try:
+            _ = self._append_rfc3339(out)
+        except e:
+            raise Report(String("Time.marshal_text: ", e)).with_code(
+                ErrMarshalTime
+            ).error()
+        return out^
+
+    def unmarshal_text[o: ImmOrigin](mut self, data: Span[UInt8, o]) raises:
+        """Set this from RFC 3339 text. Go's `UnmarshalText`.
+
+        `parse(RFC3339, text)`, so a zone in the text that matches what the
+        host is using gives the host's zone and anything else gives a fixed
+        one. Go keeps a hand written reader in front of this, and as of Go 1.27
+        every strict check in it is disabled, so the two accept the same
+        strings and differ only in speed.
+
+        Nothing is written to `self` unless the text is accepted. Go assigns
+        the zero time before it looks at the error, so a value it refused is a
+        value it cleared. `docs/deviations.md` has the row.
+
+        Bytes that are not UTF-8 were never a timestamp, and the conversion on
+        the way in replaces them, so the failure names the replacement
+        character where Go's names the original byte.
+        """
+        self = parse(RFC3339, String(from_utf8_lossy=data))
+
+    def marshal_json(self) raises -> List[UInt8]:
+        """This instant as a quoted RFC 3339 string. Go's `MarshalJSON`.
+
+        The same bytes as `marshal_text` with a quote at each end, which is
+        what a JSON string is, and no escaping is needed because RFC 3339 has
+        nothing in it that JSON would escape.
+        """
+        var out = List[UInt8](capacity=42)
+        out.append(UInt8(ord('"')))
+        try:
+            _ = self._append_rfc3339(out)
+        except e:
+            raise Report(String("Time.marshal_json: ", e)).with_code(
+                ErrMarshalTime
+            ).error()
+        out.append(UInt8(ord('"')))
+        return out^
+
+    def unmarshal_json[o: ImmOrigin](mut self, data: Span[UInt8, o]) raises:
+        """Set this from a quoted RFC 3339 string. Go's `UnmarshalJSON`.
+
+        A JSON null leaves the value alone, which is what the rest of Go's JSON
+        decoding does with one and is not the same as setting it to the zero
+        time.
+
+        The quotes are removed and nothing is unescaped, which is Go's
+        behaviour and Go's open issue: a JSON string is allowed to spell a
+        character as an escape and no RFC 3339 timestamp needs to, so the two
+        only disagree on input nobody writes.
+        """
+        if _bytes_equal(data, "null"):
+            return
+
+        if (
+            len(data) < 2
+            or data[0] != UInt8(ord('"'))
+            or data[len(data) - 1] != UInt8(ord('"'))
+        ):
+            raise (
+                Report("Time.unmarshal_json: input is not a JSON string")
+                .with_code(ErrUnmarshalTime)
+                .error()
+            )
+
+        self.unmarshal_text(data[1 : len(data) - 1])
+
+
+def _signed(b: UInt8) -> Int:
+    """`b` read as a signed byte, so 0xff is -1.
+
+    The top byte of every two's complement number in the binary form goes
+    through here and the rest are shifted in underneath it, which is what makes
+    the whole number signed.
+    """
+    return Int(b) - 256 if b >= 0x80 else Int(b)
+
+
+def _bytes_equal[o: ImmOrigin](b: Span[UInt8, o], want: StringSlice) -> Bool:
+    """Whether `b` is exactly `want`."""
+    var w = want.as_bytes()
+    if len(b) != len(w):
+        return False
+    for i in range(len(b)):
+        if b[i] != w[i]:
+            return False
+    return True
 
 
 def _div(t: Time, d: Duration) -> Tuple[Int, Duration]:

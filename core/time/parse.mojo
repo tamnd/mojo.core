@@ -584,10 +584,12 @@ def _parse_offset(
     write an offset of exactly 24 hours or 60 minutes and refusing those would
     reject strings that already exist.
     """
-    var hh = -1
+    # `hh` and `end` are set by every branch below and `mm` and `ss` are not,
+    # since the short spellings have no minutes and only two have seconds.
+    var hh: Int
     var mm = 0
     var ss = 0
-    var end = 0
+    var end: Int
     if kind == _STD_ISO8601_COLON_TZ or kind == _STD_NUM_COLON_TZ:
         if i + 6 > len(b) or _at(b, i + 3) != ord(":"):
             return (0, -1, String())

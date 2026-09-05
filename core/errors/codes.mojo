@@ -298,7 +298,31 @@ record is the detail behind it.
 Owned by `core.time`. Go has no sentinel for it.
 """
 
-comptime ErrParseDuration = Code(32)
+comptime ErrMarshalTime = Code(32)
+"""An instant cannot be written in the form that was asked for. RFC 3339 wants a
+year of exactly four digits, so an instant before the year 0 or after 9999 has
+no spelling in it, and it wants a zone offset whose hour is under 24, which a
+fixed zone built with a whole day in it does not have. The binary form has its
+own limit, a zone offset that is not between -32768 and 32767 minutes and is
+not the value that marks UTC. Go returns these as three unexported errors from
+`MarshalText`, `MarshalJSON` and `MarshalBinary`, and every one of them is a
+fact about the instant rather than about the caller's buffer.
+
+Owned by `core.time`. Go has no sentinel for it.
+"""
+
+comptime ErrUnmarshalTime = Code(33)
+"""The bytes handed to one of the unmarshalling methods are not an instant this
+can read. For the binary form that is no data at all, a version byte this does
+not know, or a length that does not match the version. For the JSON form it is
+a value that is not a quoted string. It is not raised for text that is a quoted
+string and then fails to be RFC 3339, because that is `ErrParseTime` and the
+caller wants to know which of the two went wrong.
+
+Owned by `core.time`. Go has no sentinel for it.
+"""
+
+comptime ErrParseDuration = Code(34)
 """A string handed to `parse_duration` was not a duration. It was empty, it had a
 number with no unit after it, it had a unit this does not know, or the total
 did not fit. Go has this as an unexported error type whose message says which
