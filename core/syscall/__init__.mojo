@@ -47,9 +47,12 @@ No call here retries on `EINTR`, and no path is checked for an interior zero
 byte. Both are policy, both belong to whoever is deciding what a failure means,
 and that is `core.os` rather than this.
 
-Sockets, processes and signals are not bound yet. The constants for all three
-are already in `abi.mojo`, because the C program that records them costs
-nothing extra and a constant recorded early is one nobody types by hand later.
+Sockets and signals are not bound yet, and neither is starting or waiting for a
+process. What is bound of the process is the part that only asks questions:
+`getpid`, `getppid`, the four user and group ids, `getgroups`, `getpagesize`,
+`gethostname`, `pipe` and `exit`. The constants for the rest are already in
+`abi.mojo`, because the C program that records them costs nothing extra and a
+constant recorded early is one nobody types by hand later.
 """
 
 from .abi import (
@@ -228,6 +231,7 @@ from .calls import (
     create,
     dup,
     environ,
+    exit,
     fchdir,
     fchmod,
     fchown,
@@ -237,8 +241,16 @@ from .calls import (
     fsync,
     ftruncate,
     getcwd,
+    getegid,
     getenv,
+    geteuid,
+    getgid,
+    getgroups,
+    gethostname,
+    getpagesize,
     getpid,
+    getppid,
+    getuid,
     lchown,
     link,
     lseek,
@@ -247,6 +259,7 @@ from .calls import (
     open,
     openat,
     opendir,
+    pipe,
     pread,
     pwrite,
     read,

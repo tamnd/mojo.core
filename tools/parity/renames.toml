@@ -339,3 +339,8 @@ DevNull = "DEV_NULL"
 Stdin = "stdin"
 Stdout = "stdout"
 Stderr = "stderr"
+
+# The command line is a package level variable in Go too, and a function here
+# for the same reason. Go's can be assigned to and this one cannot, so a caller
+# that wants a modified list makes one.
+Args = "args"

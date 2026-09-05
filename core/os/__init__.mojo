@@ -50,8 +50,14 @@ a string using a mapping the caller supplies and `expand_env` is that with the
 environment. `temp_dir`, `user_home_dir`, `user_cache_dir` and
 `user_config_dir` are the four directories the environment names.
 
-The process ids, the temporary files and anything to do with starting a program
-are still to come. Issue #28 tracks the rest.
+`getpid`, `getppid`, `getuid`, `geteuid`, `getgid`, `getegid`, `getgroups` and
+`getpagesize` are what the process can say about itself, `hostname` is what the
+machine calls itself, `executable` is where this program was loaded from, `args`
+is the command line, `pipe` is a pair of files joined end to end, and `exit`
+ends the process without running a destructor.
+
+The temporary files and anything to do with starting another program are still
+to come. Issue #28 tracks the rest.
 
 ## Names from `core.io.fs`
 
@@ -136,6 +142,21 @@ from .path import (
     is_path_separator,
     mkdir_all,
     remove_all,
+)
+from .process import (
+    args,
+    executable,
+    exit,
+    getegid,
+    geteuid,
+    getgid,
+    getgroups,
+    getpagesize,
+    getpid,
+    getppid,
+    getuid,
+    hostname,
+    pipe,
 )
 from .readfile import read_file, write_file
 from .stat import lstat, same_file, stat
