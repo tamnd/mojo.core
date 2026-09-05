@@ -46,7 +46,7 @@ from core.io import (
     WriterAt,
 )
 from core.io.fs import DirEntry, FileInfo, FileMode, MODE_PERM, MODE_SETGID
-from core.io.fs import MODE_SETUID, MODE_STICKY
+from core.io.fs import MODE_SETUID, MODE_STICKY, READ_DIR_FILE, ReadDirFile
 from core.io.fs.direntry import _entry_of, _is_dot
 from core.io.fs.errors import _errno_of, _path_error_from
 from core.syscall import (
@@ -175,6 +175,7 @@ struct File(
     IoReader,
     IoWriter,
     Movable,
+    ReadDirFile,
     ReaderAt,
     Seeker,
     StringWriter,
@@ -633,7 +634,13 @@ struct File(
         return out^
 
     def capabilities(self) -> Int:
-        """Neither fast path, for now.
+        """A directory can be listed, and neither `core.io` fast path is here.
+
+        `READ_DIR_FILE` is set on every file rather than on the ones that
+        happen to be directories, because the bit says the method is
+        implemented and not that this file is one. `read_dir` on a file that is
+        not a directory raises `ENOTDIR`, which is what a caller of
+        `core.io.fs.read_dir` should see.
 
         `write_to` and `read_from` on a file want `sendfile` on Linux and
         `copy_file_range` where it exists, which is the only way either would
@@ -641,7 +648,7 @@ struct File(
         offering the methods would mean advertising a fast path that is not
         one. Issue #168 says so and issue #28 carries the rest.
         """
-        return 0
+        return READ_DIR_FILE
 
 
 def new_file(fd: Int, var name: String) raises -> File:

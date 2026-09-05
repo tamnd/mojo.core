@@ -2,12 +2,15 @@
 name = "core.path"
 go = "path"
 verdict = "Port"
-tier = 4
+tier = 2
 unsafe = false
+# Go's `path` imports `internal/bytealg` and `unicode/utf8` and nothing else,
+# because `io/fs` imports `path` and a package underneath the file system
+# cannot pull `strings` down with it. This had `core.bytes` and `core.strings`
+# for one byte scan apiece and paid that price; `scan.mojo` has the two loops
+# now and says so.
 deps = [
-  "core.bytes",
   "core.errors",
   "core.io",
-  "core.strings",
   "core.unicode.utf8",
 ]

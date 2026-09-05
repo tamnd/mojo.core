@@ -1,46 +1,20 @@
-"""`FileInfo` built by hand, and the base name rule it keeps.
+"""`FileInfo` built by hand.
 
 The interesting half of `FileInfo` is what `os.stat` puts in it and that is
 tested in `tests/os/test_stat.mojo`, against files this process wrote and whose
 size and mode it therefore knows. What is here is the half that does not need a
-host: the constructor a file system with no host underneath it uses, and
-`_base`, which is a loop over a string and is the only thing in the package
-that has to agree with `core.path.base` without being able to call it.
+host: the constructor a file system with no host underneath it uses.
+
+The base name rule is `core.path.base` now and is tested in
+`tests/path/test_path.mojo` against Go's own table. This package used to carry
+a second copy of it, because `core.path` sat above `core.io.fs` and could not
+be named from here; the tier changed with the `FS` trait and the copy went.
 """
 
 from std.testing import assert_equal, assert_false, assert_true
 
 from core.io.fs import MODE_DIR, FileInfo, FileMode
-from core.io.fs.info import _base
 from core.time import unix
-
-
-def test_base() raises:
-    """The rows Go's `TestBase` uses, minus the ones about a volume name.
-
-    `core.path.base` answers these too and this is a second implementation of
-    the same rule, so the table is here to keep the two from drifting. Go keeps
-    its second copy in `internal/filepathlite` for the same reason.
-    """
-    var rows: List[Tuple[String, String]] = [
-        ("", "."),
-        (".", "."),
-        ("/", "/"),
-        ("////", "/"),
-        ("x/", "x"),
-        ("abc", "abc"),
-        ("abc/def", "def"),
-        ("a/b/.x", ".x"),
-        ("a/b/c.", "c."),
-        ("a/b/c.x", "c.x"),
-        ("/a/b/c", "c"),
-        ("/a/b/c/", "c"),
-        ("/a/b/c//", "c"),
-        ("..", ".."),
-        ("../..", ".."),
-    ]
-    for row in rows:
-        assert_equal(_base(row[0]), row[1], "base(" + row[0] + ")")
 
 
 def test_an_info_with_no_host_under_it() raises:
