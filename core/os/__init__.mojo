@@ -37,6 +37,11 @@ and `File.read_dir`, `File.readdir` and `File.readdirnames` read one a piece at
 a time. An entry knows what kind of file it names without a second call, which
 is the whole reason the type is not a `FileInfo`.
 
+`dir_fs` is a directory as a `core.io.fs.FS`, which is how everything generic
+in that package reaches a real disk: `core.io.fs.walk_dir`, `core.io.fs.glob`
+and `core.io.fs.sub` all take one. It is a name rule and not a sandbox, and
+`dirfs.mojo` says exactly what it does and does not promise.
+
 `mkdir`, `remove`, `rename`, `link`, `symlink`, `readlink`, `chmod`, `chown`,
 `lchown`, `chtimes`, `truncate`, `chdir` and `getwd` are the calls that take a
 path and do something to it. `mkdir_all` and `remove_all` are the two that walk
@@ -130,6 +135,7 @@ from .calls import (
     truncate,
 )
 from .dir import read_dir
+from .dirfs import DirFS, dir_fs
 from .dirs import temp_dir, user_cache_dir, user_config_dir, user_home_dir
 from .env import (
     clearenv,

@@ -8,10 +8,15 @@ unsafe = false
 # returns `any` and the caller asserts it to a `*syscall.Stat_t`; there is no
 # `any` here, so the field is typed and the dependency is real. It buys a
 # platform record a caller can read without a cast, and it costs this package a
-# tier. `core.time` is Go's own dependency, for `ModTime`.
+# tier. `core.time` is Go's own dependency, for `ModTime`. `core.path` is Go's
+# as well: a name in this package is a slash separated path and `glob`, `sub`
+# and `walk_dir` join and match them. `core.sort` is for the one promise the
+# generic `read_dir` makes, that the entries come back in order.
 deps = [
   "core.errors",
   "core.io",
+  "core.path",
+  "core.sort",
   "core.syscall",
   "core.time",
   "core.unicode.utf8",

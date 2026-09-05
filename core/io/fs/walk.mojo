@@ -1,12 +1,12 @@
 """What a tree walk calls, and the two answers that steer it. Go's
 `fs.WalkDirFunc`, `fs.SkipDir` and `fs.SkipAll`.
 
-The walk itself is not here yet. `core.path.filepath.walk_dir` walks a real
-disk with this callback, and `walk_dir` over an `FS` arrives with the rest of
-the trait, which issue #178 tracks. The type lives here rather than there for
-the reason Go put it here: the two walks are different code over different
-things and a callback written for one has to be the same callback the other
-takes, or every helper anybody writes has to be written twice.
+`walk_dir` is here too, walking any `FS`. `core.path.filepath.walk_dir` walks a
+real disk with the same callback, and the two are different code over different
+things: this one asks a file system value for a listing and that one makes
+system calls. The callback type lives here for the reason Go put it here, which
+is that a helper written for one walk has to work with the other or everybody
+writes it twice.
 
 ## Raising is how the callback answers
 
@@ -20,10 +20,17 @@ unchanged, which is Go's rule as well: the callback is the only thing that
 decides whether a failure is fatal.
 """
 
-from core.errors import ErrorValue, Report
+from core.errors import ErrorValue, Report, capture, matches
 from core.errors.codes import SkipAll, SkipDir
+from core.path import join
 
-from .direntry import DirEntry
+from core.path import base as _base
+
+from .direntry import DirEntry, file_info_to_dir_entry
+from .fs import FS
+from .info import FileInfo
+from .mode import FileMode
+from .read import read_dir, stat
 
 comptime WalkDirFunc = def(
     String, DirEntry, Optional[ErrorValue]
@@ -84,3 +91,115 @@ def skip_all() -> Error:
     directory, which is not what somebody who means to stop usually wants.
     """
     return Report("skip the rest of the walk").with_code(SkipAll).error()
+
+
+def walk_dir[visit: WalkDirFunc, F: FS](fsys: F, root: String) raises:
+    """Call `visit` for `root` and everything under it. Go's `fs.WalkDir`.
+
+    ```mojo
+    from core.errors import ErrorValue
+    from core.io.fs import DirEntry, FS, walk_dir
+
+
+    def names[F: FS](fsys: F) raises:
+        @parameter
+        def visit(path: String, entry: DirEntry, err: Optional[ErrorValue]):
+            if not err:
+                print(path)
+
+        walk_dir[visit](fsys, ".")
+    ```
+
+    `root` is visited first, whether or not it is a directory, and every name
+    under it follows in sorted order, because that is the order `read_dir`
+    promises. The paths handed to the callback start with `root`, so a walk
+    from `"."` reports `a/b` and a walk from `"a"` reports `a/b` as well.
+
+    A failure is handed to the callback rather than raised here, in the two
+    cases Go has: the root could not be stat'ed, and a directory could not be
+    listed. In the first case the entry holds the base name of the root and no
+    type, which is where Go passes nil; in the second it is the directory's own
+    entry, which is real.
+
+    `SkipDir` and `SkipAll` raised by the callback are handled and do not come
+    out of here. Anything else does, unchanged.
+
+    Links are not followed, and there is nothing here that would follow one: a
+    listing says what each name is and this walks the ones that say directory.
+    """
+    try:
+        var held = Optional[FileInfo]()
+        var failed = Optional[ErrorValue]()
+        try:
+            held = Optional[FileInfo](stat(fsys, root))
+        except e:
+            failed = Optional[ErrorValue](capture(e))
+        if failed:
+            visit(root, _unknown_entry(root), failed)
+        else:
+            _walk_dir[visit](fsys, root, file_info_to_dir_entry(held.take()))
+    except e:
+        if matches(e, SkipDir) or matches(e, SkipAll):
+            return
+        raise e
+
+
+def _unknown_entry(path: String) -> DirEntry:
+    """The entry for a root nothing is known about.
+
+    Its base name, which is true, and no type, so `is_dir` is false. Only ever
+    handed to a callback beside the failure that explains why there is nothing
+    better. `core.path.filepath` has the same helper for the same reason.
+    """
+    return DirEntry(dir="", name=_base(path), type=FileMode(0))
+
+
+def _walk_dir[
+    visit: WalkDirFunc, F: FS
+](fsys: F, path: String, var entry: DirEntry) raises:
+    """One entry, and everything under it if it is a directory."""
+    var is_dir = entry.is_dir()
+
+    var refused = Optional[ErrorValue]()
+    try:
+        visit(path, entry, None)
+    except e:
+        refused = Optional[ErrorValue](capture(e))
+    if refused or not is_dir:
+        # A `SkipDir` about a directory has done its job by stopping the
+        # descent, so it goes no further. About a file it means the rest of the
+        # directory the file is in, which is the caller of this one to decide.
+        if refused and not (refused.value().matches(SkipDir) and is_dir):
+            raise refused.value().error()
+        return
+
+    var entries = List[DirEntry]()
+    var failed = Optional[ErrorValue]()
+    try:
+        entries = read_dir(fsys, path)
+    except e:
+        failed = Optional[ErrorValue](capture(e))
+
+    if failed:
+        # A second call, this time to report the listing. The callback can let
+        # the walk carry on, which it then does over an empty listing.
+        var again = Optional[ErrorValue]()
+        try:
+            visit(path, entry, failed)
+        except e:
+            again = Optional[ErrorValue](capture(e))
+        if again:
+            if not again.value().matches(SkipDir):
+                raise again.value().error()
+            return
+
+    for ref found in entries:
+        var child = join([path, found.name()])
+        try:
+            _walk_dir[visit](fsys, child, found.copy())
+        except e:
+            # A `SkipDir` that reached here came from a callback given a file,
+            # so it means the rest of this directory rather than that one name.
+            if matches(e, SkipDir):
+                break
+            raise e
