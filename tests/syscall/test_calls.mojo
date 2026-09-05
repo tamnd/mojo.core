@@ -40,6 +40,7 @@ from core.syscall import (
     close,
     create,
     dup,
+    fchdir,
     fchmod,
     fcntl,
     fstat,
@@ -52,6 +53,8 @@ from core.syscall import (
     lstat,
     mkdir,
     open,
+    pread,
+    pwrite,
     read,
     readlink,
     rename,
@@ -320,6 +323,127 @@ def test_dup_shares_the_file_offset() raises:
     close(second)
     close(fd)
     _clear(place, ["dup.txt"])
+
+
+def test_pread_reads_at_an_offset_and_leaves_the_offset_alone() raises:
+    # The whole point of the call: the descriptor's own offset is where the
+    # last ordinary read left it, whatever pread was asked for.
+    var place = _scratch("pread")
+    var path = String(place, "/pread.txt")
+    var fd = create(path, 0o644)
+    _ = write(fd, "0123456789".as_bytes())
+    close(fd)
+
+    fd = open(path, O_RDONLY, 0)
+    var room = List[Byte](length=3, fill=0)
+    assert_equal(read(fd, Span(room)), 3)
+    assert_equal(String(from_utf8_lossy=Span(room)), "012")
+
+    assert_equal(pread(fd, Span(room), 6), 3)
+    assert_equal(String(from_utf8_lossy=Span(room)), "678")
+    assert_equal(lseek(fd, 0, SEEK_CUR), 3)
+    close(fd)
+    _clear(place, ["pread.txt"])
+
+
+def test_pread_at_the_end_reads_nothing() raises:
+    # End of file is a read of zero bytes rather than a failure, the same as
+    # an ordinary read. Turning it into an error is the layer above's job.
+    var place = _scratch("preadend")
+    var path = String(place, "/short.txt")
+    var fd = create(path, 0o644)
+    _ = write(fd, "abc".as_bytes())
+    close(fd)
+
+    fd = open(path, O_RDONLY, 0)
+    var room = List[Byte](length=4, fill=0)
+    assert_equal(pread(fd, Span(room), 3), 0)
+    assert_equal(pread(fd, Span(room), 99), 0)
+    close(fd)
+    _clear(place, ["short.txt"])
+
+
+def test_pread_on_a_closed_descriptor_fails() raises:
+    var place = _scratch("preadbad")
+    var path = String(place, "/gone.txt")
+    var fd = create(path, 0o644)
+    close(fd)
+    var room = List[Byte](length=1, fill=0)
+    try:
+        _ = pread(fd, Span(room), 0)
+        raise Error("reading a closed descriptor should have failed")
+    except e:
+        assert_equal(field(e, "op").value(), "pread")
+        assert_equal(field(e, "errno").value(), String(EBADF))
+    _clear(place, ["gone.txt"])
+
+
+def test_pwrite_writes_at_an_offset_and_leaves_the_offset_alone() raises:
+    var place = _scratch("pwrite")
+    var path = String(place, "/pwrite.txt")
+    var fd = create(path, 0o644)
+    _ = write(fd, "0123456789".as_bytes())
+    close(fd)
+
+    fd = open(path, O_RDWR, 0)
+    assert_equal(lseek(fd, 2, SEEK_SET), 2)
+    assert_equal(pwrite(fd, "xyz".as_bytes(), 5), 3)
+    assert_equal(lseek(fd, 0, SEEK_CUR), 2)
+    close(fd)
+
+    assert_equal(_read_all(path), "01234xyz89")
+    _clear(place, ["pwrite.txt"])
+
+
+def test_pwrite_past_the_end_leaves_a_hole() raises:
+    # Writing beyond the end grows the file, and what was skipped reads back
+    # as zeroes rather than as whatever the disk had there.
+    var place = _scratch("pwritehole")
+    var path = String(place, "/hole.txt")
+    var fd = open(path, O_RDWR | O_CREAT, 0o644)
+    assert_equal(pwrite(fd, "end".as_bytes(), 5), 3)
+    assert_equal(fstat(fd).size(), 8)
+
+    var room = List[Byte](length=8, fill=1)
+    assert_equal(pread(fd, Span(room), 0), 8)
+    for i in range(5):
+        assert_equal(Int(room[i]), 0)
+    close(fd)
+    _clear(place, ["hole.txt"])
+
+
+def test_fchdir_moves_the_working_directory() raises:
+    # Same effect as chdir, from a descriptor rather than a name, which is how
+    # a caller holding an open directory moves into it without a race.
+    var was = getcwd()
+    var place = _scratch("fchdir")
+    var fd = open(place, O_RDONLY, 0)
+    try:
+        fchdir(fd)
+        assert_true(
+            getcwd().endswith(String("mojo-core-syscall-", getpid(), "-fchdir"))
+        )
+    finally:
+        chdir(was)
+        close(fd)
+    assert_equal(getcwd(), was)
+    _remove(place)
+
+
+def test_fchdir_refuses_a_descriptor_that_is_not_a_directory() raises:
+    var was = getcwd()
+    var place = _scratch("fchdirfile")
+    var path = String(place, "/file.txt")
+    var fd = create(path, 0o644)
+    try:
+        fchdir(fd)
+        raise Error("moving into a file should have failed")
+    except e:
+        assert_equal(field(e, "op").value(), "fchdir")
+        assert_equal(field(e, "errno").value(), String(ENOTDIR))
+    close(fd)
+    assert_equal(getcwd(), was)
+    _clear(place, ["file.txt"])
 
 
 def test_rename_replaces_the_destination() raises:

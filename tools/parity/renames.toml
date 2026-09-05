@@ -329,3 +329,13 @@ ModeSticky = "MODE_STICKY"
 ModeIrregular = "MODE_IRREGULAR"
 ModeType = "MODE_TYPE"
 ModePerm = "MODE_PERM"
+PathSeparator = "PATH_SEPARATOR"
+PathListSeparator = "PATH_LIST_SEPARATOR"
+DevNull = "DEV_NULL"
+
+# The three standard descriptors are package level variables in Go and this
+# library has none, so they are functions. `stdin` is a call rather than a
+# name, and what it hands back does not own descriptor zero.
+Stdin = "stdin"
+Stdout = "stdout"
+Stderr = "stderr"
