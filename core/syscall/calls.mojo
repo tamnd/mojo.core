@@ -674,6 +674,64 @@ def unsetenv(name: String) raises:
         _fail("unsetenv", errno())
 
 
+def environ() -> List[String]:
+    """Every variable in the environment, each one a `name=value` string.
+
+    Go's `syscall.Environ`. The order is the platform's and means nothing, and
+    a name can appear twice if something put it there twice, which C allows and
+    neither Go nor this filters out.
+
+    The strings are copied out one at a time as the array is walked, for the
+    same reason `getenv` copies: what libc hands over is the storage it is
+    using, and a `setenv` from any thread can free it. Copying does not make
+    the walk safe, since the array itself can be replaced underneath it, and no
+    layer below `core.os` can fix that. It makes the result safe to keep.
+
+    `environ` is a variable rather than a call, and Mojo has no way to name a C
+    variable, so this goes through `core_syscall_environ` in the shim. The
+    directory's README says why that is and what macOS does differently.
+    """
+    var block = external_call["core_syscall_environ", Int]()
+    var found = List[String]()
+    if block == 0:
+        return found^
+    var slots = Pointer[Int, _Foreign](unsafe_from_address=block)
+    var i = 0
+    while True:
+        var entry = slots[unsafe_offset=i]
+        if entry == 0:
+            break
+        found.append(_from_cstr(entry))
+        i += 1
+    return found^
+
+
+def clearenv() raises:
+    """Remove every variable in the environment. Go's `syscall.Clearenv`.
+
+    Written as a read of `environ` and an `unsetenv` for each name rather than
+    a call to C's `clearenv`, which glibc has and macOS does not. The names are
+    all collected before the first removal, because removing a name moves the
+    entries after it and a walk that removed as it went would skip every other
+    one.
+
+    A name with no `=` in it cannot be produced by `setenv` and can be put
+    there by a parent that used `execve` directly. There is no name to hand
+    `unsetenv`, so it stays, where glibc's `clearenv` would have taken it away
+    with everything else. That is a real difference and it is written down here
+    rather than worked around, because the way around it is writing to the
+    array itself, and then this file owns storage libc believes it owns.
+    """
+    var entries = environ()
+    var names = List[String]()
+    for entry in entries:
+        var cut = entry.find("=")
+        if cut > 0:
+            names.append(String(entry[byte=0:cut]))
+    for name in names:
+        unsetenv(name)
+
+
 def _from_cstr(address: Int) -> String:
     """The zero terminated string at this address, copied.
 
