@@ -212,6 +212,13 @@ int main(void) {
     VALUE(AT_SYMLINK_NOFOLLOW);
     VALUE(AT_REMOVEDIR);
 
+    /* The two magic nanosecond values utimensat takes in place of a time.
+       macOS spells them -1 and -2 and Linux spells them a billion and
+       change, so a caller that typed either by hand would be wrong on one
+       of the two. */
+    VALUE(UTIME_NOW);
+    VALUE(UTIME_OMIT);
+
     VALUE(F_GETFD);
     VALUE(F_SETFD);
     VALUE(F_GETFL);

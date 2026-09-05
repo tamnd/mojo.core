@@ -121,6 +121,13 @@ FAMILIES: list[tuple[tuple[str, ...], str]] = [
         "because a real descriptor never is.",
     ),
     (
+        ("UTIME_",),
+        "The two values `utimensat` takes in a nanosecond field in place of a "
+        "time. `UTIME_NOW` means read the clock and `UTIME_OMIT` means leave "
+        "that timestamp as it is. macOS spells them -1 and -2 and Linux spells "
+        "them a billion and change, so neither is a number to type by hand.",
+    ),
+    (
         ("F_", "FD_"),
         "Commands for `fcntl`, and the one descriptor flag it reads and sets.",
     ),

@@ -4,14 +4,16 @@ go = "os"
 verdict = "Adapt"
 tier = 4
 unsafe = true
-# `core.time` comes back with the deadline methods on `File` and with
-# `chtimes`. Nothing here needs it yet, and the lint is right to say so: a
-# declared dependency nothing imports is a claim about the graph that happens
-# not to be true.
+# `core.math.rand` is here for the names `create_temp` and `mkdir_temp` make,
+# and nothing else in this package reaches for it. `core.time` is here for
+# `chtimes`, and the deadline methods on `File` will use it too when they
+# arrive.
 deps = [
   "core.errors",
   "core.io",
   "core.io.fs",
+  "core.math.rand",
   "core.sort",
   "core.syscall",
+  "core.time",
 ]

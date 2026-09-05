@@ -14,7 +14,7 @@ written in terms of the calls here rather than being calls themselves.
 from core.errors.codes import ErrInvalid
 from core.io.fs import FileMode
 from core.io.fs.errors import _errno_of, _path_error, _path_error_from
-from core.syscall import ENOTDIR, Errno
+from core.syscall import AT_FDCWD, ENOTDIR, Errno, Timespec, UTIME_OMIT
 from core.syscall import chdir as _sys_chdir
 from core.syscall import chmod as _sys_chmod
 from core.syscall import chown as _sys_chown
@@ -28,6 +28,8 @@ from core.syscall import rmdir as _sys_rmdir
 from core.syscall import symlink as _sys_symlink
 from core.syscall import truncate as _sys_truncate
 from core.syscall import unlink as _sys_unlink
+from core.syscall import utimensat as _sys_utimensat
+from core.time import Time
 
 from .errors import _link_error, new_syscall_error
 from .file import _has_nul, _interrupted, _refused, _syscall_mode
@@ -196,6 +198,64 @@ def chmod(name: String, mode: FileMode) raises:
             if _interrupted(e):
                 continue
             raise _path_error_from("chmod", name, e)
+
+
+def _timespec_of(t: Time) -> Timespec:
+    """One of the two times a `chtimes` call carries.
+
+    A zero `Time` is the caller saying to leave this timestamp as it is, which
+    the platform spells as `UTIME_OMIT` in the nanosecond field. POSIX says the
+    seconds field is ignored when it is there, so this writes a zero rather
+    than repeating the magic number into a field nothing reads.
+
+    Anything else is the instant split the way a `struct timespec` wants it.
+    Go goes through `UnixNano` here, which stops working outside 1678 to 2262
+    because that is as far as a signed nanosecond count reaches. `unix` and
+    `nanosecond` give the same two numbers with no count in between, so a file
+    can be given a date the whole range of `Time` covers.
+    """
+    if t.is_zero():
+        return Timespec(0, UTIME_OMIT)
+    return Timespec(t.unix(), t.nanosecond())
+
+
+def chtimes(name: String, atime: Time, mtime: Time) raises:
+    """Set the access and the modification time on a path. Go's `Chtimes`.
+
+    ```mojo
+    from core.os import chtimes, stat
+    from core.time import Time, now
+
+    def main():
+        var when = now()
+        chtimes("/tmp/note", Time(), when)
+        print(stat("/tmp/note").mod_time() == when)  # => True
+    ```
+
+    A zero `Time` for either one leaves that timestamp alone, so the call above
+    sets the modification time and does not touch the access time. Passing zero
+    for both is a call that reads the path and changes nothing, which is not an
+    error.
+
+    The precision is the file system's rather than this library's. A file
+    system that keeps whole seconds rounds the nanoseconds away, and reading
+    the time back gives what was stored rather than what was asked for.
+
+    Follows a symbolic link, as Go's does. There is no call here that sets the
+    times on the link itself yet, though `utimensat` underneath takes the flag
+    for it.
+    """
+    _check("chtimes", name)
+    while True:
+        try:
+            _sys_utimensat(
+                AT_FDCWD, name, _timespec_of(atime), _timespec_of(mtime), 0
+            )
+            return
+        except e:
+            if _interrupted(e):
+                continue
+            raise _path_error_from("chtimes", name, e)
 
 
 def chown(name: String, uid: Int, gid: Int) raises:

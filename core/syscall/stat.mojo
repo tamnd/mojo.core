@@ -103,6 +103,22 @@ def _signed[o: Origin](raw: Span[UInt8, o], offset: Int, width: Int) -> Int:
     return Int(out)
 
 
+def _put[
+    o: Origin[mut=True]
+](raw: Span[UInt8, o], offset: Int, width: Int, value: Int):
+    """`value` as `width` bytes at `offset`, least significant first.
+
+    The inverse of `_unsigned`, and byte at a time for the same two reasons:
+    the offset is not promised to be aligned for the width of the field, and
+    every platform here is little endian so this is the work a store would
+    have done anyway. A negative value writes its two's complement, which is
+    what the C type holding it would have.
+    """
+    var bits = UInt64(value)
+    for i in range(width):
+        raw[offset + i] = UInt8((bits >> UInt64(8 * i)) & 0xFF)
+
+
 struct Timespec(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
     """A time, as the file system keeps it: whole seconds and nanoseconds."""
 
@@ -131,6 +147,19 @@ struct Timespec(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
         self.nsec = _signed(
             platform_bytes, OFFSET_TIMESPEC_TV_NSEC, _NSEC_WIDTH
         )
+
+    def platform_bytes[
+        o: Origin[mut=True]
+    ](self, raw: Span[UInt8, o], offset: Int):
+        """Lay this out as a `struct timespec` at `offset` in `raw`.
+
+        For handing a time to a call that takes one, which is `utimensat` and
+        so far nothing else. `raw` has to have room for a whole structure at
+        `offset`, and the caller sizes it with `SIZEOF_TIMESPEC` rather than
+        with anything it worked out itself.
+        """
+        _put(raw, offset + OFFSET_TIMESPEC_TV_SEC, SIZEOF_TIME_T, self.sec)
+        _put(raw, offset + OFFSET_TIMESPEC_TV_NSEC, _NSEC_WIDTH, self.nsec)
 
     def __eq__(self, other: Self) -> Bool:
         """Whether these are the same instant."""
