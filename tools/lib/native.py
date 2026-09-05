@@ -26,14 +26,15 @@ from lib.tree import CORE
 # which is the one whose headers the baseline is asking about.
 CANDIDATES = ("cc", "clang", "gcc")
 
-# Every C file in the library, and the object each becomes. Both go on the link
-# line of every binary the tools build, because core.errors is tier zero and
-# core.syscall is reached by nearly everything above it, so working out which
-# of the two a given test needs would cost more than linking an object nothing
+# Every C file in the library, and the object each becomes. All of them go on
+# the link line of every binary the tools build, because core.errors is tier
+# zero and core.syscall is reached by nearly everything above it, so working out
+# which ones a given test needs would cost more than linking an object nothing
 # calls.
 SHIMS = (
     CORE / "errors" / "shim" / "slot.c",
     CORE / "syscall" / "shim" / "varargs.c",
+    CORE / "syscall" / "shim" / "environ.c",
 )
 
 
@@ -59,9 +60,14 @@ def shim(into: Path) -> list[Path] | str:
     if cc is None:
         return (
             "there is no C compiler here, and this library needs one to build "
-            "its two shims. See "
+            "its shims. See "
             + " and ".join(
-                f"{s.parent.relative_to(CORE.parent)}/README.md" for s in SHIMS
+                sorted(
+                    {
+                        f"{s.parent.relative_to(CORE.parent)}/README.md"
+                        for s in SHIMS
+                    }
+                )
             )
         )
     objects = []
