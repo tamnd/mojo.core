@@ -24,15 +24,27 @@ another. `from_slash` and `to_slash` convert between the two spellings, and
 `localize` is the strict version of `from_slash` for a name that arrived from
 outside the program.
 
-`abs`, `eval_symlinks`, `glob`, `walk` and `walk_dir` are the other half. Every
-one of them asks a disk, and they are not written yet.
+The other half asks a disk. `abs` puts the working directory in front of a
+relative path, `eval_symlinks` follows every link in one, `glob` finds the names
+that match a pattern, and `walk` and `walk_dir` visit everything under a
+directory. `SkipDir` and `SkipAll` are the two answers a walk callback raises to
+steer it, `skip_dir` and `skip_all` build those two raises, and `WalkFunc` and
+`WalkDirFunc` are what the two walks call.
 
 ## Lexical means lexical
 
-Nothing here opens anything. `clean("a/../b")` is `"b"` whether or not `a`
-exists, and if `a` is a symbolic link then `"b"` names a different file than the
-input did. `rel` and `is_local` inherit that, so a local path can still lead out
-of its tree through a link. `eval_symlinks` is the one that will ask.
+Most of this package opens nothing. `clean("a/../b")` is `"b"` whether or not
+`a` exists, and if `a` is a symbolic link then `"b"` names a different file than
+the input did. `rel` and `is_local` inherit that, so a local path can still lead
+out of its tree through a link. `eval_symlinks` is the one that asks, and it is
+the one that can fail.
+
+## A walk does not follow links
+
+Neither `walk` nor `walk_dir` goes through a symbolic link. A link is reported
+as a link and left there, which is what keeps a tree with a link back to its own
+parent from being a walk that never ends. It also means a walk of a directory
+somebody else can write to cannot be made to visit a file outside it.
 
 ## Names from outside
 
@@ -43,8 +55,10 @@ that would escape, and `is_local` is what answers the question about a path that
 is already in hand.
 """
 
-from core.errors.codes import ErrBadPattern
+from core.errors.codes import ErrBadPattern, SkipAll, SkipDir
+from core.io.fs import WalkDirFunc, skip_all, skip_dir
 
+from .disk import abs, eval_symlinks
 from .filepath import (
     LIST_SEPARATOR,
     SEPARATOR,
@@ -64,3 +78,5 @@ from .filepath import (
     to_slash,
     volume_name,
 )
+from .glob import glob
+from .walk import WalkFunc, walk, walk_dir

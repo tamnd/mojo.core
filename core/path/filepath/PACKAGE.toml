@@ -4,11 +4,18 @@ go = "path/filepath"
 verdict = "Port"
 tier = 5
 unsafe = false
-# The lexical half only. The disk half brings core.os back in, and glob brings
-# core.sort, and neither is written yet.
+# `core.os` and `core.sort` are the disk half: `abs`, `eval_symlinks`, `glob`,
+# `walk` and `walk_dir` ask a real file system, and the two that read a
+# directory sort what they find. `core.syscall` is here for the two errno
+# values `eval_symlinks` raises with, and `core.time` for the placeholder info
+# a walk hands a callback when a name could not be reached at all.
 deps = [
   "core.errors",
   "core.io",
   "core.io.fs",
+  "core.os",
   "core.path",
+  "core.sort",
+  "core.syscall",
+  "core.time",
 ]
