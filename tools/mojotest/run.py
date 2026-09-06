@@ -34,6 +34,16 @@ Pass --short to skip the cases marked slow, which is what a local run wants and
 what CI does not do. A case is marked by a `# slow: why` comment on the line
 above it, so the decision lives in the test rather than in a list here.
 
+A `# no-race: why` comment on the line above a test takes it out of the runs
+that build under the sanitiser, and out of no others. There is one thing that
+needs it and the reason is the sanitiser's rather than ours: a signal that
+arrives while a thread is blocked in a call the sanitiser has wrapped does not
+reach the handler, because the handler is deferred until the wrapper returns and
+the wrapper is inside a restartable read that the signal was supposed to end. A
+test that waits for a signal in a read therefore waits forever under the
+sanitiser and passes everywhere else, which is a fact about the sanitiser and
+not about the code being tested.
+
 Pass --deadline to put a limit on the run. A test that waits for something that
 never arrives blocks the whole binary, and a hang is the one failure that says
 nothing: the tests only print when they fail, so the job is cancelled at its own
@@ -116,6 +126,7 @@ MARKED = FIXTURES / "marked"
 # because the harvested tests arrive with these names.
 TEST_FN = re.compile(r"^def\s+(test_[a-z_0-9]*)\s*\(\s*\)(\s+raises)?\s*:")
 SLOW = re.compile(r"^#\s*slow:\s*(\S.*)$")
+NO_RACE = re.compile(r"^#\s*no-race:\s*(\S.*)$")
 
 # What --shard takes. One based, because a shard is named in a CI matrix and in
 # a log line and 1 of 4 is what a person reading either of them expects.
@@ -129,6 +140,7 @@ class Case:
     path: Path
     name: str
     slow: str = ""
+    no_race: str = ""
 
     @property
     def module(self) -> str:
@@ -144,16 +156,21 @@ def scan(path: Path) -> tuple[list[Case], list[str]]:
     """Every test in one file, and anything wrong with how it is declared.
 
     Line by line rather than one regular expression over the whole file,
-    because a slow marker is a comment on the line above the test it marks and
-    that relationship is the thing being read.
+    because a marker is a comment on the line above the test it marks and that
+    relationship is the thing being read.
     """
     found: list[Case] = []
     problems: list[str] = []
     marker = ""
+    unraced = ""
     for number, line in enumerate(path.read_text().splitlines(), 1):
         slow = SLOW.match(line)
         if slow:
             marker = slow.group(1).strip()
+            continue
+        no_race = NO_RACE.match(line)
+        if no_race:
+            unraced = no_race.group(1).strip()
             continue
         match = TEST_FN.match(line)
         if match:
@@ -163,12 +180,13 @@ def scan(path: Path) -> tuple[list[Case], list[str]]:
                     f"{where} declares {match.group(1)} without `raises`, so no assertion "
                     "in it can fail. Add `raises` to the signature"
                 )
-            found.append(Case(path, match.group(1), marker))
+            found.append(Case(path, match.group(1), marker, unraced))
         if line.strip() and not line.lstrip().startswith("#"):
             # A marker only reaches past blank lines and other comments, so a
             # stray one at the top of a file does not silently mark whatever
             # test happens to come first.
             marker = ""
+            unraced = ""
     return found, problems
 
 
@@ -421,10 +439,15 @@ def suite(
         if problems:
             return 0, 0, "", problems
 
-    skipped = [case for case in found if short and case.slow]
+    def why(case: Case) -> str:
+        if race and case.no_race:
+            return case.no_race
+        return case.slow if short and case.slow else ""
+
+    skipped = [case for case in found if why(case)]
     for case in skipped:
         if not quiet:
-            print(f"test: skipping {case.label}, {case.slow}")
+            print(f"test: skipping {case.label}, {why(case)}")
     found = [case for case in found if case not in skipped]
     if not found:
         return 0, len(skipped), "", []
@@ -556,7 +579,9 @@ def main() -> int:
         print("test: no tests in the tree yet")
         return 0
     if skipped:
-        print(f"test: {skipped} slow case(s) skipped, run without --short for all of them")
+        # Not "slow case(s)": a case can also be skipped for being one the
+        # sanitiser cannot run, and each of them printed its own reason above.
+        print(f"test: {skipped} case(s) skipped, each with its reason above")
     return report("test", ran, "tests", problems)
 
 

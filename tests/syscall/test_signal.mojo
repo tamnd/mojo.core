@@ -81,6 +81,7 @@ def test_two_signals_share_the_pipe() raises:
     signal_restore(SIGUSR2)
 
 
+# no-race: the sanitiser defers a handler that arrives inside its own read wrapper
 def test_a_signal_arrives_while_the_program_is_blocked_in_a_read() raises:
     """The property the whole design is for.
 
@@ -93,6 +94,15 @@ def test_a_signal_arrives_while_the_program_is_blocked_in_a_read() raises:
     That is what makes the pipe worth having rather than a flag: waiting for a
     signal is waiting for a descriptor, which is the same thing waiting for a
     socket will be.
+
+    Not under the thread sanitiser, and the reason is the sanitiser's. It wraps
+    `read`, and a signal that arrives while a thread is inside one of its
+    wrappers has its handler deferred until the wrapper returns. This wrapper is
+    around a read that `SA_RESTART` makes the kernel start again, so it never
+    returns, so the handler never runs and the byte is never written. The suite
+    hangs rather than fails, which is exactly what it did in CI for two hours
+    before a stack said so. Without the sanitiser this passes on every platform
+    and it is the plain `pixi run test` that covers it.
     """
     signal_catch(SIGUSR1)
 
