@@ -40,6 +40,11 @@ When a `read` has left part of a value unconsumed, `readbuf:` and those bytes
 go in front of that, which is the only variable length part of the encoding.
 """
 
+from core.encoding import (
+    BinaryAppender,
+    BinaryMarshaler,
+    BinaryUnmarshaler,
+)
 from core.errors import Report
 from core.errors.codes import ErrInvalidEncoding
 from core.math.bits import rotate_left32
@@ -287,7 +292,14 @@ def _unmarshal_state[o: ImmOrigin](mut s: _State, data: Span[UInt8, o]) raises:
         s.n = _CHUNK - _RESEED
 
 
-struct ChaCha8(Copyable, Movable, Source):
+struct ChaCha8(
+    BinaryAppender,
+    BinaryMarshaler,
+    BinaryUnmarshaler,
+    Copyable,
+    Movable,
+    Source,
+):
     """A ChaCha8 based generator. Go's `rand.ChaCha8`.
 
     Seeded with 32 bytes, and every seed is as good as every other, so a caller

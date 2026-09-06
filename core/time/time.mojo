@@ -56,6 +56,14 @@ The timers, which want somewhere to run a callback and so want `core.sync`
 first.
 """
 
+from core.encoding import (
+    BinaryAppender,
+    BinaryMarshaler,
+    BinaryUnmarshaler,
+    TextAppender,
+    TextMarshaler,
+    TextUnmarshaler,
+)
 from core.errors import Report
 from core.errors.codes import ErrMarshalTime, ErrUnmarshalTime
 from core.syscall import CLOCK_MONOTONIC, CLOCK_REALTIME, clock_gettime
@@ -96,7 +104,19 @@ from .tzset import _ALPHA, _OMEGA
 from .zone import Location, fixed_zone
 
 
-struct Time(Copyable, Equatable, ImplicitlyCopyable, Movable, Writable):
+struct Time(
+    BinaryAppender,
+    BinaryMarshaler,
+    BinaryUnmarshaler,
+    Copyable,
+    Equatable,
+    ImplicitlyCopyable,
+    Movable,
+    TextAppender,
+    TextMarshaler,
+    TextUnmarshaler,
+    Writable,
+):
     """A moment, held as whole seconds and nanoseconds within the second.
 
     ```mojo

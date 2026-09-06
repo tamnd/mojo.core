@@ -17,6 +17,7 @@ without going denormal. The exponent range is far wider than IEEE's, so the
 values that overflow or underflow are not the same ones.
 """
 
+from core.encoding import TextAppender, TextMarshaler, TextUnmarshaler
 from core.errors import Report
 from core.errors.codes import ErrInvalidArgument, ErrNaN, ErrSyntax
 from core.math import (
@@ -156,7 +157,9 @@ comptime _DIGIT_9 = UInt8(ord("9"))
 """The digit nine, which `_round_shortest` compares against."""
 
 
-struct Float(Copyable, Equatable, Movable):
+struct Float(
+    Copyable, Equatable, Movable, TextAppender, TextMarshaler, TextUnmarshaler
+):
     """A floating point number of any precision. Go's `big.Float`.
 
     ```mojo
@@ -1865,19 +1868,21 @@ struct Float(Copyable, Equatable, Movable):
             return String("a finite number has a precision of zero")
         return String("")
 
-    def append_text(self, mut buf: List[UInt8]) raises:
-        """Append this in decimal to `buf`. Go's `Float.AppendText`.
+    def append_text(self, mut buf: List[UInt8]) raises -> _MojoInt:
+        """Append this in decimal to `buf`, and say how many bytes it added.
 
-        The shortest text that reads back as this number, which is
-        `text('g', -1)`. Only the value is written, so the precision, the mode
-        and the accuracy are not in it.
+        Go's `Float.AppendText`. The shortest text that reads back as this
+        number, which is `text('g', -1)`. Only the value is written, so the
+        precision, the mode and the accuracy are not in it.
         """
+        var before = len(buf)
         self.append(buf, _FMT_G, -1)
+        return len(buf) - before
 
     def marshal_text(self) raises -> List[UInt8]:
         """This in decimal, as bytes. Go's `Float.MarshalText`."""
         var out = List[UInt8]()
-        self.append_text(out)
+        _ = self.append_text(out)
         return out^
 
     def unmarshal_text[o: ImmOrigin](mut self, text: Span[UInt8, o]) raises:

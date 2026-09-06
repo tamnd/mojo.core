@@ -262,7 +262,8 @@ def test_text_round_trip() raises:
                 var label = x + " at " + format_int(Int64(prec), 10)
 
                 var buf = prefix.copy()
-                tx.append_text(buf)
+                var wrote = tx.append_text(buf)
+                assert_equal(wrote, len(buf) - 4, "the count is what it added")
                 for i in range(4):
                     assert_equal(buf[i], prefix[i], "the prefix was kept")
 
