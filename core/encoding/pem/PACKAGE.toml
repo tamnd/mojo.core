@@ -2,13 +2,19 @@
 name = "core.encoding.pem"
 go = "encoding/pem"
 verdict = "Port"
-tier = 4
+tier = 3
 unsafe = false
+# Go's `encoding/pem` imports `strings` for two things, `Contains` on a header
+# key and `Repeat` in its tests, and neither needs the package here: a `String`
+# answers the first with `core.bytes.index_byte`. `slices` is there for one
+# call, `Sort` over the header keys, which is `core.sort.strings`. The rest of
+# the list is what the format is made of: base64 for the body, `core.bytes` for
+# the line and prefix work the decoder is almost entirely made of, and
+# `core.bytes.Buffer` for `encode_to_memory`.
 deps = [
   "core.bytes",
   "core.encoding.base64",
   "core.errors",
   "core.io",
   "core.sort",
-  "core.strings",
 ]

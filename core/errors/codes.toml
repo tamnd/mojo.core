@@ -117,3 +117,6 @@ ErrDumperClosed = { doc = "A hex dumper was written to after it was closed. The 
 
 ["core.encoding.ascii85"]
 ErrCorruptAscii85 = { doc = "A string was not ascii85. The same thing `ErrCorruptBase64` says about the offset and `CorruptInputError.of` applies here, and this is the third of the three for the reason Go keeps three types: a caller decoding ascii85 never wanted base64. Nothing goes on `errors.partial`, because Go's `Decode` returns zero for both of its counts when it refuses, so a caller is told that nothing was decoded rather than that a prefix was. Two things are refused: a character outside the range `!` to `u` that is not whitespace, and a final group holding a single character, which carries no whole byte because the encoding needs one character more than the bytes it spells." }
+
+["core.encoding.pem"]
+ErrHeaderKeyColon = { doc = "A block was handed to `encode` with a colon in one of its header keys. A header line is a key, a colon, a space and a value, so a key with a colon in it would be read back as a shorter key with a longer value, and the block would not survive a round trip. Go returns an unexported error from `Encode` here and returns nil from `EncodeToMemory`, and both are refused before a single byte is written, so a writer that has already been written to is never left holding half a block." }
