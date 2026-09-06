@@ -26,6 +26,7 @@ same sharing `Int.bits` does not do here for the same reason: the owner can
 move.
 """
 
+from core.encoding import TextAppender, TextMarshaler, TextUnmarshaler
 from core.errors import Report
 from core.errors.codes import ErrInvalidArgument, ErrOverflow, ErrSyntax
 from core.math import float64bits, is_inf, ldexp
@@ -104,7 +105,9 @@ bits, which is what Go needs it to be so the constant can be written as one
 digit on either word size."""
 
 
-struct Rat(Copyable, Equatable, Movable):
+struct Rat(
+    Copyable, Equatable, Movable, TextAppender, TextMarshaler, TextUnmarshaler
+):
     """A quotient of two integers, of any size. Go's `big.Rat`.
 
     The zero value is the number zero. `Rat(1, 3)` is a third, `new_rat(1, 3)`
@@ -803,21 +806,22 @@ struct Rat(Copyable, Equatable, Movable):
             var flipped = self._a.neg()
             self._a = flipped^
 
-    def append_text(self, mut buf: List[UInt8]) raises:
-        """Append this in decimal to `buf`. Go's `Rat.AppendText`.
+    def append_text(self, mut buf: List[UInt8]) raises -> _MojoInt:
+        """Append this in decimal to `buf`, and say how many bytes it added.
 
-        `a/b`, or just `a` when the denominator is one, which is `rat_string`
-        rather than `string`.
+        Go's `Rat.AppendText`. `a/b`, or just `a` when the denominator is one,
+        which is `rat_string` rather than `string`.
         """
         if self.is_int():
-            self._a.append_text(buf)
-            return
+            return self._a.append_text(buf)
+        var before = len(buf)
         self._marshal(buf)
+        return len(buf) - before
 
     def marshal_text(self) raises -> List[UInt8]:
         """This in decimal, as bytes. Go's `Rat.MarshalText`."""
         var out = List[UInt8]()
-        self.append_text(out)
+        _ = self.append_text(out)
         return out^
 
     def unmarshal_text[o: ImmOrigin](mut self, text: Span[UInt8, o]) raises:

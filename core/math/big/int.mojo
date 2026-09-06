@@ -38,6 +38,7 @@ the same backing array, which is a view whose owner can move underneath it, and
 
 from std.os import abort
 
+from core.encoding import TextAppender, TextMarshaler, TextUnmarshaler
 from core.errors import Report
 from core.errors.codes import (
     ErrBase,
@@ -96,7 +97,9 @@ still be a finite `Float64`. One more than this and the answer is an infinity.
 """
 
 
-struct Int(Copyable, Equatable, Movable):
+struct Int(
+    Copyable, Equatable, Movable, TextAppender, TextMarshaler, TextUnmarshaler
+):
     """A signed integer of any size. Go's `big.Int`.
 
     ```mojo
@@ -1039,14 +1042,20 @@ struct Int(Copyable, Equatable, Movable):
         self._neg = (buf[0] & 1) != 0
         self._abs = _set_bytes(buf[1:])
 
-    def append_text(self, mut buf: List[UInt8]) raises:
-        """Append this in decimal to `buf`. Go's `Int.AppendText`."""
+    def append_text(self, mut buf: List[UInt8]) raises -> _MojoInt:
+        """Append this in decimal to `buf`, and say how many bytes it added.
+
+        Go's `Int.AppendText`, and the count is what every appending function in
+        this library returns where Go returns the grown slice.
+        """
+        var before = len(buf)
         self.append(buf, 10)
+        return len(buf) - before
 
     def marshal_text(self) raises -> List[UInt8]:
         """This in decimal, as bytes. Go's `Int.MarshalText`."""
         var out = List[UInt8]()
-        self.append_text(out)
+        _ = self.append_text(out)
         return out^
 
     def unmarshal_text[o: ImmOrigin](mut self, text: Span[UInt8, o]) raises:

@@ -41,6 +41,7 @@ Each row names the property of Mojo behind it. The numbers refer to sections of 
 | `json.Marshal(v)` for a value of unknown type | Not available. Build a document, or use a type that has a codec. | 8 |
 | `driver.Value` as `any` | A tagged union over the seven types Go's documentation allows | 1 |
 | A type assertion for an optional interface | Capability bits, declared on the trait so the static path can read them too | 1 |
+| `v.(encoding.TextMarshaler)`, so a codec falls back to a general path when the value cannot encode itself | The six `core.encoding` traits as generic bounds, checked when the program is compiled. A codec that wants a type to encode itself says so in its signature, and a type that does not is a compile error at the call rather than a different path taken at run time. The fallback Go's assertion allows is not expressible, and the mistake it hides is not either. | 1 |
 | `io.SectionReader.Outer` returning the underlying `ReaderAt` with the offset and size | `outer()` returns the offset and size, and the source is the public field `r`, because a method cannot hand back a borrow of a field alongside two values | 1 |
 | `io.Discard`, a package level variable | `Discard()`, a type with no fields, since there are no package level variables and nothing to construct anyway | no global mutable state |
 | `io.NopCloser` returning an unexported type behind `io.ReadCloser` | `NopCloser[R]`, a named generic type, because there is no erased `ReadCloser` to hide it behind | 1 |

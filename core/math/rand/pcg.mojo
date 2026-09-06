@@ -24,6 +24,11 @@ words, high first, each big endian. Nothing about that is negotiable, since
 those bytes are what a state written by Go reads back as here.
 """
 
+from core.encoding import (
+    BinaryAppender,
+    BinaryMarshaler,
+    BinaryUnmarshaler,
+)
 from core.errors import Report
 from core.errors.codes import ErrInvalidEncoding
 from core.math.bits import add64, mul64
@@ -50,7 +55,14 @@ comptime _MARSHAL_SIZE = 20
 """How long a marshalled `PCG` is: four bytes of tag and two state words."""
 
 
-struct PCG(Copyable, Movable, Source):
+struct PCG(
+    BinaryAppender,
+    BinaryMarshaler,
+    BinaryUnmarshaler,
+    Copyable,
+    Movable,
+    Source,
+):
     """A PCG generator with 128 bits of internal state. Go's `rand.PCG`.
 
     A default constructed `PCG` behaves as `new_pcg(0, 0)`, which is Go's rule

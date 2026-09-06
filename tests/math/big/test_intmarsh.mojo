@@ -140,7 +140,8 @@ def test_text_round_trip() raises:
         for sign in _signs():
             var x = pb(sign + base, 10)
             var buf = prefix.copy()
-            x.append_text(buf)
+            var wrote = x.append_text(buf)
+            assert_equal(wrote, len(buf) - 4, "the count is what it added")
             for i in range(4):
                 assert_equal(buf[i], prefix[i], "the prefix was kept")
 

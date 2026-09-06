@@ -12,6 +12,7 @@ tier = 2
 # PCG, ChaCha8 and Zipf never touch any of them.
 unsafe = true
 deps = [
+  "core.encoding",
   "core.errors",
   "core.math",
   "core.math.bits",

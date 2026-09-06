@@ -2,6 +2,16 @@
 
 Notable changes, newest first. This project follows semantic versioning from 1.0. Before then, anything can move.
 
+## Unreleased
+
+How a type says it can encode itself. `core.encoding` is new and complete, six traits with one method each: `BinaryMarshaler`, `BinaryUnmarshaler`, `TextMarshaler` and `TextUnmarshaler`, which are the four Go has had since 1.2, and `BinaryAppender` and `TextAppender`, which are the two it added in 1.24. The package depends on nothing at all, so every codec under it and every type above it can name the same six.
+
+Go finds these at run time with a type assertion and there is nothing to assert against here. A codec that wants a type to encode itself takes it as a generic parameter bound by the trait instead, so the check happens when the program is compiled and a type that cannot encode itself is an error at the call rather than a different path taken later. The fallback Go's assertion allows is not expressible and neither is the mistake it hides.
+
+Nothing changed shape to join. The signatures are the ones the library already had: `marshal_binary` hands back a fresh list, `unmarshal_binary` reads a span and writes nothing unless the whole input is accepted, and `append_binary` grows a list the caller owns. `time.Time` now declares all six, `math.big.Int`, `math.big.Float` and `math.big.Rat` the three text ones, and `math.rand.PCG` and `math.rand.ChaCha8` the three binary ones.
+
+One thing did move. `big.Int.append_text`, `big.Float.append_text` and `big.Rat.append_text` returned nothing and now return the number of bytes they appended, which is what every other appending function in the library returns and what `time.Time.append_text` already returned. A caller who ignored the result carries on unchanged and a caller who wants the count no longer has to measure the list before and after.
+
 ## v0.6.0 - 2026-09-06
 
 M5 is complete. This is the milestone where the library stops being arithmetic and text and starts touching the machine it runs on: the generated system call layer, files and directories, the environment, processes and signals, paths, instants and the time zone database. Twenty six pull requests, twenty four issues, and the parity count moves from 13.7 percent to 19.4 percent, which is 1,709 of Go's symbols across twenty eight packages. `core.os`, `core.path`, `core.path.filepath`, `core.io.fs` and `core.time` are all complete against Go apart from what is waived with a reason, and `core.os.exec` and `core.os.signal` are new.
