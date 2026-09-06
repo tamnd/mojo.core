@@ -277,3 +277,19 @@ tables = [
 # whole declaration is left behind and the four conversions are written by hand
 # in the test.
 skip = ["encodingTests"]
+
+[harvest.base32]
+go = "encoding/base32"
+# The same shape as base64's `pairs` and the same job: the RFC 4648 examples
+# and the Wikipedia ones, fifteen rows of decoded bytes and the string they
+# encode to, read in both directions and through both standard encodings.
+# Every row of this one is printable text, unlike base64's, so it comes across
+# as strings rather than as hex and reads the way the Go source does.
+#
+# `bigtest` is a single `testpair` rather than a slice of them and is written
+# out by hand in the test instead. The corrupt input table, the padding table
+# and the buffering sizes are all declared inside the test functions that read
+# them, which the extractor cannot see, so they are ported by hand.
+tables = [
+  "pairs",
+]

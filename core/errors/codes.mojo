@@ -488,9 +488,20 @@ bytes are needed, all different, none of them a carriage return or a line feed,
 and a padding character that is a single byte and is not already a symbol. Go
 panics on all five of those and this raises, because an alphabet can come from
 a configuration file as easily as from a literal and a library this far down
-does not get to end the process over one. `core.encoding.base32` will answer
-for the same five when it lands, where the count is thirty two rather than
-sixty four.
+does not get to end the process over one. `core.encoding.base32` raises it for
+the same five, where the count is thirty two rather than sixty four.
 
 Owned by `core.encoding.base64`. Go has no sentinel for it.
+"""
+
+comptime ErrCorruptBase32 = Code(50)
+"""A string was not base32. The same thing `ErrCorruptBase64` says about the
+offset, `CorruptInputError.of` and `errors.partial` applies here, and the two
+are separate codes for the reason Go keeps two types: a caller decoding base32
+never wanted base64, and a failure that names the wrong one names the wrong
+bug. Base32 refuses in one place base64 has no equivalent for, which is a final
+group of one, three or six symbols, because RFC 4648 section 6 lists the five
+padding lengths that exist and those three are not among them.
+
+Owned by `core.encoding.base32`. Go has no sentinel for it.
 """
