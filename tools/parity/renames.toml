@@ -384,3 +384,14 @@ StdEncoding = "std_encoding"
 URLEncoding = "url_encoding"
 RawStdEncoding = "raw_std_encoding"
 RawURLEncoding = "raw_url_encoding"
+
+["encoding/base32"]
+# The two paddings again, for the reason the base64 pair above gives.
+StdPadding = "STD_PADDING"
+NoPadding = "NO_PADDING"
+# Go's two ready made encodings are package variables and these are functions,
+# on the same reasoning as base64's four: a value nobody may change is either a
+# constant or a function, and an `Encoding` is a table too big to be a
+# constant.
+StdEncoding = "std_encoding"
+HexEncoding = "hex_encoding"
