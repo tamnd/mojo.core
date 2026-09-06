@@ -2,11 +2,16 @@
 name = "core.encoding.hex"
 go = "encoding/hex"
 verdict = "Port"
-tier = 4
+tier = 2
 unsafe = false
+# Go's `encoding/hex` imports `fmt` for one verb, `%#U`, to spell the offending
+# character in an `InvalidByteError`. `core.unicode.is_print` is the only part
+# of that verb this needs, so the dependency is on that rather than on a
+# formatter. Go also imports `strings` for the `Builder` behind `Dump`; a
+# `List` of bytes does that here. It does not import `encoding` and does not
+# need it: hex is a pair of functions, not a marshaller.
 deps = [
-  "core.encoding",
   "core.errors",
   "core.io",
-  "core.strings",
+  "core.unicode",
 ]

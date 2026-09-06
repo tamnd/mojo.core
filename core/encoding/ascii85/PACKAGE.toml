@@ -4,6 +4,11 @@ go = "encoding/ascii85"
 verdict = "Port"
 tier = 2
 unsafe = false
+# Go's `encoding/ascii85` imports `strconv` for one call, `FormatInt`, to put
+# the offset in the message of a `CorruptInputError`, and `io` for the stream
+# pair. `String(Int64)` covers the first, so only `core.io` is left. It does
+# not import `encoding` in Go and does not need it here: ascii85 is a pair of
+# functions over a fixed alphabet, not a marshaller.
 deps = [
   "core.errors",
   "core.io",

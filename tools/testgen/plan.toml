@@ -293,3 +293,39 @@ go = "encoding/base32"
 tables = [
   "pairs",
 ]
+
+[harvest.hex]
+go = "encoding/hex"
+# `encDecTests` is the whole of the package's data: seven rows of a hex string
+# and the bytes it spells, covering every nibble value across the first four
+# rows and the two odd sizes in the last two. The decoded side is a byte slice
+# written as numbers rather than as a quoted string, so it comes across as a
+# list of numbers and reads the way the Go source does.
+#
+# `errTests` is the table of malformed inputs and it is declared with an
+# anonymous struct holding an `error` value, which is a Go value with no form
+# this can carry, so its nine rows are typed out by hand with the code each one
+# raises. `expectedHexDump` is a single string rather than a table and is
+# written out by hand too.
+tables = [
+  "encDecTests",
+]
+
+[harvest.ascii85]
+go = "encoding/ascii85"
+# Three rows, and the middle one is the Wikipedia paragraph that every ascii85
+# implementation is tested against: the passage from Hamlet, its encoded form
+# wrapped at seventy five characters, and the newlines in the middle of it
+# which are what proves the decoder skips whitespace wherever it falls. The
+# other two are the empty input and the four zero bytes that shorten to `z`.
+#
+# `pairs` names `bigtest` rather than repeating it, and that works here because
+# the extractor copies every declaration in the file and evaluates them, so the
+# row arrives with the paragraph already in it.
+#
+# The corrupt input table lives inside `TestDecodeCorrupt` as a local type and
+# a local slice, which the extractor cannot see, so its two rows are typed out
+# by hand.
+tables = [
+  "pairs",
+]
