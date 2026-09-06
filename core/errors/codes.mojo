@@ -505,3 +505,53 @@ padding lengths that exist and those three are not among them.
 
 Owned by `core.encoding.base32`. Go has no sentinel for it.
 """
+
+comptime ErrLength = Code(51)
+"""A hex string had an odd number of characters. Two characters spell one byte, so
+the last one spells half of one, and there is no byte it could be. Go has this
+as an exported sentinel and so is this, which is why a caller writing a parser
+can tell a truncated string apart from a corrupt one without reading the
+message. The streaming decoder raises `ErrUnexpectedEOF` in the same situation
+instead, because a stream that stopped in the middle of a pair may simply not
+have finished arriving, and that is Go's rule too.
+
+Owned by `core.encoding.hex`, answering for Go's `hex.ErrLength`.
+"""
+
+comptime ErrInvalidHexByte = Code(52)
+"""A byte in a hex string was not a hex digit. Go has this as
+`hex.InvalidByteError`, a byte holding the offending character, which a caller
+reads with a type assertion. There is nothing to assert against here, so the
+byte goes on the record and `InvalidByteError.of` reads it back, and this is
+the code `errors.matches` answers. Whatever was decoded before the failure is
+still written to the destination and `errors.partial` says how much of it there
+is. The byte is on the error rather than its offset, which is the opposite of
+what the base64 and base32 codes carry, because that is what Go's two types
+carry and a caller who wants the other number has the input in front of them.
+
+Owned by `core.encoding.hex`. Go has no sentinel for it.
+"""
+
+comptime ErrDumperClosed = Code(53)
+"""A hex dumper was written to after it was closed. The closing line of a dump is
+written by `close`, so a write afterwards would put bytes after the end of the
+dump, and the offsets in it would no longer be the offsets of anything. Go
+returns an unexported error here with the same meaning and this raises. Closing
+twice is not a failure on either side; only writing after closing is.
+
+Owned by `core.encoding.hex`. Go has no sentinel for it.
+"""
+
+comptime ErrCorruptAscii85 = Code(54)
+"""A string was not ascii85. The same thing `ErrCorruptBase64` says about the
+offset and `CorruptInputError.of` applies here, and this is the third of the
+three for the reason Go keeps three types: a caller decoding ascii85 never
+wanted base64. Nothing goes on `errors.partial`, because Go's `Decode` returns
+zero for both of its counts when it refuses, so a caller is told that nothing
+was decoded rather than that a prefix was. Two things are refused: a character
+outside the range `!` to `u` that is not whitespace, and a final group holding
+a single character, which carries no whole byte because the encoding needs one
+character more than the bytes it spells.
+
+Owned by `core.encoding.ascii85`. Go has no sentinel for it.
+"""
