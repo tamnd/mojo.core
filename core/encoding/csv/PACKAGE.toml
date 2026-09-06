@@ -2,15 +2,24 @@
 name = "core.encoding.csv"
 go = "encoding/csv"
 verdict = "Port"
-tier = 4
+tier = 3
 unsafe = false
+# Go's import list and this one differ in three places. `fmt` is there for the
+# three `Sprintf` calls that build `ParseError.Error`, and those are string
+# concatenation here, so the dependency goes. `core.bytes` arrives instead:
+# Go's writer searches a `string` with `strings.IndexAny` and this searches the
+# bytes behind it, which is the same search without the intermediate slice.
+# `core.iter` arrives for the `Cursor` that `records()` hands back, which Go
+# does not have because its loop is a `Read` and a comparison. The rest line
+# up: `bufio` on both sides of the package, `unicode` for `TrimLeadingSpace`
+# and for the whitespace test on the first rune of a field, and `unicode/utf8`
+# for the rune decoding the delimiter rules are written in.
 deps = [
   "core.bufio",
   "core.bytes",
   "core.errors",
-  "core.fmt",
   "core.io",
-  "core.strings",
+  "core.iter",
   "core.unicode",
   "core.unicode.utf8",
 ]
