@@ -253,3 +253,27 @@ tables = [
 # allocation counts, and the fourth is the monotonic saturation case, which is
 # tested here by hand instead.
 skip = ["goStringTests", "mallocTest", "slimTests", "subTests"]
+
+[harvest.base64]
+go = "encoding/base64"
+# The one table in the package that is data rather than code. `pairs` is the
+# RFC 3548, RFC 4648 and Wikipedia examples, eighteen rows of decoded bytes and
+# the string they encode to, and it is read in both directions and through all
+# four standard encodings. Three of its rows are binary, so the whole table
+# comes across as hex; the Go source form is in the comment beside each row.
+#
+# `bigtest` is a single `testpair` rather than a slice of them and is written
+# out by hand in the test instead. `encodingTests` is a list of encodings paired
+# with the function that converts a standard reference string to that
+# encoding's spelling, and a function is not a thing this can carry. The corrupt
+# input table and the padding table are both declared inside the test function
+# that reads them, which the extractor cannot see, so they are ported by hand.
+tables = [
+  "pairs",
+]
+# `encodingTests` is in the way rather than wanted. It is a slice of encodings
+# paired with the function that spells a standard reference string the way that
+# encoding would, and a function is not a value this can carry across, so the
+# whole declaration is left behind and the four conversions are written by hand
+# in the test.
+skip = ["encodingTests"]

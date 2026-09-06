@@ -468,3 +468,29 @@ package raises.
 
 Owned by `core.os.exec`. Go has no sentinel for it.
 """
+
+comptime ErrCorruptBase64 = Code(48)
+"""A string was not base64. Go has this as `base64.CorruptInputError`, an integer
+holding the offset of the byte that stopped the decode, which a caller reads
+with a type assertion. There is nothing to assert against here, so the offset
+goes on the record and `CorruptInputError.of` reads it back, and this is the
+code `errors.matches` answers. Whatever was decoded before the failure is still
+written to the destination and `errors.partial` says how much of it there is,
+because a caller who wanted the good prefix of a bad document should not have
+to decode it twice to get it.
+
+Owned by `core.encoding.base64`. Go has no sentinel for it.
+"""
+
+comptime ErrBadAlphabet = Code(49)
+"""An encoding was built out of something that is not an alphabet. Sixty four
+bytes are needed, all different, none of them a carriage return or a line feed,
+and a padding character that is a single byte and is not already a symbol. Go
+panics on all five of those and this raises, because an alphabet can come from
+a configuration file as easily as from a literal and a library this far down
+does not get to end the process over one. `core.encoding.base32` will answer
+for the same five when it lands, where the count is thirty two rather than
+sixty four.
+
+Owned by `core.encoding.base64`. Go has no sentinel for it.
+"""

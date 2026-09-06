@@ -367,3 +367,20 @@ Error = "ExecError"
 # `Exited` and the rest without declaring them. Embedding is not a thing here,
 # so the state is a field with a name and those methods are reached through it.
 "ExitError.embedded" = "ExitError.state"
+
+["encoding/base64"]
+# The two paddings are `comptime` values and a constant is spelled in capitals
+# here, which is the rule that gave `io` its seek constants and `filepath` its
+# separators theirs.
+StdPadding = "STD_PADDING"
+NoPadding = "NO_PADDING"
+# Go's four ready made encodings are package variables, which means a caller
+# can assign to them and change what every other caller in the program encodes
+# with. They are functions here, on the same reasoning that made `time.UTC` a
+# function: a value nobody may change is either a constant or a function, and
+# an `Encoding` is a table too big to be a constant. Each call builds its table
+# from the alphabet, which costs a few hundred bytes of stack and nothing else.
+StdEncoding = "std_encoding"
+URLEncoding = "url_encoding"
+RawStdEncoding = "raw_std_encoding"
+RawURLEncoding = "raw_url_encoding"
