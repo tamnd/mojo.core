@@ -19,6 +19,7 @@ unarmed signal would not fail, it would take the runner down with it.
 from std.testing import assert_equal, assert_false, assert_raises, assert_true
 
 from core.os import INTERRUPT, Signal, getpid
+from core.os.exec import command
 from core.os.signal import ignore, ignored, notify, reset, stop
 from core.syscall import (
     SIGKILL,
@@ -29,6 +30,7 @@ from core.syscall import (
     read,
     signal_restore,
 )
+from core.time import MILLISECOND, now, since, sleep
 
 
 def test_an_armed_signal_arrives_as_its_own_number() raises:
@@ -95,6 +97,38 @@ def test_the_two_signals_no_program_may_catch_are_refused() raises:
         _ = notify(Signal(SIGKILL))
     with assert_raises():
         _ = notify(Signal(SIGSTOP))
+
+
+def test_a_signal_arriving_during_a_sleep_does_not_shorten_it() raises:
+    """`core.time.sleep`'s loop, exercised where a real signal can be sent.
+
+    The interruption is the whole reason that function is a loop, and it cannot
+    be reached from `core.time`'s own tests: making a signal arrive part way
+    through a wait needs a second process, and `core.time` sits three tiers
+    below the package that starts one. Here both are to hand.
+
+    A shell is started that waits a tenth of a second and then signals this
+    process, so the signal lands part way through a fifth of a second of sleep.
+    The byte read afterwards is the proof it was delivered, and the elapsed time
+    is the proof the sleep was not cut short by it. A shell that is slow to
+    start would send late instead of early, which makes the test prove less
+    rather than fail.
+    """
+    var fd = notify(Signal(SIGUSR1))
+    var sender = command(
+        "sh", ["-c", "sleep 0.1; kill -USR1 " + String(getpid())]
+    )
+    sender.start()
+
+    var start = now()
+    sleep(200 * MILLISECOND)
+    assert_true(since(start) >= 200 * MILLISECOND)
+
+    sender.wait()
+    var room = List[Byte](length=1, fill=0)
+    assert_equal(read(fd, Span(room)), 1)
+    assert_equal(Int(room[0]), SIGUSR1)
+    stop(Signal(SIGUSR1))
 
 
 def test_interrupt_can_be_armed_and_put_back() raises:

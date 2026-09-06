@@ -286,3 +286,30 @@ ErrWaitDelay = "Goes with Cmd.WaitDelay, which is waived."
 # the shape this library has instead is the descriptor `notify` gives back,
 # which is the thing M10's event loop will wait on.
 NotifyContext = "No context package. notify hands back a descriptor, which is what an event loop waits on."
+
+["time"]
+# Every timer in Go delivers on a channel. `Timer.C` and `Ticker.C` are channels
+# outright, `After` and `Tick` are functions that return one, and the two
+# constructors exist to make a struct with one in it. Channels are
+# `core.sync.chan` and arrive in M9, and a timer built before them would either
+# have to invent a different way of delivering, which is a shape nobody coming
+# from Go would recognise, or block the calling thread, which is `sleep` under
+# another name. So these wait, and they come back the moment there is a channel
+# to put in them.
+"Timer" = "Timer.C is a channel. Channels arrive with core.sync.chan in M9."
+"Timer.C" = "Timer.C is a channel. Channels arrive with core.sync.chan in M9."
+"Timer.Reset" = "Timer.C is a channel. Channels arrive with core.sync.chan in M9."
+"Timer.Stop" = "Timer.C is a channel. Channels arrive with core.sync.chan in M9."
+"Ticker" = "Ticker.C is a channel. Channels arrive with core.sync.chan in M9."
+"Ticker.C" = "Ticker.C is a channel. Channels arrive with core.sync.chan in M9."
+"Ticker.Reset" = "Ticker.C is a channel. Channels arrive with core.sync.chan in M9."
+"Ticker.Stop" = "Ticker.C is a channel. Channels arrive with core.sync.chan in M9."
+NewTimer = "Builds a Timer, whose channel arrives with core.sync.chan in M9."
+NewTicker = "Builds a Ticker, whose channel arrives with core.sync.chan in M9."
+After = "Returns a channel. Channels arrive with core.sync.chan in M9."
+Tick = "Returns a channel. Channels arrive with core.sync.chan in M9."
+
+# The one timer that has no channel in it. It runs the function on a goroutine
+# of its own instead, so it waits on the same milestone for the other half of
+# what M9 brings.
+AfterFunc = "Runs the function on a goroutine. There is no goroutine until M9."

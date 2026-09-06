@@ -9,7 +9,8 @@ decide what to do next. Everything above this needs the real thing.
 Start with `open`, `read`, `write` and `close` for descriptors, `stat` and its
 two siblings for what the platform knows about a path, `utimensat` for setting
 the times on one, `opendir` and `readdir` for what is in a directory,
-`clock_gettime` for what time it is, and `Errno` for what a failure was.
+`clock_gettime` for what time it is, `nanosleep` for waiting a while, and
+`Errno` for what a failure was.
 
 Every constant the platform defines comes out of here, because a caller
 comparing an errno against `ENOENT` should not have to know that the number
@@ -273,6 +274,7 @@ from .calls import (
     lstat,
     mkdir,
     mkdirat,
+    nanosleep,
     open,
     openat,
     opendir,
