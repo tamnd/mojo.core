@@ -569,7 +569,7 @@ struct File(
         `sendfile` nor `copy_file_range` applies. Neither call is bound in
         `core.syscall` yet, so the fallback is all there is here, and it is a
         real fallback rather than a stub: the bytes move and the count is
-        right. Issue #168 is where the kernel side goes, and this method's body
+        right. Issue #188 is where the kernel side goes, and this method's body
         is the only thing that changes when it lands.
 
         `EOF` from `src` is the end and is not raised. Anything else comes out
@@ -763,7 +763,7 @@ struct File(
         that is what the bit means. They are not yet faster than the loop
         `core.io.copy` would have run: what would make them faster is
         `sendfile` on Linux and `copy_file_range` where it exists, and neither
-        is bound in `core.syscall`. Issue #168 is where that goes, and setting
+        is bound in `core.syscall`. Issue #188 is where that goes, and setting
         the bits now means a caller gets the improvement without changing a
         line.
         """
