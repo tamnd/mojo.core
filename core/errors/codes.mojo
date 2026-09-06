@@ -567,3 +567,64 @@ half a block.
 
 Owned by `core.encoding.pem`. Go has no sentinel for it.
 """
+
+comptime ErrBareQuote = Code(56)
+"""A quote appeared inside a field that did not start with one. `a"b` is not a
+quoted field and it is not a field holding a quote either, because there is no
+rule that would say which, so it is refused. Setting `lazy_quotes` on the
+reader says take it literally and this is never raised. Go has this as an
+exported sentinel carried inside a `*ParseError` and so is this: the code is on
+the raise and `ParseError.of` reads the line and column back off it.
+
+Owned by `core.encoding.csv`, answering for Go's `csv.ErrBareQuote`.
+"""
+
+comptime ErrQuote = Code(57)
+"""A quoted field held a quote that was not doubled, or never closed. Inside
+quotes a quote means one of two things, the end of the field when what follows
+is a comma or a line ending, and a literal quote when it is doubled; anything
+else is neither. The unterminated field at the end of the input is the same
+failure, since the field ended without the quote that would have closed it.
+`lazy_quotes` takes both literally instead. Go has this as an exported sentinel
+inside a `*ParseError` and so is this.
+
+Owned by `core.encoding.csv`, answering for Go's `csv.ErrQuote`.
+"""
+
+comptime ErrFieldCount = Code(58)
+"""A record had a different number of fields than the ones before it. Only raised
+when `fields_per_record` is positive, either because the caller set it or
+because the first record set it, and never when it is negative. Go returns the
+record alongside this error, which a raise cannot do, so the record is left on
+the reader and `last_record` hands it back; that call is the whole reason the
+method exists, since a caller who set a field count usually wants to see the
+row that broke it.
+
+Owned by `core.encoding.csv`, answering for Go's `csv.ErrFieldCount`.
+"""
+
+comptime ErrInvalidDelim = Code(59)
+"""A reader or a writer was given a field or comment delimiter it cannot use. A
+delimiter may not be zero, a quote, a carriage return, a newline or the
+replacement character, and it may not be an invalid code point; a reader's
+comment may not equal its comma either. Go has this unexported, so a Go caller
+can only read the message, and it is a code here because a caller who builds a
+delimiter from configuration wants to tell a bad setting apart from a bad file.
+
+Owned by `core.encoding.csv`. Go has no sentinel for it.
+"""
+
+comptime ErrNotText = Code(60)
+"""A field held bytes that are not valid UTF-8. Go builds its fields with
+`string(b)`, which takes any bytes at all, so a Go program reading a file
+written in Latin-1 gets fields it can count and compare and only notices when
+it tries to print them. A Mojo `String` says it is UTF-8, so there is no honest
+way to make one out of arbitrary bytes and the read is refused instead.
+`bufio.Reader.read_string` is stricter than Go for the same reason and says the
+same thing about the two alternatives, substituting U+FFFD or asserting the
+encoding without checking, neither of which this library does on a caller's
+behalf. The bytes are consumed either way, since the line that failed has
+already been read.
+
+Owned by `core.encoding.csv`. Go has no sentinel for it.
+"""

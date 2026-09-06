@@ -313,3 +313,22 @@ Tick = "Returns a channel. Channels arrive with core.sync.chan in M9."
 # of its own instead, so it waits on the same milestone for the other half of
 # what M9 brings.
 AfterFunc = "Runs the function on a goroutine. There is no goroutine until M9."
+
+["encoding/csv"]
+# Two deprecations and one thing the language does not have.
+#
+# Go's documentation says of both trailing comma symbols that they are no
+# longer used. The field is read nowhere in Go's own package and the sentinel
+# is returned by nothing, so implementing them here would be adding a field
+# that nothing looks at and a code that nothing raises.
+#
+# ReuseRecord asks Read to return a slice sharing the backing array of the
+# previous call's, which is a promise about aliasing. A record here is an owned
+# List[String] handed to the caller, and two owned values do not share storage,
+# so there is nothing the setting could turn on. Go's own documentation says
+# the sharing "may" happen, so a reader that never shares is inside its
+# contract; this one never shares and says so rather than carrying a field that
+# does nothing.
+"Reader.TrailingComma" = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package reads it."
+ErrTrailingComma = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+"Reader.ReuseRecord" = "A promise that two returned slices share storage. A record here is an owned List[String], so there is nothing to share."
