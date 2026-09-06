@@ -1164,3 +1164,33 @@ def clock_gettime(clock: Int) raises -> Timespec:
     if failed < 0:
         _fail("clock_gettime", errno())
     return Timespec(platform_bytes=Span(raw))
+
+
+def nanosleep(duration: Timespec) raises:
+    """Suspend this thread for at least `duration`, or raise saying why not.
+
+    A signal that arrives during the wait ends it early and this raises with
+    `EINTR`, which is the interruption the module docstring above says this
+    layer does not swallow. The kernel will write what was left of the wait
+    into a second timespec if it is given one, and this deliberately does not
+    ask for it: the caller that wants to finish an interrupted sleep reads
+    `CLOCK_MONOTONIC` before and after instead, which is right whether the
+    sleep was interrupted once or a hundred times and does not depend on the
+    kernel's own arithmetic.
+
+    The buffer for the remaining time is still passed, because the kernel is
+    entitled to a pointer and a null one is not a value this language hands
+    out. Nothing reads it.
+
+    A negative second or a nanosecond field outside zero to a billion is
+    `EINVAL` rather than a wait of no time at all, so a caller with a duration
+    it has not checked checks it first.
+    """
+    var request = List[Byte](length=SIZEOF_TIMESPEC, fill=0)
+    duration.platform_bytes(Span(request), 0)
+    var ignored = List[Byte](length=SIZEOF_TIMESPEC, fill=0)
+    var failed = external_call["nanosleep", Int32](
+        request.unsafe_ptr(), ignored.unsafe_ptr()
+    )
+    if failed < 0:
+        _fail("nanosleep", errno())

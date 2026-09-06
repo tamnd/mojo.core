@@ -53,10 +53,19 @@ print(date(2024, MARCH, 9, 14, 5, 6, 0).format(DATE_TIME))
 `parse_duration("2h45m")` is how a length of time arrives from a configuration
 file or a command line.
 
-Not here yet, and each its own piece of work: the timers, and `core.time.tzdata`,
-which is the copy of the zone database a program can compile into itself so that
-it does not need the host to have one. Where what is here behaves differently
-from Go rather than not being here at all, `docs/deviations.md` has the row.
+`sleep` waits. It is the one thing in the package that stops the caller rather
+than answering a question, and it absorbs the signals that would otherwise cut a
+wait short, so what it waits is what it was asked for.
+
+`core.time.tzdata` is the whole zone database as data, for a program that has to
+name a zone without a file system underneath it. Unlike Go's, it is asked for by
+name rather than turned on by being imported, and its own docstring says why.
+
+Not here yet: `Timer`, `Ticker`, `After`, `AfterFunc`, `Tick` and the two
+constructors. Every one of them delivers on a channel or runs a function on a
+goroutine, so all seven wait on `core.sync.chan` and arrive together with it.
+Where what is here behaves differently from Go rather than not being here at
+all, `docs/deviations.md` has the row.
 
 ## Where the divisions are
 
@@ -139,5 +148,6 @@ from .format import (
 )
 from .load import load_location, local
 from .parse import ParseError, parse, parse_duration, parse_in_location
+from .sleep import sleep
 from .tzif import load_location_from_tz_data
 from .zone import Location, Zone, fixed_zone, utc
