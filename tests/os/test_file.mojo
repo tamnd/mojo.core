@@ -21,10 +21,12 @@ from core.errors import matches
 from core.errors.codes import EOF, ErrClosed, ErrInvalid
 from core.io import (
     Byte,
+    READER_FROM,
     Reader,
     SEEK_CURRENT,
     SEEK_END,
     SEEK_START,
+    WRITER_TO,
     read_all,
     read_full,
 )
@@ -40,6 +42,8 @@ from core.os import (
     PATH_LIST_SEPARATOR,
     PATH_SEPARATOR,
     create,
+    getgid,
+    getuid,
     is_exist,
     is_not_exist,
     is_path_separator,
@@ -523,3 +527,99 @@ def test_a_file_is_a_reader_to_anything_that_wants_one() raises:
     var head = _first_line(f)
     f.close()
     assert_equal(head, "hello")
+
+
+def test_read_from_drains_a_reader_into_this_file() raises:
+    var place = _scratch("readfrom")
+    var out = create(String(place, "/src.txt"))
+    _ = out.write_string("into the file\n")
+    out.close()
+
+    var src = open(String(place, "/src.txt"))
+    var dst = create(String(place, "/dst.txt"))
+    assert_equal(dst.read_from(src), 14)
+    dst.close()
+    src.close()
+
+    var back = open(String(place, "/dst.txt"))
+    var text = read_all(back)
+    back.close()
+    assert_equal(String(from_utf8_lossy=Span(text)), "into the file\n")
+
+
+def test_write_to_pushes_what_is_left_from_the_offset() raises:
+    var place = _scratch("writeto")
+    var out = create(String(place, "/src.txt"))
+    _ = out.write_string("into the file\n")
+    out.close()
+
+    var src = open(String(place, "/src.txt"))
+    var head = _bytes(5)
+    _ = read_full(src, Span(head))
+
+    var dst = create(String(place, "/dst.txt"))
+    assert_equal(src.write_to(dst), 9)
+    dst.close()
+    src.close()
+
+    var back = open(String(place, "/dst.txt"))
+    var text = read_all(back)
+    back.close()
+    assert_equal(String(from_utf8_lossy=Span(text)), "the file\n")
+
+
+def test_an_empty_file_moves_nothing_in_either_direction() raises:
+    var place = _scratch("nothing")
+    var made = create(String(place, "/empty.txt"))
+    made.close()
+
+    var src = open(String(place, "/empty.txt"))
+    var dst = create(String(place, "/dst.txt"))
+    assert_equal(dst.read_from(src), 0)
+    assert_equal(src.write_to(dst), 0)
+    dst.close()
+    src.close()
+
+
+def test_a_file_says_it_can_read_from_and_write_to() raises:
+    var path = String(_scratch("caps"), "/caps.txt")
+    var f = create(path)
+    assert_true(f.capabilities() & READER_FROM != 0)
+    assert_true(f.capabilities() & WRITER_TO != 0)
+    f.close()
+
+
+def test_read_from_and_write_to_refuse_a_closed_file() raises:
+    var place = _scratch("closedcopy")
+    var other = create(String(place, "/other.txt"))
+    var f = create(String(place, "/gone.txt"))
+    f.close()
+
+    var read_refused = False
+    try:
+        _ = f.read_from(other)
+    except e:
+        read_refused = matches(e, ErrClosed)
+    assert_true(read_refused)
+
+    var write_refused = False
+    try:
+        _ = f.write_to(other)
+    except e:
+        write_refused = matches(e, ErrClosed)
+    assert_true(write_refused)
+    other.close()
+
+
+def test_chown_to_the_owner_this_file_already_has() raises:
+    var path = String(_scratch("chown"), "/owned.txt")
+    var f = create(path)
+    f.chown(getuid(), getgid())
+    f.close()
+
+    var refused = False
+    try:
+        f.chown(getuid(), getgid())
+    except e:
+        refused = matches(e, ErrClosed)
+    assert_true(refused)

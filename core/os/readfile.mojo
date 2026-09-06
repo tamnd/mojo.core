@@ -16,7 +16,7 @@ from core.io import Byte
 from core.io.fs import FileMode
 from core.syscall import O_CREAT, O_TRUNC, O_WRONLY
 
-from .file import open, open_file
+from .file import File, open, open_file
 
 comptime _FIRST_READ = 512
 """What to ask for when `stat` has nothing useful to say about the size."""
@@ -46,7 +46,17 @@ def read_file(name: String) raises -> List[Byte]:
     A failure part way through closes the file and raises, and nothing partial
     comes back. There is no useful way to hand over half a file and say so.
     """
-    var f = open(name)
+    return _read_all_of(open(name))
+
+
+def _read_all_of(var f: File) raises -> List[Byte]:
+    """The whole of an already open file, closing it. The body of `read_file`.
+
+    Separate from `read_file` because `core.os.Root.read_file` reads a file it
+    opened through a root rather than by name, and the loop underneath is the
+    same loop. It takes the file rather than borrowing it, since closing it is
+    part of what it does.
+    """
     var size = _FIRST_READ
     try:
         var found = f.stat()

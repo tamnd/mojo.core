@@ -33,17 +33,27 @@ the first zero and a truncated path names a different file; the layer below
 cannot refuse it without deciding policy either.
 """
 
-from core.errors import Code, Report
-from core.errors.codes import EOF, ErrClosed, ErrInvalid, ErrUnexpectedEOF
+from core.errors import Code, Report, matches, partial
+from core.errors.codes import (
+    EOF,
+    ErrClosed,
+    ErrInvalid,
+    ErrNoProgress,
+    ErrUnexpectedEOF,
+)
 from core.io import (
+    READER_FROM,
+    WRITER_TO,
     Byte,
     Closer,
     Reader as IoReader,
     ReaderAt,
+    ReaderFrom,
     Seeker,
     StringWriter,
     Writer as IoWriter,
     WriterAt,
+    WriterTo,
 )
 from core.io.fs import DirEntry, FileInfo, FileMode, MODE_PERM, MODE_SETGID
 from core.io.fs import MODE_SETUID, MODE_STICKY, READ_DIR_FILE, ReadDirFile
@@ -69,6 +79,7 @@ from core.syscall import dup as _sys_dup
 from core.syscall import fchdir as _sys_fchdir
 from core.syscall import fdopendir as _sys_fdopendir
 from core.syscall import fchmod as _sys_fchmod
+from core.syscall import fchown as _sys_fchown
 from core.syscall import fcntl as _sys_fcntl
 from core.syscall import fstat as _sys_fstat
 from core.syscall import fsync as _sys_fsync
@@ -86,6 +97,14 @@ from core.syscall import write as _sys_write
 # question of which one the reader thinks is meant. `read` is the exception,
 # imported under its own name, because `read` is an argument convention
 # keyword and `import read as` does not parse.
+
+comptime _COPY_BUFFER = 32 * 1024
+"""The buffer `read_from` and `write_to` move bytes through, in bytes.
+
+`core.io.copy` uses the same number for the same job, and it is Go's. Big
+enough that the cost of a call is noise against the work and small enough to
+ask for on every call without thinking about it.
+"""
 
 comptime _CLOSED = -1
 """What `_fd` holds once the descriptor is gone. No real one is negative."""
@@ -177,9 +196,11 @@ struct File(
     Movable,
     ReadDirFile,
     ReaderAt,
+    ReaderFrom,
     Seeker,
     StringWriter,
     WriterAt,
+    WriterTo,
 ):
     """One open file. Go's `os.File`.
 
@@ -526,6 +547,102 @@ struct File(
         except e:
             raise _path_error_from("chmod", self._name, e)
 
+    def chown(self, uid: Int, gid: Int) raises:
+        """Set the owner and the group. Go's `Chown`.
+
+        `-1` for either one leaves it alone. On the descriptor rather than on
+        the name, so it cannot land on a different file than the one this value
+        holds, and it works on a file whose name has already been removed.
+        """
+        if self._fd == _CLOSED:
+            raise _closed("chown", self._name)
+        try:
+            _sys_fchown(self._fd, uid, gid)
+        except e:
+            raise _path_error_from("chown", self._name, e)
+
+    def read_from[R: IoReader](mut self, mut src: R) raises -> Int64:
+        """Drain `src` into this file, and give back how much moved.
+        Go's `ReadFrom`.
+
+        A loop through a buffer, which is what Go falls back to when neither
+        `sendfile` nor `copy_file_range` applies. Neither call is bound in
+        `core.syscall` yet, so the fallback is all there is here, and it is a
+        real fallback rather than a stub: the bytes move and the count is
+        right. Issue #168 is where the kernel side goes, and this method's body
+        is the only thing that changes when it lands.
+
+        `EOF` from `src` is the end and is not raised. Anything else comes out
+        of here with the count that moved before it on `errors.partial`.
+        """
+        if self._fd == _CLOSED:
+            raise _closed("read_from", self._name)
+        var room = List[Byte](length=_COPY_BUFFER, fill=0)
+        var moved = Int64(0)
+        while True:
+            var got: Int
+            try:
+                got = src.read(Span(room))
+            except e:
+                if matches(e, EOF):
+                    return moved
+                raise Report("read_from " + self._name + ": reading").wrapping(
+                    e
+                ).with_count(Int(moved) + partial(e)).error()
+            if got == 0:
+                raise (
+                    Report(
+                        "read_from "
+                        + self._name
+                        + ": source returned no bytes and no error"
+                    )
+                    .with_code(ErrNoProgress)
+                    .with_count(Int(moved))
+                    .error()
+                )
+            try:
+                _ = self.write(Span(room)[0:got])
+            except e:
+                raise Report("read_from " + self._name + ": writing").wrapping(
+                    e
+                ).with_count(Int(moved) + partial(e)).error()
+            moved += Int64(got)
+
+    def write_to[W: IoWriter](mut self, mut dst: W) raises -> Int64:
+        """Push the rest of this file into `dst`, and give back how much.
+        Go's `WriteTo`.
+
+        `read_from` the other way round, with the same buffer and the same
+        reason for having one. Starts wherever the file offset is rather than
+        at the beginning, which is what a reader does everywhere else in this
+        library.
+
+        This file reaching its end is the end and is not raised.
+        """
+        if self._fd == _CLOSED:
+            raise _closed("write_to", self._name)
+        var room = List[Byte](length=_COPY_BUFFER, fill=0)
+        var moved = Int64(0)
+        while True:
+            var got: Int
+            try:
+                got = self.read(Span(room))
+            except e:
+                if matches(e, EOF):
+                    return moved
+                raise Report("write_to " + self._name + ": reading").wrapping(
+                    e
+                ).with_count(Int(moved) + partial(e)).error()
+            if got == 0:
+                return moved
+            try:
+                _ = dst.write(Span(room)[0:got])
+            except e:
+                raise Report("write_to " + self._name + ": writing").wrapping(
+                    e
+                ).with_count(Int(moved) + partial(e)).error()
+            moved += Int64(got)
+
     def chdir(self) raises:
         """Make this directory the process working directory. Go's `Chdir`.
 
@@ -634,7 +751,7 @@ struct File(
         return out^
 
     def capabilities(self) -> Int:
-        """A directory can be listed, and neither `core.io` fast path is here.
+        """A directory can be listed, and both `core.io` fast paths are here.
 
         `READ_DIR_FILE` is set on every file rather than on the ones that
         happen to be directories, because the bit says the method is
@@ -642,13 +759,15 @@ struct File(
         not a directory raises `ENOTDIR`, which is what a caller of
         `core.io.fs.read_dir` should see.
 
-        `write_to` and `read_from` on a file want `sendfile` on Linux and
-        `copy_file_range` where it exists, which is the only way either would
-        beat a copy through the caller's buffer. Neither is bound yet, so
-        offering the methods would mean advertising a fast path that is not
-        one. Issue #168 says so and issue #28 carries the rest.
+        `READER_FROM` and `WRITER_TO` are set because the methods are here and
+        that is what the bit means. They are not yet faster than the loop
+        `core.io.copy` would have run: what would make them faster is
+        `sendfile` on Linux and `copy_file_range` where it exists, and neither
+        is bound in `core.syscall`. Issue #168 is where that goes, and setting
+        the bits now means a caller gets the improvement without changing a
+        line.
         """
-        return READ_DIR_FILE
+        return READ_DIR_FILE | READER_FROM | WRITER_TO
 
 
 def new_file(fd: Int, var name: String) raises -> File:

@@ -298,6 +298,25 @@ def lstat(path: String) raises -> Stat:
     return out^
 
 
+def fstatat(dirfd: Int, path: String, flags: Int) raises -> Stat:
+    """What the platform says about a name relative to an open directory.
+
+    `AT_FDCWD` for `dirfd` makes this `stat`, and `AT_SYMLINK_NOFOLLOW` in
+    `flags` makes it `lstat`. Both of those are reachable already; what this
+    adds is asking about a name inside a directory the caller holds, so that
+    nothing can substitute a component of the path between the question and the
+    answer.
+    """
+    var out = Stat()
+    var raw = _cstr(path)
+    var failed = external_call["fstatat", Int32](
+        Int32(dirfd), raw.unsafe_ptr(), Pointer(to=out.raw[0]), Int32(flags)
+    )
+    if failed < 0:
+        _fail("fstatat", errno())
+    return out^
+
+
 def ftruncate(fd: Int, size: Int) raises:
     """Set the length of an open file, growing it with zeros if need be."""
     if external_call["ftruncate", Int32](Int32(fd), size) < 0:
@@ -358,6 +377,20 @@ def fchown(fd: Int, uid: Int, gid: Int) raises:
         _fail("fchown", errno())
 
 
+def fchownat(dirfd: Int, path: String, uid: Int, gid: Int, flags: Int) raises:
+    """Set the owner and the group of a name relative to an open directory.
+
+    `-1` leaves one of them alone, the same as in `chown`, and
+    `AT_SYMLINK_NOFOLLOW` in `flags` makes this `lchown` rather than `chown`.
+    """
+    var raw = _cstr(path)
+    var failed = external_call["fchownat", Int32](
+        Int32(dirfd), raw.unsafe_ptr(), Int32(uid), Int32(gid), Int32(flags)
+    )
+    if failed < 0:
+        _fail("fchownat", errno())
+
+
 def fsync(fd: Int) raises:
     """Push everything written to this descriptor out towards the device.
 
@@ -386,6 +419,19 @@ def mkdir(path: String, mode: Int) raises:
     var failed = external_call["mkdir", Int32](raw.unsafe_ptr(), Int32(mode))
     if failed < 0:
         _fail("mkdir", errno())
+
+
+def mkdirat(dirfd: Int, path: String, mode: Int) raises:
+    """Make a directory relative to an open directory.
+
+    There is no `rmdirat`, because `unlinkat` with `AT_REMOVEDIR` is it.
+    """
+    var raw = _cstr(path)
+    var failed = external_call["mkdirat", Int32](
+        Int32(dirfd), raw.unsafe_ptr(), Int32(mode)
+    )
+    if failed < 0:
+        _fail("mkdirat", errno())
 
 
 def rmdir(path: String) raises:
@@ -516,6 +562,28 @@ def rename(from_path: String, to_path: String) raises:
         _fail("rename", errno())
 
 
+def renameat(
+    from_dirfd: Int, from_path: String, to_dirfd: Int, to_path: String
+) raises:
+    """Move a name from one open directory to another.
+
+    Both ends are resolved relative to a descriptor, and either may be
+    `AT_FDCWD`. The two directories have to be on the same filesystem, which
+    was already true of `rename` and is the reason a move across devices is a
+    copy and a remove rather than one call.
+    """
+    var raw_from = _cstr(from_path)
+    var raw_to = _cstr(to_path)
+    var failed = external_call["renameat", Int32](
+        Int32(from_dirfd),
+        raw_from.unsafe_ptr(),
+        Int32(to_dirfd),
+        raw_to.unsafe_ptr(),
+    )
+    if failed < 0:
+        _fail("renameat", errno())
+
+
 def link(existing: String, made: String) raises:
     """Make a second name for a file that already has one."""
     var raw_existing = _cstr(existing)
@@ -525,6 +593,34 @@ def link(existing: String, made: String) raises:
     )
     if failed < 0:
         _fail("link", errno())
+
+
+def linkat(
+    from_dirfd: Int,
+    existing: String,
+    to_dirfd: Int,
+    made: String,
+    flags: Int,
+) raises:
+    """Make a second name for a file, both names relative to open directories.
+
+    `flags` is zero for the behaviour `link` has, which is not to follow a
+    symbolic link at the existing end, and `AT_SYMLINK_FOLLOW` to follow it and
+    link what it points at instead. That constant is not bound, because nothing
+    here wants it: a hard link to the link itself is what a copy of a tree
+    means to preserve.
+    """
+    var raw_existing = _cstr(existing)
+    var raw_made = _cstr(made)
+    var failed = external_call["linkat", Int32](
+        Int32(from_dirfd),
+        raw_existing.unsafe_ptr(),
+        Int32(to_dirfd),
+        raw_made.unsafe_ptr(),
+        Int32(flags),
+    )
+    if failed < 0:
+        _fail("linkat", errno())
 
 
 def symlink(target: String, made: String) raises:
@@ -540,6 +636,22 @@ def symlink(target: String, made: String) raises:
     )
     if failed < 0:
         _fail("symlink", errno())
+
+
+def symlinkat(target: String, dirfd: Int, made: String) raises:
+    """Make a symbolic link relative to an open directory.
+
+    Only the new name is resolved against `dirfd`. The target is text the
+    kernel stores and never looks at here, so there is no descriptor for it and
+    the argument order is the odd one `symlink` already has.
+    """
+    var raw_target = _cstr(target)
+    var raw_made = _cstr(made)
+    var failed = external_call["symlinkat", Int32](
+        raw_target.unsafe_ptr(), Int32(dirfd), raw_made.unsafe_ptr()
+    )
+    if failed < 0:
+        _fail("symlinkat", errno())
 
 
 def readlink(path: String) raises -> String:
@@ -561,6 +673,33 @@ def readlink(path: String) raises -> String:
         raise Report(
             String(
                 "readlink: the link is at least ",
+                PATH_MAX,
+                " bytes long and there is no way to ask how much longer",
+            )
+        ).error()
+    var out = String()
+    for i in range(n):
+        out += chr(Int(room[i]))
+    return out
+
+
+def readlinkat(dirfd: Int, path: String) raises -> String:
+    """The text a symbolic link holds, the link named inside an open directory.
+
+    Truncation is refused here the same way `readlink` refuses it, and for the
+    same reason.
+    """
+    var room = Array[Byte, PATH_MAX](fill=0)
+    var raw = _cstr(path)
+    var n = external_call["readlinkat", Int](
+        Int32(dirfd), raw.unsafe_ptr(), Pointer(to=room[0]), Int(PATH_MAX)
+    )
+    if n < 0:
+        _fail("readlinkat", errno())
+    if n == PATH_MAX:
+        raise Report(
+            String(
+                "readlinkat: the link is at least ",
                 PATH_MAX,
                 " bytes long and there is no way to ask how much longer",
             )
@@ -620,6 +759,22 @@ def fchmod(fd: Int, mode: Int) raises:
     """Set the permission bits on an open descriptor."""
     if external_call["fchmod", Int32](Int32(fd), Int32(mode)) < 0:
         _fail("fchmod", errno())
+
+
+def fchmodat(dirfd: Int, path: String, mode: Int, flags: Int) raises:
+    """Set the permission bits on a name relative to an open directory.
+
+    `AT_SYMLINK_NOFOLLOW` in `flags` asks to set the bits on a symbolic link
+    itself. macOS does that; Linux refuses it with `ENOTSUP`, because the bits
+    on a link there mean nothing and the kernel would rather say so than
+    pretend. Passing zero is what portable code does.
+    """
+    var raw = _cstr(path)
+    var failed = external_call["fchmodat", Int32](
+        Int32(dirfd), raw.unsafe_ptr(), Int32(mode), Int32(flags)
+    )
+    if failed < 0:
+        _fail("fchmodat", errno())
 
 
 def utimensat(

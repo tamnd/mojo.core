@@ -218,6 +218,20 @@ SEEK_END = "Deprecated in Go. Use core.io.SEEK_END."
 "ErrNoDeadline" = "Deadlines need the poller, which arrives in M10."
 "ErrNoHandle" = "Goes with Process.WithHandle, which is waived."
 
+# `syscall.RawConn` is how a Go program reaches the descriptor under a file
+# without racing the runtime for it, and it exists because the runtime owns the
+# descriptor and can move it in and out of the poller. Nothing owns a descriptor
+# here except the `File` holding it, so `fd` is the whole of the answer and a
+# second way to ask would be a wrapper around it with a callback in front.
+"File.SyscallConn" = "syscall.RawConn is a Go runtime mechanism. File.fd is the descriptor."
+
+# Everything platform specific about starting a child: process groups, session
+# leaders, credentials, namespaces. Go puts them in `syscall.SysProcAttr`, which
+# is a different struct on every platform and is the one part of `os` that is
+# not portable at all. `core.syscall` has no such struct, and adding one means
+# deciding which platform's fields are the shape of it.
+"ProcAttr.Sys" = "syscall.SysProcAttr is per platform and is not bound in core.syscall."
+
 ["os/exec"]
 # Everything Go can do about a command it has decided to give up on, all of it
 # built on a second goroutine watching a context while the first one waits.

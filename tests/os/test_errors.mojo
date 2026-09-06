@@ -1,4 +1,4 @@
-"""The three predicates, and the two error shapes that are not about one path.
+"""The four predicates, and the two error shapes that are not about one path.
 
 The predicates are asked of failures the kernel produced, because that is the
 only version of the question worth answering. `is_exist` is a claim about which
@@ -30,6 +30,7 @@ from core.os import (
     is_exist,
     is_not_exist,
     is_permission,
+    is_timeout,
     new_syscall_error,
     stat,
 )
@@ -160,6 +161,7 @@ def test_the_predicates_are_false_for_an_unrelated_error() raises:
     assert_false(is_exist(e))
     assert_false(is_not_exist(e))
     assert_false(is_permission(e))
+    assert_false(is_timeout(e))
 
 
 def test_the_fourth_group_go_writes_down() raises:
@@ -294,6 +296,18 @@ def test_timeout_is_asked_of_the_errno() raises:
 
     var missing = _path_error("open", "/no/such/file", Errno(ENOENT))
     assert_false(PathError.of(missing).value().timeout())
+
+
+def test_is_timeout_asks_the_same_question_of_any_error() raises:
+    """The method needs a `SyscallError` or a `PathError` in hand and the
+    function does not, which is the whole of the difference between them.
+    """
+    assert_true(is_timeout(new_syscall_error("read", Errno(ETIMEDOUT)).value()))
+    assert_true(is_timeout(new_syscall_error("read", Errno(EAGAIN)).value()))
+    assert_true(is_timeout(_path_error("read", "/dev/tty", Errno(ETIMEDOUT))))
+
+    assert_false(is_timeout(_path_error("open", "/nope", Errno(ENOENT))))
+    assert_false(is_timeout(Report("nothing to do with a deadline").error()))
 
 
 def test_two_errnos_that_mean_one_thing_are_still_two_numbers() raises:
