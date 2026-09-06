@@ -4,9 +4,11 @@ go = "encoding/base64"
 verdict = "Port"
 tier = 2
 unsafe = false
+# Go's `encoding/base64` imports `strconv` for one call, `FormatInt`, to put
+# the offset in the message of a `CorruptInputError`. `String(Int64)` does that
+# here, so the dependency goes away. It does not import `encoding` in Go and
+# does not need it here either: an `Encoding` is a table, not a marshaller.
 deps = [
-  "core.encoding",
   "core.errors",
   "core.io",
-  "core.strconv",
 ]
