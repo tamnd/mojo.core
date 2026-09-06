@@ -190,3 +190,85 @@ HasPrefix = "Deprecated in Go. Ignores path boundaries. Use rel and is_local."
 SEEK_SET = "Deprecated in Go. Use core.io.SEEK_START."
 SEEK_CUR = "Deprecated in Go. Use core.io.SEEK_CURRENT."
 SEEK_END = "Deprecated in Go. Use core.io.SEEK_END."
+# Three ways of asking how much processor time a child used, all of them
+# reading a `syscall.Rusage`, which is not bound in `core.syscall` and which
+# `waitpid` does not fill in. `wait4` is the call that would, and binding it is
+# what these three wait on.
+"ProcessState.SysUsage" = "Rusage is not bound yet, so there is nothing for this to return."
+"ProcessState.SystemTime" = "Rusage is not bound yet, and this reads it."
+"ProcessState.UserTime" = "Rusage is not bound yet, and this reads it."
+
+# `os.Signal` is an interface in Go with two methods, one of which exists only
+# to stop anything else satisfying it by accident. `Signal` is a struct here, so
+# nothing else can be one and there is nothing for the marker to guard against.
+"Signal.Signal" = "A marker method on Go's interface. Signal is a struct here, so nothing else can be one."
+
+# Added in Go 1.25 for a handle that survives process id reuse, which is
+# `pidfd` on Linux and has no counterpart on macOS. Nothing here needs it yet
+# and half a portability story is worse than none.
+"Process.WithHandle" = "A pidfd handle, which Linux has and macOS does not. Not portable enough to be worth half."
+
+# Deadlines on a file are the network poller's mechanism, and there is no
+# poller yet. The three setters and the two sentinels arrive together with it in
+# M10.
+"File.SetDeadline" = "Deadlines need the poller, which arrives in M10."
+"File.SetReadDeadline" = "Deadlines need the poller, which arrives in M10."
+"File.SetWriteDeadline" = "Deadlines need the poller, which arrives in M10."
+"ErrDeadlineExceeded" = "Deadlines need the poller, which arrives in M10."
+"ErrNoDeadline" = "Deadlines need the poller, which arrives in M10."
+"ErrNoHandle" = "Goes with Process.WithHandle, which is waived."
+
+["os/exec"]
+# Everything Go can do about a command it has decided to give up on, all of it
+# built on a second goroutine watching a context while the first one waits.
+# There is no second goroutine here and no context package, so a caller that
+# wants to give up starts the command with `start`, waits however it likes, and
+# calls `kill`.
+CommandContext = "No context package and no goroutine to watch one from. Use start, then kill."
+"Cmd.Cancel" = "The function CommandContext calls. Nothing calls it here."
+"Cmd.WaitDelay" = "A grace period a watching goroutine enforces. There is no watching goroutine."
+ErrWaitDelay = "Goes with Cmd.WaitDelay, which is waived."
+
+# Go's `Command` cannot return an error, because it is written to be usable
+# inside a struct literal, so a failed lookup is parked in a field and returned
+# later from `Run`. `command` raises instead, and there is nothing left for the
+# field to hold.
+"Cmd.Err" = "command raises rather than parking the failure in a field."
+
+# Go hangs the process attributes off a pointer to a per platform struct.
+# `setsid`, `setpgid` and `pgid` are on the `Cmd` and on `os.ProcAttr` directly,
+# because three booleans behind a pointer to a struct that differs by platform
+# is a shape worth losing.
+"Cmd.SysProcAttr" = "setsid, setpgid and pgid are fields on the Cmd rather than behind a pointer."
+
+# `exec.Error` wraps whatever the last file it looked at failed with. The
+# sentinel is a code on the record here and `matches` reads it, so there is no
+# second error to hold and nothing for `Unwrap` to give back.
+"Error.Err" = "The sentinel is a code on the record. matches reads it."
+"Error.Error" = "The message is written by write_to, as everywhere else in this library."
+"Error.Unwrap" = "Unwrapping is core.errors' job and works on the record rather than through a method."
+
+# Go captures the child's standard error behind the caller's back and hangs the
+# bytes on the error it returns. A `core.errors` record holds strings and
+# standard error is not promised to be text, so they are on the `Cmd` instead.
+"ExitError.Stderr" = "The bytes are Cmd.captured_stderr, because an error record holds strings."
+"ExitError.Error" = "The message is written by write_to, as everywhere else in this library."
+
+# Go's `ExitError` embeds an `*os.ProcessState` and gets these seven from it
+# without declaring them. The state is a named field here, so every one of them
+# is one dot further away and is tested where it is declared.
+"ExitError.ExitCode" = "Reached through the state field, which is where it is declared."
+"ExitError.Exited" = "Reached through the state field, which is where it is declared."
+"ExitError.Pid" = "Reached through the state field, which is where it is declared."
+"ExitError.String" = "Reached through the state field, which is where it is declared."
+"ExitError.Success" = "Reached through the state field, which is where it is declared."
+"ExitError.Sys" = "Reached through the state field, which is where it is declared."
+"ExitError.SysUsage" = "Rusage is not bound yet, and os.ProcessState.SysUsage is waived for it."
+"ExitError.SystemTime" = "Rusage is not bound yet, and os.ProcessState.SystemTime is waived for it."
+"ExitError.UserTime" = "Rusage is not bound yet, and os.ProcessState.UserTime is waived for it."
+
+["os/signal"]
+# A context cancelled when a signal arrives. There is no context package, and
+# the shape this library has instead is the descriptor `notify` gives back,
+# which is the thing M10's event loop will wait on.
+NotifyContext = "No context package. notify hands back a descriptor, which is what an event loop waits on."

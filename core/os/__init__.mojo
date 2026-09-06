@@ -67,8 +67,21 @@ else has, in a directory everybody can write to, without ever checking a name
 and then creating it. The name is random and the creation uses `O_EXCL`, so the
 creation itself is what decides whether the name was free.
 
-Anything to do with starting another program is still to come. Issue #28 tracks
-the rest.
+`start_process` starts another program and gives back a `Process`, which can be
+signalled and waited for, and a finished one is a `ProcessState` that says
+whether it exited or was killed. `ProcAttr` is how the child is set up: the
+directory, the environment, and the descriptors it gets. `Signal` is a signal,
+`INTERRUPT` and `KILL` are the two Go names, and `find_process` makes a handle
+on a process this program did not start. `ErrProcessDone` is what waiting on a
+process twice raises, and it is re-exported from `core.errors` here for the
+same reason the five file sentinels are.
+
+That is the low layer, an argument vector and a table of descriptors with no
+`PATH` search and no reading of the child's output. `core.os.exec` is the layer
+above it that does all three, and `core.os.signal` is how a program arranges to
+hear about a signal sent to itself.
+
+Issue #28 tracks the rest.
 
 ## Names from `core.io.fs`
 
@@ -106,6 +119,8 @@ from core.io.fs import (
     FileMode,
     PathError,
 )
+
+from core.errors.codes import ErrProcessDone
 
 from core.syscall import O_APPEND, O_EXCL, O_RDONLY, O_RDWR, O_SYNC, O_TRUNC
 from core.syscall import O_CREAT as O_CREATE
@@ -172,5 +187,15 @@ from .process import (
     pipe,
 )
 from .readfile import read_file, write_file
+from .spawn import (
+    INTERRUPT,
+    KILL,
+    ProcAttr,
+    Process,
+    ProcessState,
+    Signal,
+    find_process,
+    start_process,
+)
 from .stat import lstat, same_file, stat
 from .temp import create_temp, mkdir_temp

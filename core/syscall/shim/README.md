@@ -1,8 +1,8 @@
 # The C that core.syscall needs
 
-There are three C files in this library. Two of them are here, and both exist for a different reason from the first.
+There are five C files in this library. Four of them are here, and each exists for a different reason.
 
-[`core/errors/shim/slot.c`](../../errors/shim/README.md) is there because a piece of *state* cannot be expressed in Mojo: the language has no global mutable storage at all. `varargs.c` is here because a *calling convention* cannot be expressed in Mojo, and `environ.c` is here because a C *variable* cannot be named from Mojo. None of the three is a general place to put C, and they have nothing to say to each other beyond being compiled by the same function in `tools/lib/native.py`. Each lives next to the package that needs it.
+[`core/errors/shim/slot.c`](../../errors/shim/README.md) is there because a piece of *state* cannot be expressed in Mojo: the language has no global mutable storage at all. `varargs.c` is here because a *calling convention* cannot be expressed in Mojo. `environ.c` is here because a C *variable* cannot be named from Mojo. `spawn.c` and `signal.c` are here because a *rule about what may be called* cannot be expressed in Mojo: the child of a fork and the body of a signal handler may both call only what POSIX calls async signal safe, allocating is not on that list, and nothing in Mojo promises not to allocate. None of the five is a general place to put C, and they have nothing to say to each other beyond being compiled by the same function in `tools/lib/native.py`. Each lives next to the package that needs it.
 
 ## varargs.c, and the problem it solves
 
@@ -50,12 +50,44 @@ macOS makes the same point a second way. `environ` there is exported to the main
 
 Nothing is copied. The caller gets the array libc is using and has to read it before anything else in the process changes the environment, which is the rule `getenv` already comes with.
 
+## spawn.c, and the problem it solves
+
+A child between `fork` and `execve` has inherited every lock the parent's other threads were holding at the moment of the fork, and none of the threads that would release them. Taking one of those locks in the child is a hang, and the calls that are guaranteed not to are the POSIX async signal safe list. Allocating memory is not on it.
+
+That is a rule about what code may do rather than about what it looks like, and no Mojo signature can carry it. A child written in Mojo would look ordinary, pass every test, and hang on the machine whose allocator happened to be mid-refill when the fork landed. Go has exactly the same problem and solves it the same way: `syscall.forkAndExecInChild` is written to that list with a comment saying so, and the reviewer's job is to check each line against the list rather than to read for style.
+
+| Symbol | What it does |
+| --- | --- |
+| `core_syscall_spawn` | fork, arrange the child, exec, and report why not |
+
+A failure between the fork and the exec has nowhere to go: the child cannot raise and the exit status cannot say which failure it was, because 127 is also what a shell returns for a command it could not find. So the child writes the errno down a close on exec pipe and the parent reads it. That is Go's mechanism too.
+
+Nothing here decides anything. Which descriptors the child gets, what its environment is and where the executable was found are all arguments built in Mojo, in `core/syscall/spawn.mojo` and `core/os`.
+
+## signal.c, and the problem it solves
+
+A signal handler is a C function pointer, which Mojo has no way to produce, and it runs under the same async signal safe rule the fork child does. It also needs somewhere to put a value that outlives the call, which is the thing `slot.c` exists for one floor down.
+
+So the handler here does one thing: it writes the signal number, one byte, to a pipe. Everything worth doing about a signal happens on an ordinary thread reading the other end, where nothing is borrowed and every call in the language is available. That is the self pipe trick, and the reason to use it rather than something newer is that a pipe is a file descriptor: the event loop in M10 waits on it alongside a socket without either being a special case.
+
+| Symbol | What it does |
+| --- | --- |
+| `core_syscall_signal_pipe` | the read end, made once |
+| `core_syscall_signal_catch` | send this signal to the pipe |
+| `core_syscall_signal_ignore` | throw this signal away |
+| `core_syscall_signal_restore` | put this signal back to what it was |
+| `core_syscall_signal_is_ignored` | whether it is being thrown away now |
+
+Which signals to catch and what the bytes mean are Mojo, in `core/os/signal`.
+
 ## What they cost
 
-Two more object files on the link line of every binary that touches `core.syscall`, next to the one `core.errors` already puts there. `tools/lib/native.py` compiles all of them and hands back the list, and the four tools that build a Mojo binary pass the list to the linker rather than a single path.
+Four more object files on the link line of every binary that touches `core.syscall`, next to the one `core.errors` already puts there. `tools/lib/native.py` compiles all of them and hands back the list, and the four tools that build a Mojo binary pass the list to the linker rather than a single path.
 
 ## If the language changes
 
 The day `external_call` learns the variadic convention, `varargs.c` goes away and the three calls in `calls.mojo` become ordinary `external_call`s. `variadic_call.mojo` is the thing that will tell us, and it is a probe that is good news the day it fails.
 
 `environ.c` goes away the day Mojo can name a C variable, and there is no probe for that one, because a language that could do it would have no failing case to write down first.
+
+`spawn.c` and `signal.c` do not go away. A language that could express "this function allocates nothing and calls nothing that does" could hold them, and no such promise is on the roadmap; until there is one, these two are C because the rule they are written to is checked by a reader and by nothing else.

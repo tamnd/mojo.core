@@ -344,3 +344,26 @@ Stderr = "stderr"
 # for the same reason. Go's can be assigned to and this one cannot, so a caller
 # that wants a modified list makes one.
 Args = "args"
+
+# The two named signals. Go declares them as variables of an interface type and
+# this library has them as `Signal` constants, which is the capitals rule every
+# other constant here follows.
+Interrupt = "INTERRUPT"
+Kill = "KILL"
+
+["os/exec"]
+# Go's `exec.Error` cannot keep its name here. A struct called `Error` inside
+# this package would shadow the built in `Error` that every raise in it is made
+# of, and a signature naming one of them would be unreadable.
+Error = "ExecError"
+"Error.Name" = "ExecError.name"
+
+# Go's field is an `*os.Process` and a caller reaches through it to signal. A
+# `Process` cannot be handed out here without copying one, so `signal` and
+# `kill` are methods on the `Cmd` and the number is what the field gives back.
+"Cmd.Process" = "Cmd.process_id"
+
+# Go embeds an `*os.ProcessState`, which is how `ExitError` gets `ExitCode`,
+# `Exited` and the rest without declaring them. Embedding is not a thing here,
+# so the state is a field with a name and those methods are reached through it.
+"ExitError.embedded" = "ExitError.state"

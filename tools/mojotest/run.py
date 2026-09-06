@@ -6,9 +6,10 @@ a main that calls all of them, builds it once and runs it, so the build time
 tracks the size of the library rather than the number of tests. A library
 heading for tens of thousands of test cases cannot afford a process per case.
 
-That has a limit and we will hit it. When the suite takes longer to link than
-to run, the answer is to split by package rather than to keep raising the
-timeout.
+That has a limit and we hit it. Under the thread sanitiser the whole library is
+one three hour compile in front of a seven minute run, so `--shard k/n` splits
+the suite into n builds that can happen at once. The split is by file and in
+sorted order, so a shard compiles the packages it holds and not the tree.
 
 A test is a `def test_something() raises:` in a `test_*.mojo` file under tests/.
 The `raises` is required and the runner says so when it is missing, because a
@@ -32,6 +33,23 @@ silently matches no tests is how a suite stops running without anybody noticing.
 Pass --short to skip the cases marked slow, which is what a local run wants and
 what CI does not do. A case is marked by a `# slow: why` comment on the line
 above it, so the decision lives in the test rather than in a list here.
+
+A `# no-race: why` comment on the line above a test takes it out of the runs
+that build under the sanitiser, and out of no others. There is one thing that
+needs it and the reason is the sanitiser's rather than ours: a signal that
+arrives while a thread is blocked in a call the sanitiser has wrapped does not
+reach the handler, because the handler is deferred until the wrapper returns and
+the wrapper is inside a restartable read that the signal was supposed to end. A
+test that waits for a signal in a read therefore waits forever under the
+sanitiser and passes everywhere else, which is a fact about the sanitiser and
+not about the code being tested.
+
+Pass --deadline to put a limit on the run. A test that waits for something that
+never arrives blocks the whole binary, and a hang is the one failure that says
+nothing: the tests only print when they fail, so the job is cancelled at its own
+limit hours later and the log holds one line about a limit. With a deadline the
+suite is sampled first, so what comes out is the stack of the thread that was
+stuck rather than the fact that there was one.
 
 Pass --race to build the same suite under the thread sanitiser. Refcounts and
 locks are the two things in this library whose bugs do not show up as a failing
@@ -60,6 +78,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -107,6 +126,11 @@ MARKED = FIXTURES / "marked"
 # because the harvested tests arrive with these names.
 TEST_FN = re.compile(r"^def\s+(test_[a-z_0-9]*)\s*\(\s*\)(\s+raises)?\s*:")
 SLOW = re.compile(r"^#\s*slow:\s*(\S.*)$")
+NO_RACE = re.compile(r"^#\s*no-race:\s*(\S.*)$")
+
+# What --shard takes. One based, because a shard is named in a CI matrix and in
+# a log line and 1 of 4 is what a person reading either of them expects.
+SHARD = re.compile(r"^([0-9]+)/([0-9]+)$")
 
 
 @dataclass
@@ -116,6 +140,7 @@ class Case:
     path: Path
     name: str
     slow: str = ""
+    no_race: str = ""
 
     @property
     def module(self) -> str:
@@ -131,16 +156,21 @@ def scan(path: Path) -> tuple[list[Case], list[str]]:
     """Every test in one file, and anything wrong with how it is declared.
 
     Line by line rather than one regular expression over the whole file,
-    because a slow marker is a comment on the line above the test it marks and
-    that relationship is the thing being read.
+    because a marker is a comment on the line above the test it marks and that
+    relationship is the thing being read.
     """
     found: list[Case] = []
     problems: list[str] = []
     marker = ""
+    unraced = ""
     for number, line in enumerate(path.read_text().splitlines(), 1):
         slow = SLOW.match(line)
         if slow:
             marker = slow.group(1).strip()
+            continue
+        no_race = NO_RACE.match(line)
+        if no_race:
+            unraced = no_race.group(1).strip()
             continue
         match = TEST_FN.match(line)
         if match:
@@ -150,12 +180,13 @@ def scan(path: Path) -> tuple[list[Case], list[str]]:
                     f"{where} declares {match.group(1)} without `raises`, so no assertion "
                     "in it can fail. Add `raises` to the signature"
                 )
-            found.append(Case(path, match.group(1), marker))
+            found.append(Case(path, match.group(1), marker, unraced))
         if line.strip() and not line.lstrip().startswith("#"):
             # A marker only reaches past blank lines and other comments, so a
             # stray one at the top of a file does not silently mark whatever
             # test happens to come first.
             marker = ""
+            unraced = ""
     return found, problems
 
 
@@ -183,6 +214,37 @@ def discover(where: Path, only: str | None) -> tuple[list[Case], list[str]]:
         found.extend(cases)
         problems.extend(said)
     return found, problems
+
+
+def share(found: list[Case], spec: str) -> tuple[list[Case], list[str]]:
+    """The part of the suite that shard `k` of `n` is responsible for.
+
+    Split by file, and in the order the files sort, rather than by test or by
+    dealing files round the shards one at a time. What a shard costs is almost
+    entirely its compile, and what its compile costs is the set of packages it
+    reaches. Files that sort next to each other are in the same package or in
+    a neighbouring one and pull in much the same library, so a contiguous run
+    of them builds a fraction of the tree, while a round robin of them builds
+    all of it in every shard and saves nothing.
+
+    Splitting by file rather than by test matters for the same reason: two
+    shards holding halves of one file would compile that file and everything
+    under it twice.
+
+    The shares are as even as integer division allows and every test is in
+    exactly one of them, which `selftest` asserts rather than assumes.
+    """
+    match = SHARD.match(spec)
+    if not match:
+        return [], [f"--shard takes `k/n`, like 2/4, and got {spec!r}"]
+    index, count = int(match.group(1)), int(match.group(2))
+    if index < 1 or index > count:
+        return [], [f"--shard {spec} asks for a shard that is not one of {count}"]
+    files = sorted({case.path for case in found})
+    if count > len(files):
+        return [], [f"--shard {spec} wants more shards than there are test files, {len(files)}"]
+    mine = set(files[len(files) * (index - 1) // count : len(files) * index // count])
+    return [case for case in found if case.path in mine], []
 
 
 def write_main(found: list[Case], target: Path) -> None:
@@ -237,7 +299,34 @@ def ignored(path: Path) -> bool:
     return out.returncode == 0
 
 
-def build_and_run(scratch: Path, quiet: bool, race: bool = False) -> tuple[int, str, list[str]]:
+def stack(pid: int) -> str:
+    """What a suite that has stopped making progress is doing, if it can be had.
+
+    A hung suite is the one failure that says nothing at all. It prints nothing,
+    because the tests only print when they fail, and the exit code never comes,
+    so the job is cancelled at whatever its limit is and the log holds a single
+    line about a limit. Sampling it first turns that into the stack of every
+    thread, and the top of the blocked one is usually the whole answer.
+
+    `sample` is part of macOS and the sanitised suite only runs on macOS, so on
+    the machine where a deadlock is most likely there is always something to
+    ask. Elsewhere this says so rather than pretending.
+    """
+    tool = shutil.which("sample")
+    if not tool:
+        return "there is no `sample` on this host, so there is no stack to show"
+    try:
+        seen = subprocess.run(
+            [tool, str(pid), "2", "-mayDie"], capture_output=True, text=True, timeout=180
+        )
+    except (subprocess.TimeoutExpired, OSError) as why:
+        return f"`sample` could not be run on the hung suite: {why}"
+    return seen.stdout or seen.stderr
+
+
+def build_and_run(
+    scratch: Path, quiet: bool, race: bool = False, deadline: int = 0
+) -> tuple[int, str, list[str]]:
     """Build the suite, run it, and give back its exit code, output and problems.
 
     Streamed rather than captured and printed at the end, so a suite that takes
@@ -259,6 +348,13 @@ def build_and_run(scratch: Path, quiet: bool, race: bool = False) -> tuple[int, 
     folded into stdout below, and it does not change the exit code on its own,
     so the caller has to read the output for it. That is deliberate on the
     sanitiser's part and it is why `suite` looks for the warning by name.
+
+    A deadline in seconds turns a hang into a report. A test that waits for
+    something that never arrives blocks the whole binary, and with nothing to
+    time it out the job is cancelled at whatever its limit is and the log says
+    only that. With one, the suite is sampled and then stopped, so what comes
+    out is the stack of the thread that was stuck. Zero means wait forever,
+    which is what a local run wants.
 
     This build is also where the compile time checks in the library are heard.
     A format string is checked while the interpreter folds the call that uses
@@ -290,21 +386,46 @@ def build_and_run(scratch: Path, quiet: bool, race: bool = False) -> tuple[int, 
     if marked:
         return 1, "", marked
 
-    collected = []
+    collected: list[str] = []
     process = subprocess.Popen(
         [str(binary)], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
     assert process.stdout is not None
-    for line in process.stdout:
-        line = line.replace(f"{ROOT}/", "")
-        collected.append(line)
-        if not quiet:
-            sys.stdout.write(line)
-    return process.wait(), "".join(collected), []
+
+    def drain() -> None:
+        for line in process.stdout:
+            line = line.replace(f"{ROOT}/", "")
+            collected.append(line)
+            if not quiet:
+                sys.stdout.write(line)
+
+    # On its own thread, because the wait below is what the deadline is on and
+    # a read of the pipe cannot be given one.
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
+    try:
+        code = process.wait(timeout=deadline or None)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write(stack(process.pid))
+        process.kill()
+        process.wait()
+        return (
+            1,
+            "".join(collected),
+            [f"the suite was still running after {deadline}s, so it was sampled and stopped"],
+        )
+    reader.join(timeout=30)
+    return code, "".join(collected), []
 
 
 def suite(
-    where: Path, only: str | None, short: bool, quiet: bool = False, race: bool = False
+    where: Path,
+    only: str | None,
+    short: bool,
+    quiet: bool = False,
+    race: bool = False,
+    part: str | None = None,
+    deadline: int = 0,
 ) -> tuple[int, int, str, list[str]]:
     """Find, build and run. Returns cases run, skipped, output and problems."""
     found, problems = discover(where, only)
@@ -313,10 +434,20 @@ def suite(
     if only and not found:
         return 0, 0, "", [f"no tests match {only}, so nothing ran"]
 
-    skipped = [case for case in found if short and case.slow]
+    if part:
+        found, problems = share(found, part)
+        if problems:
+            return 0, 0, "", problems
+
+    def why(case: Case) -> str:
+        if race and case.no_race:
+            return case.no_race
+        return case.slow if short and case.slow else ""
+
+    skipped = [case for case in found if why(case)]
     for case in skipped:
         if not quiet:
-            print(f"test: skipping {case.label}, {case.slow}")
+            print(f"test: skipping {case.label}, {why(case)}")
     found = [case for case in found if case not in skipped]
     if not found:
         return 0, len(skipped), "", []
@@ -329,7 +460,7 @@ def suite(
         return 0, 0, "", [f"{MAIN.relative_to(ROOT)} is not ignored by git, fix .gitignore"]
 
     with tempfile.TemporaryDirectory() as scratch:
-        code, output, problems = build_and_run(Path(scratch), quiet, race)
+        code, output, problems = build_and_run(Path(scratch), quiet, race, deadline)
     if problems:
         return 0, 0, "", problems
     if code != 0 and not output:
@@ -369,6 +500,12 @@ def selftest() -> int:
     that has never fired is a check nobody knows works. tests/mojotest/marked
     holds one wrong format string, and this asserts that building it is
     reported rather than passed over.
+
+    The fourth check is not a run at all. Sharding is the only thing here that
+    can lose a test without anything going red: a shard that quietly drops a
+    file still reports a pass, and so does the shard that was supposed to have
+    it. So the shards are added back up against the whole tree and asserted to
+    be it, exactly once each. That is discovery only and costs no build.
     """
     problems = []
 
@@ -399,7 +536,20 @@ def selftest() -> int:
             f"instead got {complained or 'a pass'}"
         )
 
-    return report("test-selftest", 3, "runs of the fixtures", problems)
+    every, _ = discover(TESTS, None)
+    dealt: list[str] = []
+    for index in range(1, 5):
+        part, said = share(every, f"{index}/4")
+        for line in said:
+            problems.append(f"shard {index}/4 should have been valid, and it said {line}")
+        dealt.extend(case.label for case in part)
+    if sorted(dealt) != sorted(case.label for case in every):
+        problems.append(
+            f"four shards should add back up to the {len(every)} tests in the tree, "
+            f"and they came to {len(dealt)}"
+        )
+
+    return report("test-selftest", 4, "checks of the runner", problems)
 
 
 def main() -> int:
@@ -407,6 +557,13 @@ def main() -> int:
     parser.add_argument("package", nargs="?", help="run one package: `pixi run test core.strings`")
     parser.add_argument("--short", action="store_true", help="skip the cases marked slow")
     parser.add_argument("--race", action="store_true", help="build under the thread sanitiser")
+    parser.add_argument("--shard", help="run one part of the suite: `--shard 2/4`")
+    parser.add_argument(
+        "--deadline",
+        type=int,
+        default=0,
+        help="seconds to let the suite run before sampling it and stopping it",
+    )
     parser.add_argument(
         "--selftest", action="store_true", help="check that the runner reports a failure"
     )
@@ -415,12 +572,16 @@ def main() -> int:
     if args.selftest:
         return selftest()
 
-    ran, skipped, _, problems = suite(TESTS, args.package, args.short, race=args.race)
-    if not (ran or skipped or problems or args.package):
+    ran, skipped, _, problems = suite(
+        TESTS, args.package, args.short, race=args.race, part=args.shard, deadline=args.deadline
+    )
+    if not (ran or skipped or problems or args.package or args.shard):
         print("test: no tests in the tree yet")
         return 0
     if skipped:
-        print(f"test: {skipped} slow case(s) skipped, run without --short for all of them")
+        # Not "slow case(s)": a case can also be skipped for being one the
+        # sanitiser cannot run, and each of them printed its own reason above.
+        print(f"test: {skipped} case(s) skipped, each with its reason above")
     return report("test", ran, "tests", problems)
 
 
