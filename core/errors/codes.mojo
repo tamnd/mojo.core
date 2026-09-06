@@ -555,3 +555,15 @@ character more than the bytes it spells.
 
 Owned by `core.encoding.ascii85`. Go has no sentinel for it.
 """
+
+comptime ErrHeaderKeyColon = Code(55)
+"""A block was handed to `encode` with a colon in one of its header keys. A header
+line is a key, a colon, a space and a value, so a key with a colon in it would
+be read back as a shorter key with a longer value, and the block would not
+survive a round trip. Go returns an unexported error from `Encode` here and
+returns nil from `EncodeToMemory`, and both are refused before a single byte is
+written, so a writer that has already been written to is never left holding
+half a block.
+
+Owned by `core.encoding.pem`. Go has no sentinel for it.
+"""

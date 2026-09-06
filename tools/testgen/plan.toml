@@ -329,3 +329,32 @@ go = "encoding/ascii85"
 tables = [
   "pairs",
 ]
+
+[harvest.pem]
+go = "encoding/pem"
+# `getLineTests` is twelve rows of a line and what `getLine` should make of it,
+# and it is the table worth harvesting above all the others here, because every
+# row is a different arrangement of carriage returns, tabs and spaces around a
+# line ending and retyping one of those wrong would be invisible.
+#
+# `badPEMTests` is seven documents that look like PEM and are not, each named.
+# It is declared with an anonymous struct, which the extractor names after the
+# table, and every row names a top level constant rather than holding the text,
+# which works because the extractor copies the whole file before evaluating.
+#
+# `lineBreakerTests` is not here because the type it tests, Go's unexported
+# `lineBreaker`, has no counterpart in this port: the base64 is encoded in one
+# call and cut into lines afterwards. The strange documents in
+# `TestDecodeStrangeCases` and the two block fixtures are declared inside test
+# functions or are Go `Block` values, so they are written out by hand.
+tables = [
+  "getLineTests",
+  "badPEMTests",
+]
+# `pemData` and `pemPrivateKey2` are built by calling `testingKey`, a function
+# declared in the test file, and a function body is the one thing the extractor
+# does not copy. Neither is wanted here, so both are left out.
+skip = [
+  "pemData",
+  "pemPrivateKey2",
+]
