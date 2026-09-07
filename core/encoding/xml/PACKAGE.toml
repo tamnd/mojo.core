@@ -7,13 +7,10 @@ unsafe = false
 deps = [
   "core.bufio",
   "core.bytes",
-  "core.encoding",
   "core.errors",
-  "core.fmt",
   "core.io",
-  "core.sort",
+  "core.iter",
   "core.strconv",
   "core.strings",
-  "core.unicode",
   "core.unicode.utf8",
 ]
