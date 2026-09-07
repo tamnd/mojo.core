@@ -365,6 +365,24 @@ struct _Scanner(Copyable, Movable):
             self.err_offset = self.bytes
         return _SCAN_ERROR
 
+    def _end_value(mut self, c: Byte) -> Int:
+        """Read `c` as the byte after a value, whatever state the machine is in.
+        Go's `stateEndValue` called by name.
+
+        `Decoder.token` needs this for one thing. A closing bracket ends the
+        value inside it and the value it closes, and the second of those is only
+        reported when the byte after it arrives, which a decoder reading a
+        stream may have to wait on the network for. Feeding an invented space
+        here asks the question without reading anything, and the answer says
+        whether the document is finished.
+
+        Setting the state first is what makes it a direct call rather than a
+        step: after a closing bracket the state is already this one or the one
+        for a finished document, and both give the same answer from here.
+        """
+        self.step = _S_END_VALUE
+        return self.next(c)
+
     def next(mut self, c: Byte) -> Int:
         """Read one byte and say what it was. Go's `step`.
 
