@@ -410,6 +410,15 @@ NoPadding = "NO_PADDING"
 StdEncoding = "std_encoding"
 HexEncoding = "hex_encoding"
 
+["encoding/asn1"]
+# `class` is a Mojo keyword. Backticks would escape it, and a field somebody has
+# to quote every time they read it is worse than a field with a longer name, so
+# it says what it is instead.
+"RawValue.Class" = "RawValue.tag_class"
+# `write_to` is what a `String` method is here, the same as everywhere else in
+# this library.
+"ObjectIdentifier.String" = "ObjectIdentifier.write_to"
+
 ["encoding/xml"]
 # The declaration every document starts with is a `comptime` value, and a
 # constant is spelled in capitals here, which is the rule the two base64

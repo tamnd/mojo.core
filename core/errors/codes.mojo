@@ -753,3 +753,32 @@ number of bytes fixes this one.
 
 Owned by `core.encoding.binary`. Go has no sentinel for it.
 """
+
+comptime ErrASN1Syntax = Code(70)
+"""Bytes are not valid DER. Go has this as a `SyntaxError` holding a message,
+which a caller reads with a type assertion, and there is nothing to assert
+against here, so the message goes on the record and `SyntaxError.of` reads it
+back. One code covers every way an encoding can be malformed: a boolean whose
+contents octet is neither zero nor all ones, a length that says indefinite, a
+tag or a length that runs off the end of the input, a base 128 integer that is
+not minimally encoded, a bit string with no padding count or with padding bits
+that are not zero, an object identifier with no bytes, a string holding a
+character its type does not allow, and a structure that ended before its fields
+did. The message says which, in Go's words.
+
+Owned by `core.encoding.asn1`. Go has no sentinel for it.
+"""
+
+comptime ErrASN1Structural = Code(71)
+"""An encoding is well formed DER but does not say what the reader was asked to
+read. Go has this as a `StructuralError`, and it is the split Go makes as well:
+a syntax error means the bytes are not DER at all, and this means they are DER
+for something else. An integer that is not minimally encoded, an integer wider
+than the type reading it, a length above the eight megabyte ceiling, a base 128
+integer above what an `Int32` holds, and a tag that is not the tag the caller
+expected all land here. Keeping the two apart matters for a certificate parser,
+because the first says the sender is broken and the second says the sender and
+the reader disagree about what a field holds.
+
+Owned by `core.encoding.asn1`. Go has no sentinel for it.
+"""
