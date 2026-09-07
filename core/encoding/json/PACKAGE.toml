@@ -7,5 +7,7 @@ unsafe = false
 deps = [
   "core.errors",
   "core.io",
+  "core.iter",
   "core.strconv",
+  "core.unicode.utf8",
 ]
