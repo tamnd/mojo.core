@@ -180,12 +180,25 @@ def decoding(mut c: Checks) raises:
     )
     c.equal("whitespace", spaced.rest[1], "b")
 
-    # The escapes, including a pair of them that is one character and a lone
-    # half of a pair, which is Go's replacement character rather than a refusal.
+    # The escapes, including a pair of them that is one character.
     var escaped: Vendor = unmarshal_json_vendor(
-        '{"name":"\\u00e9\\ud83d\\ude00\\ud800\\/\\n","rating":0,"active":false}'.as_bytes()
+        '{"name":"\\u00e9\\ud83d\\ude00\\/\\n","rating":0,"active":false}'.as_bytes()
     )
-    c.equal("the escapes", escaped.name, "é😀" + chr(0xFFFD) + "/" + chr(10))
+    c.equal("the escapes", escaped.name, "é😀/" + chr(10))
+
+    # A lone half of a surrogate pair is refused rather than turned into the
+    # replacement character, which is what `core.encoding.json.parse` does and
+    # is not what Go does. A Mojo `String` says it is UTF-8, so substituting
+    # would be a silent edit of somebody's data.
+    var lone = True
+    try:
+        var half: Vendor = unmarshal_json_vendor(
+            '{"name":"\\ud800","rating":0,"active":false}'.as_bytes()
+        )
+        lone = half.name == ""
+    except:
+        pass
+    c.equal("half of a surrogate pair", lone, True)
 
 
 def refusing(mut c: Checks) raises:

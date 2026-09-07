@@ -1,111 +1,118 @@
-# The part of a generated codec that is the same for every struct: a scanner
-# over the input bytes and the handful of writers the encoder calls. This file
-# is a template rather than a module. Everything below the BEGIN line is copied
-# verbatim into each generated file, and the IMPORT lines above it are merged
-# with the imports the generated half needs.
-#
-# It is copied rather than imported because a generated codec has to work for
-# somebody who has this library and nothing else of ours. `core.encoding.json`
-# does not exist yet, and when it does the emitter can import its scanner
-# instead of copying this, which will show up as a diff in every checked in
-# codec and is the point of checking them in.
-#
-# It is a real Mojo file so that it can be edited with the compiler watching:
-# `pixi run codec-selftest` compiles what comes out of it on every run.
-#
-# IMPORT from core.errors import new
-# IMPORT from core.strconv import format_float, format_int, format_uint, parse_float, parse_int, parse_uint
-# IMPORT from core.strings import Builder
-#
-# BEGIN
+"""The half of a generated codec that is the same for every struct.
 
-comptime _TAB = Byte(9)
-comptime _NEWLINE = Byte(10)
-comptime _RETURN = Byte(13)
-comptime _SPACE = Byte(32)
-comptime _QUOTE = Byte(34)
-comptime _AMPERSAND = Byte(38)
-comptime _COMMA = Byte(44)
-comptime _MINUS = Byte(45)
-comptime _DOT = Byte(46)
-comptime _SLASH = Byte(47)
-comptime _ZERO = Byte(48)
-comptime _NINE = Byte(57)
-comptime _COLON = Byte(58)
-comptime _LESS = Byte(60)
-comptime _GREATER = Byte(62)
-comptime _UPPER_A = Byte(65)
-comptime _UPPER_E = Byte(69)
-comptime _UPPER_F = Byte(70)
-comptime _LBRACKET = Byte(91)
-comptime _BACKSLASH = Byte(92)
-comptime _RBRACKET = Byte(93)
-comptime _LOWER_A = Byte(97)
-comptime _LOWER_B = Byte(98)
-comptime _LOWER_E = Byte(101)
-comptime _LOWER_F = Byte(102)
-comptime _LOWER_N = Byte(110)
-comptime _LOWER_R = Byte(114)
-comptime _LOWER_T = Byte(116)
-comptime _LOWER_U = Byte(117)
-comptime _LBRACE = Byte(123)
-comptime _RBRACE = Byte(125)
+`tools/codec` writes one encoder and one decoder for every struct whose
+docstring says `codec:"json"`, out of the fields and the struct tags. Every one
+of them needs the same three things: a position in the input, the JSON grammar
+below the level of which field is which, and the handful of writers that put a
+string or a number on the end of some bytes. Those are here.
+
+They were copied into each generated file until this package existed to hold
+them, because a generated codec has to work for somebody who has this library
+and nothing else of ours, and there was nothing here to import. Now there is,
+so a program with twenty codecs in it carries one copy of this rather than
+twenty, and a generated decoder reads exactly the documents `parse` reads
+rather than the documents a second implementation of the same grammar happens
+to read.
+
+Nothing here is Go's. Go's `encoding/json` does this work by reflection while
+the program runs, so there is no function in it a generated decoder would call
+and no name of Go's for any of this. What a caller of this library writes is
+still `marshal_json(value)` and `unmarshal_json_item(bytes)`, which the
+generator wrote; these are what those two are made of.
+
+`ValueScanner` is not the scanner `valid` and `compact` run on. That one is a
+state machine fed one byte at a time, which is what makes it work over a
+stream, and this one holds the whole document and walks it, which is what makes
+a decoder that assigns straight into a field possible. They agree on the
+grammar because the parts where agreeing is difficult, the text of a string and
+the shape of a number, are the same code.
+"""
+
+from core.errors import new
+from core.io import Byte
+from core.strconv import (
+    format_float,
+    format_int,
+    format_uint,
+    parse_float,
+    parse_int,
+    parse_uint,
+)
+
+from .document import _unquote_strict
+from .scan import (
+    MAX_NESTING_DEPTH,
+    _BACKSLASH,
+    _COLON,
+    _COMMA,
+    _DOT,
+    _LBRACE,
+    _LBRACKET,
+    _LOWER_A,
+    _LOWER_B,
+    _LOWER_E,
+    _LOWER_F,
+    _LOWER_N,
+    _LOWER_R,
+    _LOWER_T,
+    _LOWER_U,
+    _MINUS,
+    _NEWLINE,
+    _NINE,
+    _PLUS,
+    _QUOTE,
+    _RBRACE,
+    _RBRACKET,
+    _RETURN,
+    _SPACE,
+    _TAB,
+    _UPPER_E,
+    _ZERO,
+    _is_hex,
+    _quote_char,
+    _syntax_error,
+)
 
 comptime _HEX = "0123456789abcdef"
+"""The digits a `\\u` escape is written with, in lower case, which is Go's."""
 
-comptime _MAX_DEPTH = 10000
-"""How deep the input is allowed to nest, which is Go's `maxNestingDepth`.
-
-Nesting is what turns a small input into a large stack. Both the generated
-decoders and `skip_value` count their depth against this, so a megabyte of
-open brackets is a raise rather than a crash.
-"""
-
-comptime _REPLACEMENT = 0xFFFD
-"""What an escape that is not a character turns into, which is Go's answer too.
-
-A lone surrogate half is well formed JSON and is not a character, and Go's
-decoder writes U+FFFD for it rather than refusing the document. Refusing would
-be defensible; differing from Go quietly would not be.
-"""
+comptime _SLASH = Byte(47)
+comptime _LESS = Byte(60)
+comptime _GREATER = Byte(62)
+comptime _AMPERSAND = Byte(38)
+comptime _E2 = Byte(0xE2)
+comptime _80 = Byte(0x80)
+comptime _A8 = Byte(0xA8)
 
 
-def _byte_name(c: Byte) -> String:
-    """One byte as it should read in an error message."""
-    if c >= _SPACE and c < Byte(127):
-        return "'" + chr(Int(c)) + "'"
-    return "byte " + String(Int(c))
-
-
-def _write_rune(mut out: List[Byte], r: Int):
-    """One code point onto the end of `out` as UTF-8."""
-    if r < 0x80:
-        out.append(Byte(r))
-    elif r < 0x800:
-        out.append(Byte(0xC0 | (r >> 6)))
-        out.append(Byte(0x80 | (r & 0x3F)))
-    elif r < 0x10000:
-        out.append(Byte(0xE0 | (r >> 12)))
-        out.append(Byte(0x80 | ((r >> 6) & 0x3F)))
-        out.append(Byte(0x80 | (r & 0x3F)))
-    else:
-        out.append(Byte(0xF0 | (r >> 18)))
-        out.append(Byte(0x80 | ((r >> 12) & 0x3F)))
-        out.append(Byte(0x80 | ((r >> 6) & 0x3F)))
-        out.append(Byte(0x80 | (r & 0x3F)))
-
-
-struct _Scanner[o: ImmOrigin](Movable):
+struct ValueScanner[o: ImmOrigin](Movable):
     """The input, a position in it, and how deeply nested that position is.
 
     Every generated decoder walks one of these. The methods are the JSON
     grammar and nothing above it: reading a value into a field is the generated
     code's job, and knowing that `[` starts an array is this one's.
+
+    ```mojo
+    from core.encoding.json import ValueScanner
+
+    def main():
+        var sc = ValueScanner('{"a":1}'.as_bytes())
+        sc.expect(Byte(ord("{")))
+        print(sc.read_string())  # a
+        sc.expect(Byte(ord(":")))
+        print(sc.read_signed(64))  # 1
+    ```
     """
 
     var data: Span[Byte, Self.o]
+    """The whole document. A decoder is handed all of it at once, which is what
+    lets a field be assigned where it is found rather than buffered."""
+
     var pos: Int
+    """How many bytes have been read."""
+
     var depth: Int
+    """How many brackets are open, counted against `MAX_NESTING_DEPTH`."""
 
     def __init__(out self, data: Span[Byte, Self.o]):
         self.data = data
@@ -113,19 +120,23 @@ struct _Scanner[o: ImmOrigin](Movable):
         self.depth = 0
 
     def fail(self, what: String) -> Error:
-        """An error naming the byte it happened at.
+        """A refusal naming the byte it happened at.
 
-        Offsets rather than lines and columns, because the offset is what a
-        caller can slice the input with and counting lines costs a pass over
-        everything read so far.
+        The same shape every other refusal in this package makes, so
+        `SyntaxError.of` reads a generated decoder's failure as readily as it
+        reads one from `valid`. Offsets rather than lines and columns, because
+        the offset is what a caller can slice the input with and counting lines
+        costs a pass over everything read so far.
         """
-        return new("json: at byte " + String(self.pos) + ": " + what)
+        return _syntax_error(what, self.pos + 1)
 
     def enter(mut self) raises:
         """Go one level deeper into the input, or refuse to."""
         self.depth += 1
-        if self.depth > _MAX_DEPTH:
-            raise self.fail("nested more than " + String(_MAX_DEPTH) + " deep")
+        if self.depth > MAX_NESTING_DEPTH:
+            raise self.fail(
+                "exceeded max depth of " + String(MAX_NESTING_DEPTH)
+            )
 
     def leave(mut self):
         """Come back out of a level."""
@@ -143,7 +154,7 @@ struct _Scanner[o: ImmOrigin](Movable):
         """The next byte that is not whitespace, without consuming it."""
         self.skip_space()
         if self.pos >= len(self.data):
-            raise self.fail("the input ended in the middle of a value")
+            raise self.fail("unexpected end of JSON input")
         return self.data[self.pos]
 
     def accept(mut self, c: Byte) raises -> Bool:
@@ -157,7 +168,7 @@ struct _Scanner[o: ImmOrigin](Movable):
     def expect(mut self, c: Byte) raises:
         """Take `c`, or raise saying it was wanted."""
         if not self.accept(c):
-            raise self.fail("expected " + _byte_name(c))
+            raise self.fail("expected " + _quote_char(c))
 
     def _word(mut self, word: StaticString) -> Bool:
         """Take a bare word such as `null` if it is next, whitespace already
@@ -185,93 +196,78 @@ struct _Scanner[o: ImmOrigin](Movable):
             return False
         raise self.fail("expected true or false")
 
-    def _hex4(mut self) raises -> Int:
-        """The four hexadecimal digits of a `\\u` escape."""
-        if self.pos + 4 > len(self.data):
-            raise self.fail("a \\u escape ran off the end of the input")
-        var r = 0
-        for i in range(4):
-            var c = self.data[self.pos + i]
-            if c >= _ZERO and c <= _NINE:
-                r = r * 16 + Int(c - _ZERO)
-            elif c >= _LOWER_A and c <= _LOWER_F:
-                r = r * 16 + Int(c - _LOWER_A) + 10
-            elif c >= _UPPER_A and c <= _UPPER_F:
-                r = r * 16 + Int(c - _UPPER_A) + 10
-            else:
-                raise self.fail("a \\u escape is not four hexadecimal digits")
-        self.pos += 4
-        return r
+    def _skip_escape(mut self) raises:
+        """Step over one escape sequence, the backslash not yet taken.
 
-    def _escape(mut self, mut out: List[Byte]) raises:
-        """One escape sequence, the backslash already taken."""
-        if self.pos >= len(self.data):
-            raise self.fail("the input ended in the middle of an escape")
-        var c = self.data[self.pos]
-        self.pos += 1
-        if c == _QUOTE or c == _BACKSLASH or c == _SLASH:
-            out.append(c)
-        elif c == _LOWER_B:
-            out.append(Byte(8))
-        elif c == _LOWER_F:
-            out.append(Byte(12))
-        elif c == _LOWER_N:
-            out.append(_NEWLINE)
-        elif c == _LOWER_R:
-            out.append(_RETURN)
-        elif c == _LOWER_T:
-            out.append(_TAB)
-        elif c == _LOWER_U:
-            var r = self._hex4()
-            if r >= 0xD800 and r <= 0xDBFF:
-                # A high surrogate, which is half of a character. Its low half
-                # has to be the next escape or there is no character here.
-                var saved = self.pos
-                var another = (
-                    self.pos + 1 < len(self.data)
-                    and self.data[self.pos] == _BACKSLASH
-                    and self.data[self.pos + 1] == _LOWER_U
-                )
-                if another:
-                    self.pos += 2
-                    var low = self._hex4()
-                    if low >= 0xDC00 and low <= 0xDFFF:
-                        var whole = (
-                            0x10000 + ((r - 0xD800) << 10) + (low - 0xDC00)
-                        )
-                        _write_rune(out, whole)
-                        return
-                    self.pos = saved
-                _write_rune(out, _REPLACEMENT)
-            elif r >= 0xDC00 and r <= 0xDFFF:
-                _write_rune(out, _REPLACEMENT)
-            else:
-                _write_rune(out, r)
-        else:
-            raise self.fail("\\" + _byte_name(c) + " is not an escape")
+        The escape is only checked here, not resolved. What it stands for is
+        `_unquote_strict`'s answer, and that function is written for a literal
+        somebody has already agreed is one, so this is where an escape that is
+        not an escape has to be refused.
+        """
+        if self.pos + 1 >= len(self.data):
+            raise self.fail("unexpected end of JSON input")
+        var esc = self.data[self.pos + 1]
+        if esc == _LOWER_U:
+            if self.pos + 6 > len(self.data):
+                raise self.fail("unexpected end of JSON input")
+            for i in range(2, 6):
+                var digit = self.data[self.pos + i]
+                if not _is_hex(digit):
+                    self.pos += i
+                    raise self.fail(
+                        "invalid character "
+                        + _quote_char(digit)
+                        + " in \\u escape"
+                    )
+            self.pos += 6
+            return
+        if (
+            esc != _QUOTE
+            and esc != _BACKSLASH
+            and esc != _SLASH
+            and esc != _LOWER_B
+            and esc != _LOWER_F
+            and esc != _LOWER_N
+            and esc != _LOWER_R
+            and esc != _LOWER_T
+        ):
+            self.pos += 1
+            raise self.fail(
+                "invalid character " + _quote_char(esc) + " in string escape"
+            )
+        self.pos += 2
 
     def read_string(mut self) raises -> String:
-        """One JSON string, with its escapes resolved."""
-        self.expect(_QUOTE)
-        var out = List[Byte]()
+        """One JSON string, with its escapes resolved.
+
+        Refuses a string holding bytes that are not UTF-8 and an escape naming
+        half of a surrogate pair with no other half, which is what `parse`
+        does and is not what Go does. A Mojo `String` says it is UTF-8, so
+        Go's U+FFFD in place of either would be a silent edit of somebody's
+        data rather than a representation of it. `docs/deviations.md` has the
+        row.
+        """
+        self.skip_space()
+        if self.pos >= len(self.data) or self.data[self.pos] != _QUOTE:
+            raise self.fail("expected a string")
+        var start = self.pos
+        self.pos += 1
         while True:
             if self.pos >= len(self.data):
-                raise self.fail("the input ended in the middle of a string")
+                raise self.fail("unexpected end of JSON input")
             var c = self.data[self.pos]
+            if c == _BACKSLASH:
+                self._skip_escape()
+                continue
             if c == _QUOTE:
                 self.pos += 1
                 break
-            if c == _BACKSLASH:
-                self.pos += 1
-                self._escape(out)
-                continue
             if c < _SPACE:
                 raise self.fail(
-                    "a string holds " + _byte_name(c) + " unescaped"
+                    "invalid character " + _quote_char(c) + " in string literal"
                 )
-            out.append(c)
             self.pos += 1
-        return String(from_utf8=Span(out))
+        return _unquote_strict(self.data[start : self.pos], start)
 
     def _digits(mut self) raises -> Int:
         """Run over one or more decimal digits and say how many."""
@@ -313,7 +309,7 @@ struct _Scanner[o: ImmOrigin](Movable):
         ):
             self.pos += 1
             if self.pos < len(self.data) and (
-                self.data[self.pos] == _MINUS or self.data[self.pos] == Byte(43)
+                self.data[self.pos] == _MINUS or self.data[self.pos] == _PLUS
             ):
                 self.pos += 1
             if self._digits() == 0:
@@ -383,11 +379,11 @@ struct _Scanner[o: ImmOrigin](Movable):
         """Check that the value just read was the whole input."""
         self.skip_space()
         if self.pos != len(self.data):
-            raise self.fail("there is more input after the end of the value")
+            raise self.fail("invalid character after top-level value")
 
 
-def _missing(struct_name: StaticString, key: String) -> Error:
-    """What a decoder raises when a key it needs was not in the document.
+def missing_key(struct_name: StaticString, key: String) -> Error:
+    """What a generated decoder raises when a key it needs was not there.
 
     Go leaves a missing field at its zero value. Mojo has no zero value to
     leave it at, so a field that is not `Optional` and not in the document is
@@ -403,19 +399,19 @@ def _missing(struct_name: StaticString, key: String) -> Error:
     )
 
 
-def _write_escape(c: Byte, mut out: Builder) raises:
+def _append_escape(mut dst: List[Byte], c: Byte):
     """One byte that cannot appear in a JSON string as itself."""
-    out.write_byte(_BACKSLASH)
-    out.write_byte(_LOWER_U)
-    out.write_byte(_ZERO)
-    out.write_byte(_ZERO)
     var digits = _HEX.as_bytes()
-    out.write_byte(digits[Int(c >> 4)])
-    out.write_byte(digits[Int(c & 0xF)])
+    dst.append(_BACKSLASH)
+    dst.append(_LOWER_U)
+    dst.append(_ZERO)
+    dst.append(_ZERO)
+    dst.append(digits[Int(c >> 4)])
+    dst.append(digits[Int(c & 0xF)])
 
 
-def _write_string[o: ImmOrigin](s: StringSlice[o], mut out: Builder) raises:
-    """One string as a quoted JSON string.
+def append_string[o: ImmOrigin](mut dst: List[Byte], s: StringSlice[o]):
+    """One string onto the end of `dst` as a quoted JSON string.
 
     The escaping is Go's `encoding/json` and not the JSON grammar's minimum:
     `<`, `>` and `&` go out as escapes so that the result can be embedded in an
@@ -423,8 +419,12 @@ def _write_string[o: ImmOrigin](s: StringSlice[o], mut out: Builder) raises:
     escapes because they are line terminators to a JavaScript parser and are
     not to a JSON one. Matching Go matters more here than terse output, since
     the two are going to be compared byte for byte.
+
+    `Value.write_to` makes the other choice and escapes only what RFC 8259
+    requires, because a document that arrived in UTF-8 should leave in UTF-8.
+    The difference is Go's: `Marshal` escapes and `Compact` does not.
     """
-    out.write_byte(_QUOTE)
+    dst.append(_QUOTE)
     var data = s.as_bytes()
     var start = 0
     var i = 0
@@ -442,60 +442,60 @@ def _write_string[o: ImmOrigin](s: StringSlice[o], mut out: Builder) raises:
                 i += 1
                 continue
             if start < i:
-                _ = out.write(data[start:i])
+                dst.extend(data[start:i])
             if c == _QUOTE or c == _BACKSLASH:
-                out.write_byte(_BACKSLASH)
-                out.write_byte(c)
+                dst.append(_BACKSLASH)
+                dst.append(c)
             elif c == _NEWLINE:
-                out.write_byte(_BACKSLASH)
-                out.write_byte(_LOWER_N)
+                dst.append(_BACKSLASH)
+                dst.append(_LOWER_N)
             elif c == _RETURN:
-                out.write_byte(_BACKSLASH)
-                out.write_byte(_LOWER_R)
+                dst.append(_BACKSLASH)
+                dst.append(_LOWER_R)
             elif c == _TAB:
-                out.write_byte(_BACKSLASH)
-                out.write_byte(_LOWER_T)
+                dst.append(_BACKSLASH)
+                dst.append(_LOWER_T)
             else:
-                _write_escape(c, out)
+                _append_escape(dst, c)
             i += 1
             start = i
             continue
         # U+2028 and U+2029, which are E2 80 A8 and E2 80 A9 in UTF-8.
         if (
-            c == Byte(0xE2)
+            c == _E2
             and i + 2 < len(data)
-            and data[i + 1] == Byte(0x80)
-            and (data[i + 2] == Byte(0xA8) or data[i + 2] == Byte(0xA9))
+            and data[i + 1] == _80
+            and (data[i + 2] & ~Byte(1)) == _A8
         ):
             if start < i:
-                _ = out.write(data[start:i])
-            _ = out.write_string("\\u202")
-            out.write_byte(_HEX.as_bytes()[Int(data[i + 2] - Byte(0xA0))])
+                dst.extend(data[start:i])
+            dst.extend("\\u202".as_bytes())
+            dst.append(_HEX.as_bytes()[Int(data[i + 2] & 0xF)])
             i += 3
             start = i
             continue
         i += 1
     if start < len(data):
-        _ = out.write(data[start:])
-    out.write_byte(_QUOTE)
+        dst.extend(data[start:])
+    dst.append(_QUOTE)
 
 
-def _write_bool(b: Bool, mut out: Builder) raises:
+def append_bool(mut dst: List[Byte], b: Bool):
     """`true` or `false`."""
-    _ = out.write_string("true" if b else "false")
+    dst.extend(("true" if b else "false").as_bytes())
 
 
-def _write_signed(i: Int64, mut out: Builder) raises:
+def append_signed(mut dst: List[Byte], i: Int64) raises:
     """A signed number."""
-    _ = out.write_string(format_int(i, 10))
+    dst.extend(format_int(i, 10).as_bytes())
 
 
-def _write_unsigned(i: UInt64, mut out: Builder) raises:
+def append_unsigned(mut dst: List[Byte], i: UInt64) raises:
     """An unsigned number."""
-    _ = out.write_string(format_uint(i, 10))
+    dst.extend(format_uint(i, 10).as_bytes())
 
 
-def _write_float(f: Float64, bits: Int, mut out: Builder) raises:
+def append_float(mut dst: List[Byte], f: Float64, bits: Int) raises:
     """A number, formatted the way Go's `encoding/json` formats one.
 
     Shortest round trip digits, with the exponent form only outside the range
@@ -521,7 +521,7 @@ def _write_float(f: Float64, bits: Int, mut out: Builder) raises:
             and b[n - 3] == _MINUS
             and b[n - 2] == _ZERO
         ):
-            _ = out.write(b[: n - 2])
-            out.write_byte(b[n - 1])
+            dst.extend(b[: n - 2])
+            dst.append(b[n - 1])
             return
-    _ = out.write_string(text)
+    dst.extend(text.as_bytes())

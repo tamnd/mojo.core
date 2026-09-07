@@ -86,7 +86,7 @@ That generator is infrastructure rather than a JSON detail. JSON, XML, gob, bina
 
 Generating rather than reflecting settles two things Go decides at run time. A struct tag is read while the code is being written rather than while it is running, so a misspelled one stops the build instead of quietly producing a field under the wrong name. And a field that is not in the document is an error rather than a zero, because Mojo has no zero value to leave it at: only `Optional`, `List` and `Dict` may be absent, since those are the three that have an empty value nobody has to invent. That makes `omitempty` on anything else a refusal rather than a round trip that loses a field.
 
-Each generated file carries its own copy of the scanner it needs rather than importing one, so a codec works for somebody who has this library and nothing else of ours. When `core.encoding.json` exists the emitter can import instead, and because the generated files are checked in, that change is a diff in every one of them.
+A generated file imports the scanner and the writers it needs from `core.encoding.json` rather than carrying its own copy of them. It did carry a copy at first, because the package they now live in did not exist yet, and every codec was five hundred lines of which four hundred were the same five hundred lines as the one next to it. Moving them took a diff in every checked in codec, which is the price of the generated files being read as well as compiled: the reader of one now sees the fields, and the shared half is somewhere a reader can find it once.
 
 The hole this leaves is real and it is not papered over. `json.Marshal(anyValue)` cannot exist, because there is no such thing as a value of unknown type at run time.
 
