@@ -738,3 +738,18 @@ a method that would break it.
 
 Owned by `core.encoding.json`. Go has no sentinel for it.
 """
+
+comptime ErrVarintOverflow = Code(69)
+"""A varint named a number that does not fit in sixty four bits. Ten bytes is the
+whole of what the encoding gives a sixty four bit number, seven bits to a byte
+with the tenth carrying a single one, so an eleventh byte and a tenth byte
+above one are both bits with nowhere to go. Go has this unexported and only
+raises it from `ReadUvarint`; its `Uvarint` says the same thing with a negative
+count, which a caller who does not read the count never sees at all. Here both
+raise, and the bytes read before the refusal are on `errors.partial`, which is
+the magnitude of Go's negative count. A number that simply ran out raises `EOF`
+or `ErrUnexpectedEOF` instead, since more bytes would have fixed it and no
+number of bytes fixes this one.
+
+Owned by `core.encoding.binary`. Go has no sentinel for it.
+"""

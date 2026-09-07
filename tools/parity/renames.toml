@@ -368,6 +368,20 @@ Error = "ExecError"
 # so the state is a field with a name and those methods are reached through it.
 "ExitError.embedded" = "ExitError.state"
 
+["encoding/binary"]
+# The three varint widths are `comptime` values and a constant is spelled in
+# capitals here, which is the rule that gave `io` its seek constants and
+# `filepath` its separators theirs. The trailing number stays attached to the
+# word it belongs to rather than becoming a word of its own, the same as
+# `math.MaxInt64`.
+MaxVarintLen16 = "MAX_VARINT_LEN16"
+MaxVarintLen32 = "MAX_VARINT_LEN32"
+MaxVarintLen64 = "MAX_VARINT_LEN64"
+# `String` becomes `write_to` on both order traits, the same as everywhere else
+# in this library.
+"ByteOrder.String" = "ByteOrder.write_to"
+"AppendByteOrder.String" = "AppendByteOrder.write_to"
+
 ["encoding/base64"]
 # The two paddings are `comptime` values and a constant is spelled in capitals
 # here, which is the rule that gave `io` its seek constants and `filepath` its
