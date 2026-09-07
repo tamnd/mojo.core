@@ -708,3 +708,33 @@ thousand levels. The message says which, in Go's words.
 
 Owned by `core.encoding.json`. Go has no sentinel for it.
 """
+
+comptime ErrJSONText = Code(67)
+"""A string in a document held bytes that are not UTF-8, or an escape naming half
+of a surrogate pair with no other half. Go turns both into U+FFFD and carries
+on, because a Go `string` is arbitrary bytes and the substitution is the only
+thing it can do that keeps the document readable. A Mojo `String` says it is
+UTF-8, so the substitution would be a silent edit of somebody's data rather
+than a representation of it, and `parse` refuses instead. This is only about
+what a string holds: `valid` and the token decoder both accept these documents,
+because the scanner counts brackets and quotes and never reads the text between
+them, and the four cases JSONTestSuite has for this are in the column RFC 8259
+leaves to the implementation.
+
+Owned by `core.encoding.json`. Go has no sentinel for it.
+"""
+
+comptime ErrJSONStale = Code(68)
+"""A handle was used after the document it came from was parsed into again. A
+`Value` is an index into an arena rather than a pointer at a node, because a
+struct cannot hold itself, so nothing about the index says whether the node it
+names is still the node it named. Every document carries a generation that
+`reset` and `parse_into` raise, every handle remembers the generation it was
+made at, and a mismatch raises here rather than reading whatever now lives at
+that index. Mojo's origins already refuse most of the ways this could be
+reached, since a handle borrows the document it points at, and the counter is
+what makes the arena safe by its own construction rather than by the absence of
+a method that would break it.
+
+Owned by `core.encoding.json`. Go has no sentinel for it.
+"""

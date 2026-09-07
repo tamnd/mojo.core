@@ -6,13 +6,19 @@ a file name is the verdict: `y_` has to be accepted, `n_` has to be refused,
 and `i_` is a case the standard leaves open, where either answer is allowed so
 long as it was decided rather than stumbled into.
 
+Every file is put to `valid`, which is a question about structure, and to
+`parse`, which also has to decide what a string holds. The two answers differ on
+exactly twenty files and `_refused_by_parse` is where that is written down.
+
 The corpus is embedded by `tools/gen/jsonsuite.py`, because nothing in this
 suite opens a file at run time.
 """
 
 from std.testing import assert_equal, assert_true
 
-from core.encoding.json import valid, valid_or_raise
+from core.encoding.json import new_document, valid, valid_or_raise
+from core.errors import matches
+from core.errors.codes import ErrJSONText
 from tests.generated.jsonsuite import suite_cases
 
 
@@ -37,6 +43,52 @@ def _refused_open_cases() -> List[String]:
         String("i_string_utf16BE_no_BOM.json"),
         String("i_string_utf16LE_no_BOM.json"),
         String("i_structure_UTF-8_BOM_empty_object.json"),
+    ]
+
+
+def _refused_by_parse() -> List[String]:
+    """The twenty `i_` files `valid` accepts and `parse` refuses.
+
+    All twenty are a string holding something that is not text: eleven carry an
+    escape naming half of a surrogate pair with no other half, and nine carry
+    bytes that are not UTF-8, which covers a lone continuation byte, an overlong
+    sequence, a surrogate written out in UTF-8, a code point past the end of
+    Unicode, Latin-1 and a sequence that simply stops.
+
+    They are one decision rather than twenty. `valid` reads the bytes between a
+    pair of quotes only far enough to find the closing quote, so a document is
+    structure and the text inside it is somebody else's business, and Go draws
+    the line in the same place. A `Value` is where that stops being true,
+    because it hands back a Mojo `String`, which says it is UTF-8. Go's answer
+    is to put U+FFFD in and carry on, which loses the difference between a
+    document that held a replacement character and one that did not, so `parse`
+    raises `ErrJSONText` instead. `docs/deviations.md` has the row.
+
+    The four files in `_refused_open_cases` are refused by both, for a reason
+    that is about the document's own encoding rather than about a string, so
+    they are not in this table and `parse` refuses twenty four in total.
+    """
+    return [
+        String("i_object_key_lone_2nd_surrogate.json"),
+        String("i_string_1st_surrogate_but_2nd_missing.json"),
+        String("i_string_1st_valid_surrogate_2nd_invalid.json"),
+        String("i_string_UTF-8_invalid_sequence.json"),
+        String("i_string_UTF8_surrogate_U+D800.json"),
+        String("i_string_incomplete_surrogate_and_escape_valid.json"),
+        String("i_string_incomplete_surrogate_pair.json"),
+        String("i_string_incomplete_surrogates_escape_valid.json"),
+        String("i_string_invalid_lonely_surrogate.json"),
+        String("i_string_invalid_surrogate.json"),
+        String("i_string_invalid_utf-8.json"),
+        String("i_string_inverted_surrogates_U+1D11E.json"),
+        String("i_string_iso_latin_1.json"),
+        String("i_string_lone_second_surrogate.json"),
+        String("i_string_lone_utf8_continuation_byte.json"),
+        String("i_string_not_in_unicode_range.json"),
+        String("i_string_overlong_sequence_2_bytes.json"),
+        String("i_string_overlong_sequence_6_bytes.json"),
+        String("i_string_overlong_sequence_6_bytes_null.json"),
+        String("i_string_truncated-utf-8.json"),
     ]
 
 
@@ -206,6 +258,158 @@ def test_a_string_is_not_checked_for_being_text() raises:
         counted += 1
         assert_true(valid(Span(cases[i].document)), "refused " + name)
     assert_equal(counted, 20)
+
+
+def test_every_yes_case_is_parsed() raises:
+    """The ninety five documents that are JSON, read into an arena.
+
+    Nothing in the yes column holds a string that is not text, so `parse` and
+    `valid` agree on all ninety five, and this is the test that says so.
+    """
+    var cases = suite_cases()
+    for i in range(len(cases)):
+        var name = cases[i].name.copy()
+        if not name.startswith("y_"):
+            continue
+        var doc = new_document()
+        try:
+            doc.parse_into(Span(cases[i].document))
+        except e:
+            raise Error("refused " + name + ": " + String(e))
+
+
+def test_every_yes_case_survives_a_round_trip() raises:
+    """Written back out and read again, every one of the ninety five gives the
+    same bytes the second time.
+
+    Not the same bytes as the file, which would be asking `write_to` to keep
+    whitespace and the document's own choice of escape. What has to hold is
+    that writing a document out and reading it back gives a document that
+    writes out the same way, which is what says the arena and the writer agree
+    about what is in there.
+    """
+    var cases = suite_cases()
+    for i in range(len(cases)):
+        var name = cases[i].name.copy()
+        if not name.startswith("y_"):
+            continue
+        var first = new_document()
+        first.parse_into(Span(cases[i].document))
+        var once = String(first.root())
+        var second = new_document()
+        try:
+            second.parse_into(once.as_bytes())
+        except e:
+            raise Error("refused its own output for " + name + ": " + String(e))
+        assert_equal(String(second.root()), once, name)
+
+
+def test_every_no_case_is_refused_by_parse() raises:
+    """The hundred and eighty eight documents that are not JSON.
+
+    `parse` runs `valid_or_raise` before it reads anything, so this is the same
+    hundred and eighty eight refusals arriving through a second door. Worth
+    asking anyway: the builder walks the bytes a second time and a document it
+    accepted after the scanner refused it would be the scanner not being
+    consulted.
+    """
+    var cases = suite_cases()
+    for i in range(len(cases)):
+        var name = cases[i].name.copy()
+        if not name.startswith("n_"):
+            continue
+        var doc = new_document()
+        var accepted = True
+        try:
+            doc.parse_into(Span(cases[i].document))
+        except:
+            accepted = False
+        if accepted:
+            raise Error("accepted " + name)
+
+
+def test_the_open_cases_are_answered_on_purpose_by_parse() raises:
+    """The thirty five documents RFC 8259 leaves to the implementation.
+
+    Twenty four are refused, the four in `_refused_open_cases` for their
+    encoding and the twenty in `_refused_by_parse` for what a string holds, and
+    the remaining eleven are accepted. As with `valid`, the point of the table
+    is that a new file in the corpus cannot quietly change an answer.
+    """
+    var encoding = _refused_open_cases()
+    var text = _refused_by_parse()
+    var cases = suite_cases()
+    var seen = 0
+    var refused = 0
+    for i in range(len(cases)):
+        var name = cases[i].name.copy()
+        if not name.startswith("i_"):
+            continue
+        seen += 1
+        var want = not _holds(encoding, name) and not _holds(text, name)
+        var doc = new_document()
+        var got = True
+        var why = String()
+        try:
+            doc.parse_into(Span(cases[i].document))
+        except e:
+            got = False
+            why = String(e)
+            refused += 1
+        if got != want:
+            var verb = "accepted " if got else "refused "
+            raise Error(verb + name + ", which the tables do not say: " + why)
+    assert_equal(seen, 35)
+    assert_equal(refused, 24)
+
+
+def test_a_refused_string_says_it_was_the_text() raises:
+    """All twenty carry `ErrJSONText`, so a caller can tell a document that is
+    not JSON from one whose strings are not text and act differently."""
+    var text = _refused_by_parse()
+    var cases = suite_cases()
+    var counted = 0
+    for i in range(len(cases)):
+        var name = cases[i].name.copy()
+        if not _holds(text, name):
+            continue
+        counted += 1
+        var doc = new_document()
+        try:
+            doc.parse_into(Span(cases[i].document))
+            raise Error("accepted " + name)
+        except e:
+            assert_true(matches(e, ErrJSONText), name + ": " + String(e))
+    assert_equal(counted, 20)
+
+
+def test_the_parse_table_names_files_that_exist() raises:
+    """A name misspelled in `_refused_by_parse` would turn a refusal into an
+    expectation of acceptance and the tests above would still pass, since the
+    misspelling matches nothing."""
+    var text = _refused_by_parse()
+    assert_equal(len(text), 20)
+    var cases = suite_cases()
+    var names = List[String]()
+    for i in range(len(cases)):
+        names.append(cases[i].name.copy())
+    for i in range(len(text)):
+        assert_true(
+            _holds(names, text[i]), "no such file in the corpus: " + text[i]
+        )
+
+
+def test_the_two_tables_name_different_files() raises:
+    """The four refused for their encoding and the twenty refused for their
+    text are separate decisions, and a file in both would make the count of
+    twenty four wrong."""
+    var encoding = _refused_open_cases()
+    var text = _refused_by_parse()
+    for i in range(len(encoding)):
+        assert_true(
+            not _holds(text, encoding[i]),
+            "in both tables: " + encoding[i],
+        )
 
 
 def test_five_hundred_nested_arrays_are_fine() raises:
