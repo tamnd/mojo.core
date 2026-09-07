@@ -1,11 +1,15 @@
 [package]
 name = "core.encoding.binary"
 go = "encoding/binary"
-verdict = "Adapt"
+verdict = "Port"
 tier = 2
 unsafe = false
+# Go's `encoding/binary` imports `math` for `Float32bits` and `Float64bits` and
+# `reflect` for everything else, and both of those belong to the `Read` and
+# `Write` half that is not here yet. What is here reads and writes integers, so
+# it needs somewhere for a refusal to go and a `ByteReader` for the two varint
+# calls that take one, and nothing else.
 deps = [
   "core.errors",
   "core.io",
-  "core.math",
 ]
