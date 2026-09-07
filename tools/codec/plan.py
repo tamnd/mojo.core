@@ -55,9 +55,16 @@ DECORATED = re.compile(r"((?:^@\w+[^\n]*\n)*)^struct\s+(\w+)", re.MULTILINE)
 # formats land later and a struct will want to say `codec:"json,binary"`.
 OPT_IN = "codec"
 
+# The one type from the library itself that a field may be. Go's `RawMessage`
+# is the way to say that a value is read later by something that knows what it
+# is, which is how a message with a kind and a payload is read at all, and it
+# is a field type rather than a shape the generator could work out.
+RAW = "core.encoding.json.RawMessage"
+
 # The field types with an empty value that nobody has to invent: no value, no
-# elements, no entries. A document is allowed not to carry one of these, and a
-# field of any other type that the document does not carry is an error.
+# elements, no entries, no bytes. A document is allowed not to carry one of
+# these, and a field of any other type that the document does not carry is an
+# error.
 #
 # This is the one place the generator is stricter than Go on purpose. Go leaves
 # a missing field at its zero value, which is why a Go program cannot tell a
@@ -69,7 +76,7 @@ OPT_IN = "codec"
 # `omitempty` follows from the same rule. A field left out when it is empty has
 # to be a field that can be read back when it is missing, so the option is
 # refused anywhere else rather than quietly breaking the round trip.
-ABSENT = ("optional", "list", "dict")
+ABSENT = ("optional", "list", "dict", "raw")
 
 
 @dataclass(frozen=True)
@@ -191,6 +198,8 @@ def encoding(ref: TypeRef, where: Index, known: dict[str, Codec | None]) -> Enco
         return Encoding("float", name, bits=FLOATING[name])
     if name == "String":
         return Encoding("string", "String")
+    if ref.path == RAW:
+        return Encoding("raw", "RawMessage")
 
     if name in ("Optional", "List") and len(ref.args) == 1:
         inner = encoding(ref.args[0], where, known)

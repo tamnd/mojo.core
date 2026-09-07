@@ -28,7 +28,7 @@ grammar because the parts where agreeing is difficult, the text of a string and
 the shape of a number, are the same code.
 """
 
-from core.errors import new
+from core.errors import Report, new
 from core.io import Byte
 from core.strconv import (
     format_float,
@@ -40,6 +40,7 @@ from core.strconv import (
 )
 
 from .document import _unquote_strict
+from .raw import RawMessage
 from .scan import (
     MAX_NESTING_DEPTH,
     _BACKSLASH,
@@ -114,10 +115,22 @@ struct ValueScanner[o: ImmOrigin](Movable):
     var depth: Int
     """How many brackets are open, counted against `MAX_NESTING_DEPTH`."""
 
-    def __init__(out self, data: Span[Byte, Self.o]):
+    var disallow_unknown: Bool
+    """Whether a key no field matches is an error rather than something to step
+    over. Go's `Decoder.DisallowUnknownFields`, carried down to where the
+    decision is made.
+
+    Off unless asked for, which is Go's default and is the only default a
+    format that has to survive the other end being upgraded can have.
+    """
+
+    def __init__(
+        out self, data: Span[Byte, Self.o], disallow_unknown: Bool = False
+    ):
         self.data = data
         self.pos = 0
         self.depth = 0
+        self.disallow_unknown = disallow_unknown
 
     def fail(self, what: String) -> Error:
         """A refusal naming the byte it happened at.
@@ -375,6 +388,40 @@ struct ValueScanner[o: ImmOrigin](Movable):
         else:
             _ = self.read_number(False)
 
+    def read_raw(mut self) raises -> RawMessage:
+        """One whole value, kept as the bytes it was written with.
+
+        What a `RawMessage` field turns into, and the way a document decides
+        its own shape: the bytes are walked far enough to know where the value
+        ends and are not read for what they mean, so a payload whose type is
+        named by a field beside it can be read a second time once that field
+        has been.
+        """
+        self.skip_space()
+        var start = self.pos
+        self.skip_value()
+        return RawMessage(self.data[start : self.pos])
+
+    def unknown_key(mut self, key: String) raises:
+        """A key no field matched, stepped over or refused.
+
+        Which of the two is `disallow_unknown`, and the message is Go's word
+        for word so that a program moved off Go reads the same failure. It is
+        not a syntax error and does not carry `ErrJSONSyntax`, because the
+        document is well formed JSON and the disagreement is about what the
+        reader expected rather than about the bytes. The offset is on it all
+        the same, naming the value the key introduced, because the scanner
+        knows where it is and Go's decoder does not.
+        """
+        if not self.disallow_unknown:
+            self.skip_value()
+            return
+        raise (
+            Report('json: unknown field "' + key + '"')
+            .with_field("offset", String(self.pos + 1))
+            .error()
+        )
+
     def end(mut self) raises:
         """Check that the value just read was the whole input."""
         self.skip_space()
@@ -478,6 +525,19 @@ def append_string[o: ImmOrigin](mut dst: List[Byte], s: StringSlice[o]):
     if start < len(data):
         dst.extend(data[start:])
     dst.append(_QUOTE)
+
+
+def append_raw(mut dst: List[Byte], m: RawMessage):
+    """A value that is already JSON, written through unchanged.
+
+    The whitespace inside it goes out as it came in, which is the point: a raw
+    message is the bytes somebody sent, and reformatting them would mean a
+    payload signed by whoever wrote it no longer verifies.
+    """
+    if len(m.bytes) == 0:
+        dst.extend("null".as_bytes())
+        return
+    dst.extend(Span(m.bytes))
 
 
 def append_bool(mut dst: List[Byte], b: Bool):

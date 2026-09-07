@@ -10,9 +10,13 @@ and it is copied out of this repository along with the package before it is
 built, so that nothing here can quietly depend on being inside the library.
 """
 
+from core.encoding.json import RawMessage
+
+from inventory.envelopes import Envelope
 from inventory.items import Item, Sparse
 from inventory.json_codec import (
     marshal_json,
+    unmarshal_json_envelope,
     unmarshal_json_item,
     unmarshal_json_sparse,
     unmarshal_json_vendor,
@@ -223,9 +227,84 @@ def refusing(mut c: Checks) raises:
     c.equal("and the document itself", fails(whole), False)
 
 
+def deferring(mut c: Checks) raises:
+    """A payload nobody has read yet, which is what `RawMessage` is for."""
+    var carried = RawMessage('{ "a" : [ 1 , 2 ] }'.as_bytes())
+    c.equal(
+        "a payload written through unchanged",
+        marshal_json(Envelope("item", carried.copy(), RawMessage())),
+        '{"kind":"item","payload":{ "a" : [ 1 , 2 ] }}',
+    )
+
+    # The empty one is `null`, which is Go's answer for a nil `RawMessage` and
+    # is what a decoder can read back into an empty one again.
+    c.equal(
+        "an empty payload",
+        marshal_json(Envelope("item", RawMessage(), RawMessage())),
+        '{"kind":"item","payload":null}',
+    )
+
+    # `omitempty` on a raw field leaves the key out altogether, which is the
+    # difference between a payload that is empty and one that was not sent.
+    c.equal(
+        "a trailer that is there",
+        marshal_json(Envelope("item", RawMessage(), RawMessage("1".as_bytes()))),
+        '{"kind":"item","payload":null,"trailer":1}',
+    )
+
+    # What comes back is the bytes as they were written, whitespace and all,
+    # which is the whole point: a payload somebody signed still verifies.
+    var read: Envelope = unmarshal_json_envelope(
+        '{"kind":"item","payload":{ "a" : [ 1 , 2 ] } }'.as_bytes()
+    )
+    c.equal("the kind", read.kind, "item")
+    c.equal("the payload", String(read.payload), '{ "a" : [ 1 , 2 ] }')
+    c.equal("nothing in the trailer", len(read.trailer), 0)
+    c.equal(
+        "and the whole thing again",
+        marshal_json(read),
+        '{"kind":"item","payload":{ "a" : [ 1 , 2 ] }}',
+    )
+
+    # A payload of any shape, since nothing about it is read.
+    var scalar: Envelope = unmarshal_json_envelope(
+        '{"kind":"n","payload":1e400,"trailer":"x"}'.as_bytes()
+    )
+    c.equal("a payload no float could hold", String(scalar.payload), "1e400")
+    c.equal("a trailer", String(scalar.trailer), '"x"')
+
+    # A raw field the document does not carry is the empty one rather than an
+    # error, the same as a list or a dictionary it does not carry.
+    var bare: Envelope = unmarshal_json_envelope('{"kind":"n"}'.as_bytes())
+    c.equal("a payload that was not sent", String(bare.payload), "null")
+
+
+def strictness(mut c: Checks) raises:
+    """Go's `DisallowUnknownFields`, which is the second argument here."""
+
+    def reads(document: String, disallow_unknown: Bool) -> Bool:
+        try:
+            var read: Vendor = unmarshal_json_vendor(
+                document.as_bytes(), disallow_unknown
+            )
+            return read.name == "acme"
+        except:
+            return False
+
+    var extra = String(
+        '{"name":"acme","later":{"a":[1]},"rating":4.5,"active":true}'
+    )
+    var plain = String('{"name":"acme","rating":4.5,"active":true}')
+    c.equal("an unknown key, stepped over", reads(extra, False), True)
+    c.equal("the same key, refused", reads(extra, True), False)
+    c.equal("a document with nothing extra in it", reads(plain, True), True)
+
+
 def main() raises:
     var c = Checks()
     encoding(c)
     decoding(c)
     refusing(c)
+    deferring(c)
+    strictness(c)
     print("the generated codec passed", c.ran, "checks")

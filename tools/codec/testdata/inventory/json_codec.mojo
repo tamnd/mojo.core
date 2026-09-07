@@ -1,4 +1,4 @@
-"""JSON for Item, Sparse, Summary and Vendor, generated from the structs themselves.
+"""JSON for Envelope, Item, Sparse, Summary and Vendor, generated from the structs themselves.
 
 Written by `tools/codec` out of the fields and struct tags of the
 `inventory` package. Do not edit it: change the struct or its tags and
@@ -9,17 +9,19 @@ byte for byte.
 Each struct has two entry points:
 
 ```mojo
-var text = marshal_json(item)
-var back: Item = unmarshal_json_item(text.as_bytes())
+var text = marshal_json(envelope)
+var back: Envelope = unmarshal_json_envelope(text.as_bytes())
 ```
 
 The encoder is overloaded on its argument, so every struct here has one called
 `marshal_json`. The decoder is told apart from the others only by the type it
 produces, which Mojo will not overload on, so its name carries the struct.
 
-A key in the document that no field matches is skipped, the way Go skips one.
-A field that is not in the document is an error, because Mojo has no zero value
-to leave it at. `Optional` is how a field says it may be absent.
+A key in the document that no field matches is skipped, the way Go skips one,
+unless the decoder is given `True` for its second argument, which is Go's
+`Decoder.DisallowUnknownFields`. A field that is not in the document is an
+error, because Mojo has no zero value to leave it at. `Optional` is how a field
+says it may be absent.
 
 The scanner and the writers come from `core.encoding.json`, so what is below is
 the codecs and nothing else, and every codec anywhere reads the same JSON that
@@ -27,18 +29,93 @@ package's own `parse` reads.
 """
 
 from core.encoding.json import (
+    RawMessage,
     ValueScanner,
     append_bool,
     append_float,
+    append_raw,
     append_signed,
     append_string,
     append_unsigned,
     missing_key,
 )
 
+from .envelopes import Envelope
 from .items import Item, Sparse
 from .summaries import Summary
 from .vendors import Vendor
+
+
+# ----------------------------------------------------------------------------
+# inventory.envelopes.Envelope
+# ----------------------------------------------------------------------------
+
+
+def marshal_json(value: Envelope) raises -> String:
+    """`value` as a JSON object."""
+    var out = List[Byte]()
+    _encode_envelope(value, out)
+    return String(from_utf8=Span(out))
+
+
+def _encode_envelope(value: Envelope, mut out: List[Byte]) raises:
+    """One object onto the end of `out`, for a field or for the whole value."""
+    out.append(Byte(ord("{")))
+    out.extend('"kind":'.as_bytes())
+    append_string(out, value.kind)
+    out.append(Byte(ord(",")))
+    out.extend('"payload":'.as_bytes())
+    append_raw(out, value.payload)
+    if len(value.trailer) != 0:
+        out.append(Byte(ord(",")))
+        out.extend('"trailer":'.as_bytes())
+        append_raw(out, value.trailer)
+    out.append(Byte(ord("}")))
+
+
+def unmarshal_json_envelope(
+    out result: Envelope,
+    data: Span[Byte, _],
+    disallow_unknown: Bool = False,
+) raises:
+    """The whole of `data` as one `Envelope`.
+
+    With `disallow_unknown` set, a key that no field matches is an error
+    rather than something to step over, which is Go's
+    `Decoder.DisallowUnknownFields`.
+    """
+    var sc = ValueScanner(data, disallow_unknown)
+    result = _decode_envelope(sc)
+    sc.end()
+
+
+def _decode_envelope(out result: Envelope, mut sc: ValueScanner[_]) raises:
+    """One object out of `sc`, wherever in the document it is."""
+    var v_kind = Optional[String]()
+    var v_payload = RawMessage()
+    var v_trailer = RawMessage()
+    sc.enter()
+    sc.expect(Byte(ord("{")))
+    if not sc.accept(Byte(ord("}"))):
+        while True:
+            var key = sc.read_string()
+            sc.expect(Byte(ord(":")))
+            if key == "kind":
+                v_kind = sc.read_string()
+            elif key == "payload":
+                v_payload = sc.read_raw()
+            elif key == "trailer":
+                v_trailer = sc.read_raw()
+            else:
+                sc.unknown_key(key)
+            if sc.accept(Byte(ord(","))):
+                continue
+            break
+        sc.expect(Byte(ord("}")))
+    sc.leave()
+    if not v_kind:
+        raise missing_key("Envelope", "kind")
+    result = Envelope(v_kind.take(), v_payload^, v_trailer^)
 
 
 # ----------------------------------------------------------------------------
@@ -120,9 +197,18 @@ def _encode_item(value: Item, mut out: List[Byte]) raises:
     out.append(Byte(ord("}")))
 
 
-def unmarshal_json_item(out result: Item, data: Span[Byte, _]) raises:
-    """The whole of `data` as one `Item`."""
-    var sc = ValueScanner(data)
+def unmarshal_json_item(
+    out result: Item,
+    data: Span[Byte, _],
+    disallow_unknown: Bool = False,
+) raises:
+    """The whole of `data` as one `Item`.
+
+    With `disallow_unknown` set, a key that no field matches is an error
+    rather than something to step over, which is Go's
+    `Decoder.DisallowUnknownFields`.
+    """
+    var sc = ValueScanner(data, disallow_unknown)
     result = _decode_item(sc)
     sc.end()
 
@@ -212,7 +298,7 @@ def _decode_item(out result: Item, mut sc: ValueScanner[_]) raises:
                     held10 = held11^
                 v_note = held10^
             else:
-                sc.skip_value()
+                sc.unknown_key(key)
             if sc.accept(Byte(ord(","))):
                 continue
             break
@@ -282,9 +368,18 @@ def _encode_sparse(value: Sparse, mut out: List[Byte]) raises:
     out.append(Byte(ord("}")))
 
 
-def unmarshal_json_sparse(out result: Sparse, data: Span[Byte, _]) raises:
-    """The whole of `data` as one `Sparse`."""
-    var sc = ValueScanner(data)
+def unmarshal_json_sparse(
+    out result: Sparse,
+    data: Span[Byte, _],
+    disallow_unknown: Bool = False,
+) raises:
+    """The whole of `data` as one `Sparse`.
+
+    With `disallow_unknown` set, a key that no field matches is an error
+    rather than something to step over, which is Go's
+    `Decoder.DisallowUnknownFields`.
+    """
+    var sc = ValueScanner(data, disallow_unknown)
     result = _decode_sparse(sc)
     sc.end()
 
@@ -323,7 +418,7 @@ def _decode_sparse(out result: Sparse, mut sc: ValueScanner[_]) raises:
             elif key == "last":
                 v_last = sc.read_string()
             else:
-                sc.skip_value()
+                sc.unknown_key(key)
             if sc.accept(Byte(ord(","))):
                 continue
             break
@@ -387,9 +482,18 @@ def _encode_vendor(value: Vendor, mut out: List[Byte]) raises:
     out.append(Byte(ord("}")))
 
 
-def unmarshal_json_vendor(out result: Vendor, data: Span[Byte, _]) raises:
-    """The whole of `data` as one `Vendor`."""
-    var sc = ValueScanner(data)
+def unmarshal_json_vendor(
+    out result: Vendor,
+    data: Span[Byte, _],
+    disallow_unknown: Bool = False,
+) raises:
+    """The whole of `data` as one `Vendor`.
+
+    With `disallow_unknown` set, a key that no field matches is an error
+    rather than something to step over, which is Go's
+    `Decoder.DisallowUnknownFields`.
+    """
+    var sc = ValueScanner(data, disallow_unknown)
     result = _decode_vendor(sc)
     sc.end()
 
@@ -412,7 +516,7 @@ def _decode_vendor(out result: Vendor, mut sc: ValueScanner[_]) raises:
             elif key == "active":
                 v_active = sc.read_bool()
             else:
-                sc.skip_value()
+                sc.unknown_key(key)
             if sc.accept(Byte(ord(","))):
                 continue
             break

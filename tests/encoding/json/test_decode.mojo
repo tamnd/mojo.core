@@ -1,9 +1,11 @@
 """`Decoder`, one token at a time.
 
-Go's `TestDecodeInStream` is the table this starts from. Half its rows call
-`Decode` between tokens, which needs a type to read into and so waits for issue
-33; the other half are token streams and they are all here, along with Go's own
-rule that `More` is true before every token except a closing bracket.
+Go's `TestDecodeInStream` is the table this starts from, and every row of it is
+here. Half are token streams and half call `Decode` between tokens, which in Go
+reads into a type and here hands back the bytes of one value, so a row that
+compared against a `map` in Go compares against the text it was written as.
+Along with all of them goes Go's own rule that `More` is true before every token
+except a closing bracket.
 
 After the table comes one behaviour at a time: where the offsets land, what is
 left buffered, what a document that stops in the middle raises, and what
@@ -121,6 +123,44 @@ def _stream(text: StringSlice) raises -> String:
     return seen^
 
 
+def _mixed(text: StringSlice, script: StringSlice) raises -> String:
+    """Read `text` following `script`, `t` for a token and `d` for a value.
+
+    Go's harness carries the same two kinds in one list, a plain token or a
+    `decodeThis` wrapping what `Decode` should produce, and this is that list
+    written as a word. `more` is checked before every step, since Go checks it
+    before every step too.
+    """
+    var d = new_decoder(new_buffer_string(String(text)))
+    var steps = script.as_bytes()
+    var seen = String()
+    for i in range(len(steps)):
+        var had_more = d.more()
+        var part = String()
+        if steps[i] == Byte(ord("d")):
+            if not had_more:
+                raise Error(
+                    "more() was false before a value in " + repr(String(text))
+                )
+            part = String(d.decode())
+        else:
+            var got = d.token()
+            if had_more == t_is_close(got):
+                raise Error(
+                    "more() was "
+                    + String(had_more)
+                    + " before "
+                    + _show(got)
+                    + " in "
+                    + repr(String(text))
+                )
+            part = _show(got)
+        if seen.byte_length() != 0:
+            seen += " "
+        seen += part
+    return seen^
+
+
 def t_is_close(t: Token) -> Bool:
     """Whether `t` is one of the two brackets `more` answers `False` before."""
     if t.kind != DELIM:
@@ -168,6 +208,167 @@ def test_gos_streaming_token_rows() raises:
     assert_equal(_stream(' [{"a": 1},{"a": 2}] '), '[ { "a" #1 } { "a" #2 } ]')
     assert_equal(_stream('{"obj": {"a": 1}}'), '{ "obj" { "a" #1 } }')
     assert_equal(_stream('{"obj": [{"a": 1}]}'), '{ "obj" [ { "a" #1 } ] }')
+
+
+def test_gos_rows_that_decode_between_tokens() raises:
+    """The six rows of Go's table that read a value in the middle of a stream.
+
+    Go compares each against the `map` or slice its `Decode` filled in. There
+    is nothing to fill in here, so the comparison is against the bytes the
+    value was written with, whitespace and all, which is the same row said
+    another way.
+    """
+    assert_equal(_mixed('{ "a": 1 }', "ttdt"), '{ "a" 1 }')
+    assert_equal(_mixed(' [ { "a" : 1 } ] ', "tdt"), '[ { "a" : 1 } ]')
+    assert_equal(
+        _mixed(' [{"a": 1},{"a": 2}] ', "tddt"), '[ {"a": 1} {"a": 2} ]'
+    )
+    assert_equal(
+        _mixed('{ "obj" : [ { "a" : 1 } ] }', "tttdtt"),
+        '{ "obj" [ { "a" : 1 } ] }',
+    )
+    assert_equal(_mixed('{"obj": {"a": 1}}', "ttdt"), '{ "obj" {"a": 1} }')
+    assert_equal(_mixed('{"obj": [{"a": 1}]}', "ttdt"), '{ "obj" [{"a": 1}] }')
+
+
+def test_gos_two_rows_that_fail_inside_decode() raises:
+    """A missing comma and a missing colon, which only `Decode` notices.
+
+    The token path never sees either, because the state it is in when it is
+    asked for a value is the state that has to hold the separator. Go pins both
+    messages and both offsets and these are them.
+    """
+    var missing_comma = new_decoder(new_buffer_string(' [{"a": 1} {"a": 2}] '))
+    assert_equal(_show(missing_comma.token()), "[")
+    assert_equal(String(missing_comma.decode()), '{"a": 1}')
+    var first = Error()
+    try:
+        _ = missing_comma.decode()
+    except e:
+        first = e.copy()
+    var one = SyntaxError.of(first)
+    assert_true(Bool(one))
+    assert_equal(one.value().error(), "expected comma after array element")
+    assert_equal(one.value().offset, 11)
+
+    var key = "a" * 513
+    var missing_colon = new_decoder(new_buffer_string('{ "' + key + '" 1 }'))
+    assert_equal(_show(missing_colon.token()), "{")
+    assert_equal(missing_colon.token().as_string(), key)
+    var second = Error()
+    try:
+        _ = missing_colon.decode()
+    except e:
+        second = e.copy()
+    var two = SyntaxError.of(second)
+    assert_true(Bool(two))
+    assert_equal(two.value().error(), "expected colon after object key")
+    assert_equal(two.value().offset, 518)
+
+
+def test_decode_reads_one_whole_value_at_a_time() raises:
+    """A stream of values with nothing bracketing them, which is the shape a
+    log file or a socket has."""
+    var d = new_decoder(new_buffer_string('{"a":1} [2,3] "x" 4 null'))
+    assert_equal(String(d.decode()), '{"a":1}')
+    assert_equal(String(d.decode()), "[2,3]")
+    assert_equal(String(d.decode()), '"x"')
+    assert_equal(String(d.decode()), "4")
+    assert_equal(String(d.decode()), "null")
+    var said = Error()
+    try:
+        _ = d.decode()
+    except e:
+        said = e.copy()
+    assert_true(matches(said, EOF))
+
+
+def test_decode_hands_back_the_value_and_not_the_space_around_it() raises:
+    """Go's `Decode` hands its bytes to an unmarshaller that skips whitespace
+    for itself, so where the value starts never shows. Here the bytes are the
+    answer, and a raw message with a space on the front of it would be a
+    surprise to write back out."""
+    var d = new_decoder(new_buffer_string('   { "a" : 1 }   '))
+    assert_equal(String(d.decode()), '{ "a" : 1 }')
+
+
+def test_decode_keeps_the_bytes_a_document_wrote() raises:
+    """A number no float can hold, and the whitespace inside a value.
+
+    Nothing is read for what it means, so a payload arrives as it was sent.
+    """
+    var d = new_decoder(new_buffer_string("[1e400, 1.000, -0]"))
+    assert_equal(String(d.decode()), "[1e400, 1.000, -0]")
+
+
+def test_decode_where_a_value_does_not_go_raises() raises:
+    """After an opening brace the next thing is a key, so there is no value to
+    ask for."""
+    var d = new_decoder(new_buffer_string('{"a": 1}'))
+    _ = d.token()
+    var said = Error()
+    try:
+        _ = d.decode()
+    except e:
+        said = e.copy()
+    var failure = SyntaxError.of(said)
+    assert_true(Bool(failure))
+    assert_equal(failure.value().error(), "not at beginning of value")
+
+
+def test_decode_on_an_empty_stream_is_the_end_of_it() raises:
+    """Whitespace and nothing else, which is a stream that finished rather than
+    a document that is wrong."""
+    var d = new_decoder(new_buffer_string("   "))
+    var said = Error()
+    try:
+        _ = d.decode()
+    except e:
+        said = e.copy()
+    assert_true(matches(said, EOF))
+
+
+def test_decode_one_byte_at_a_time_reads_the_same_values() raises:
+    """The buffer slides underneath the value, which is where a decoder holding
+    a position across a refill goes wrong."""
+    var text = '[{"' + "k" * 700 + '": 1}, {"b": [2, 3]}]'
+    var d = new_decoder(OneByte(text))
+    assert_equal(_show(d.token()), "[")
+    assert_equal(String(d.decode()), '{"' + "k" * 700 + '": 1}')
+    assert_equal(String(d.decode()), '{"b": [2, 3]}')
+    assert_equal(_show(d.token()), "]")
+
+
+def test_decode_moves_the_offset_past_the_value() raises:
+    """So a caller counting bytes off a stream keeps counting through it."""
+    var d = new_decoder(new_buffer_string(' {"a": 1} 2'))
+    assert_equal(Int(d.input_offset()), 0)
+    _ = d.decode()
+    assert_equal(Int(d.input_offset()), 9)
+    _ = d.decode()
+    assert_equal(Int(d.input_offset()), 11)
+
+
+def test_decode_and_buffered_leave_the_rest_of_the_stream() raises:
+    """Go's case, one value at the front of something that is not JSON."""
+    var d = new_decoder(new_buffer_string('{"a": 1}the rest'))
+    assert_equal(String(d.decode()), '{"a": 1}')
+    assert_equal(String(from_utf8_lossy=Span(d.buffered())), "the rest")
+
+
+def test_disallow_unknown_fields_is_a_flag_a_caller_passes_on() raises:
+    """Go's `DisallowUnknownFields`, which decides nothing here on its own.
+
+    Go's decoder holds the flag and its reflection reads the struct, so the two
+    meet inside `Decode`. Here the struct is read by generated code, so the
+    flag is carried to where that code is called and the decoder's job is to
+    remember it.
+    """
+    var d = new_decoder(new_buffer_string('{"a": 1}'))
+    assert_false(d.disallow_unknown)
+    d.disallow_unknown_fields()
+    assert_true(d.disallow_unknown)
+    assert_equal(String(d.decode()), '{"a": 1}')
 
 
 def test_gos_three_failing_rows() raises:

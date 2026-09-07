@@ -19,10 +19,12 @@ a file of nothing but `[` costs Go memory and costs this a refusal. And every
 token owns its bytes rather than pointing into the buffer, so a token kept
 across a hundred calls is still the token that was read.
 
-What is not here yet is `Decode`, which reads a value into a variable of the
-caller's type. Go does that by inspecting the type while the program runs and
-there is no such inspection here, design.md section 1, so it arrives as
-generated code with issue #33.
+`decode` is Go's `Decode` with the half that needs a type taken off it. Go's
+reads the next value into whatever variable it is handed by inspecting that
+variable's type while the program runs, and there is no such inspection here,
+design.md section 1. So this one does the framing, which is the half only a
+decoder can do because only a decoder knows where a value ends in a stream, and
+hands back a `RawMessage` for the generated code that knows the type to read.
 """
 
 from core.errors import Report, matches
@@ -32,6 +34,7 @@ from core.iter import Cursor
 from core.unicode.utf8 import RUNE_ERROR, RUNE_SELF, append_rune, decode_rune
 
 from .number import Number
+from .raw import RawMessage
 from .scan import (
     _BACKSLASH,
     _LBRACE,
@@ -289,6 +292,17 @@ struct Decoder[R: IoReader & Deinitable & Movable](Movable):
     an implementation may set a limit and this is where it is set.
     """
 
+    var disallow_unknown: Bool
+    """Whether a key that no field matches is an error. Go's flag behind
+    `DisallowUnknownFields`.
+
+    Nothing on the decoder reads it, because the decoder does not know what any
+    field is: `decode` hands back the bytes of a value and the code that knows
+    the type reads them. So this is carried rather than acted on, and is handed
+    to whichever generated decoder those bytes go to. `disallow_unknown_fields`
+    is how it is set, and reading it here is how it is passed on.
+    """
+
     var r: Self.R
     """The source. Owned, so the call is direct and there is no interface to
     dispatch through."""
@@ -335,6 +349,7 @@ struct Decoder[R: IoReader & Deinitable & Movable](Movable):
     def __init__(out self, var r: Self.R):
         """A decoder over `r`, reading nothing yet."""
         self.max_depth = MAX_NESTING_DEPTH
+        self.disallow_unknown = False
         self.r = r^
         self._buf = List[Byte]()
         self._scanp = 0
@@ -455,6 +470,103 @@ struct Decoder[R: IoReader & Deinitable & Movable](Movable):
             var value = self._read_literal()
             self._value_end()
             return value^
+
+    def disallow_unknown_fields(mut self):
+        """Ask for a key that no field matches to be an error.
+        Go's `DisallowUnknownFields`.
+
+        Off by default, which is Go's default and is what lets a program read a
+        document written by a newer version of the program that wrote it. On,
+        it is the check worth having on a configuration file, where a key
+        nobody reads is a setting somebody believes is taking effect.
+
+        Nothing about the decoder itself changes, because a key only means
+        something to code that knows what the fields are. What changes is what
+        `disallow_unknown` says, and a generated decoder takes it as its second
+        argument:
+
+        ```mojo
+        from core.encoding.json import new_decoder
+        from core.io import Reader
+
+
+        def read[R: Reader & Deinitable & Movable](var src: R) raises -> String:
+            var d = new_decoder(src^)
+            d.disallow_unknown_fields()
+            var raw = d.decode()
+            return String(raw)
+        ```
+        """
+        self.disallow_unknown = True
+
+    def decode(mut self) raises -> RawMessage:
+        """The next whole value in the stream, as its bytes. Go's `Decode`.
+
+        Go's reads the value into whatever variable it is handed, by walking
+        that variable's type while the program runs. There is no such walk
+        here, so the two halves of that are separate: this one is the framing,
+        which is the half only the decoder can do because only the decoder
+        knows where a value ends in a stream, and the typing is the generated
+        `unmarshal_json_<struct>` the bytes are then handed to.
+
+        ```mojo
+        from core.encoding.json import new_decoder
+        from core.io import Reader
+
+
+        def first[R: Reader & Deinitable & Movable](var src: R) raises -> String:
+            var d = new_decoder(src^)
+            return String(d.decode())
+        ```
+
+        It interleaves with `token`, which is Go's arrangement and is what
+        makes a document readable by walking into it and then reading one
+        element whole: the comma or the colon in front of the value is taken
+        here the way `token` would have taken it.
+
+        Raises `EOF` past the last value in the stream. The bytes handed back
+        are the value with its whitespace inside it left as it arrived, and
+        with the whitespace in front of it dropped.
+        """
+        if self._err:
+            raise self._err.value()
+        self._prepare_for_decode()
+        if not self._value_allowed():
+            raise _syntax_error(
+                "not at beginning of value", Int(self.input_offset())
+            )
+        _ = self._peek()
+        var n = self._read_value()
+        var start = self._scanp
+        self._scanp += n
+        self._value_end()
+        return RawMessage(Span(self._buf)[start : start + n])
+
+    def _prepare_for_decode(mut self) raises:
+        """Take the comma or the colon a value has to come after.
+        Go's `tokenPrepareForDecode`.
+
+        Only two of the nine states have anything in front of the value, and
+        this is what lets `decode` be called in the middle of an array or after
+        an object key that `token` handed back.
+        """
+        if self._token_state == _ARRAY_COMMA:
+            var c = self._peek()
+            if c != _COMMA:
+                raise _syntax_error(
+                    "expected comma after array element",
+                    Int(self.input_offset()),
+                )
+            self._scanp += 1
+            self._token_state = _ARRAY_VALUE
+        elif self._token_state == _OBJECT_COLON:
+            var c = self._peek()
+            if c != _COLON:
+                raise _syntax_error(
+                    "expected colon after object key", Int(self.input_offset())
+                )
+            self._scanp += 1
+            self._token_state = _OBJECT_VALUE
 
     def tokens(mut self) -> Tokens[Self.R, origin_of(self)]:
         """The tokens left, as a `core.iter.Cursor`. Go has no counterpart.

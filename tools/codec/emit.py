@@ -28,6 +28,11 @@ reads at the call site as a function that returns one and works on a struct
 with no default value:
 
     var back: Item = unmarshal_json_item(text.as_bytes())
+
+Its second argument is Go's `DisallowUnknownFields`, and it is an argument
+rather than a setting on something, because there is nothing here for a setting
+to live on: a generated decoder is a function, and the decoder that has the
+switch in Go hands over bytes here rather than reading them itself.
 """
 
 from __future__ import annotations
@@ -47,9 +52,11 @@ RULE = "# " + "-" * 76
 # nothing reads is a warning and this has to build without one.
 RUNTIME = "core.encoding.json"
 BORROWED = (
+    "RawMessage",
     "ValueScanner",
     "append_bool",
     "append_float",
+    "append_raw",
     "append_signed",
     "append_string",
     "append_unsigned",
@@ -62,10 +69,10 @@ BORROWED = (
 WIDTH = 80
 
 
-# The three field types that have an empty value nobody has to invent, and so
-# the three that a document is allowed not to carry. Everything else missing
+# The four field types that have an empty value nobody has to invent, and so
+# the four that a document is allowed not to carry. Everything else missing
 # from a document is an error rather than a zero. See `plan.py`.
-ABSENT = ("optional", "list", "dict")
+ABSENT = ("optional", "list", "dict", "raw")
 
 # What the encoder escapes, which is Go's set and not the JSON grammar's
 # minimum. The same table is in `append_string`, and it is here as well because
@@ -194,6 +201,8 @@ def encode(body: Body, what: Encoding, expr: str) -> None:
         body(f"append_float(out, Float64({expr}), {what.bits})")
     elif what.kind == "string":
         body(f"append_string(out, {expr})")
+    elif what.kind == "raw":
+        body(f"append_raw(out, {expr})")
     elif what.kind == "struct":
         body(f"_encode_{what.func}({expr}, out)")
     elif what.kind == "optional":
@@ -255,6 +264,8 @@ def expression(what: Encoding) -> str:
         return f"{what.spell}(sc.read_float({what.bits}))"
     if what.kind == "string":
         return "sc.read_string()"
+    if what.kind == "raw":
+        return "sc.read_raw()"
     return f"_decode_{what.func}(sc)"
 
 
@@ -334,7 +345,7 @@ def empty(what: Encoding, expr: str) -> str:
     """The test `omitempty` turns into, which is Go's idea of empty."""
     if what.kind in ("string",):
         return f'{expr} != ""'
-    if what.kind in ("list", "dict"):
+    if what.kind in ("list", "dict", "raw"):
         return f"len({expr}) != 0"
     if what.kind in ("bool", "optional"):
         return expr
@@ -408,12 +419,21 @@ def encoder(codec: Codec) -> list[str]:
 def decoder(codec: Codec) -> list[str]:
     """`unmarshal_json_<struct>` and the function it calls."""
     body = Body()
-    body.block(
-        f"def unmarshal_json_{codec.func}(out result: {codec.name}, "
-        "data: Span[Byte, _]) raises:"
-    )
-    body(f'"""The whole of `data` as one `{codec.name}`."""')
-    body("var sc = ValueScanner(data)")
+    # One argument a line, because the three of them do not fit on one and a
+    # trailing comma is what keeps `mojo format` from trying.
+    body.block(f"def unmarshal_json_{codec.func}(")
+    body(f"out result: {codec.name},")
+    body("data: Span[Byte, _],")
+    body("disallow_unknown: Bool = False,")
+    body.close()
+    body.block(") raises:")
+    body(f'"""The whole of `data` as one `{codec.name}`.')
+    body()
+    body("With `disallow_unknown` set, a key that no field matches is an error")
+    body("rather than something to step over, which is Go's")
+    body("`Decoder.DisallowUnknownFields`.")
+    body('"""')
+    body("var sc = ValueScanner(data, disallow_unknown)")
     body(f"result = _decode_{codec.func}(sc)")
     body("sc.end()")
     body.close()
@@ -445,10 +465,10 @@ def decoder(codec: Codec) -> list[str]:
         body.close()
     if opened:
         body.block("else:")
-        body("sc.skip_value()")
+        body("sc.unknown_key(key)")
         body.close()
     else:
-        body("sc.skip_value()")
+        body("sc.unknown_key(key)")
     body.block(f"if sc.accept({byte(',')}):")
     body("continue")
     body.close()
@@ -496,9 +516,11 @@ def header(plan: Plan) -> list[str]:
         "`marshal_json`. The decoder is told apart from the others only by the type it",
         "produces, which Mojo will not overload on, so its name carries the struct.",
         "",
-        "A key in the document that no field matches is skipped, the way Go skips one.",
-        "A field that is not in the document is an error, because Mojo has no zero value",
-        "to leave it at. `Optional` is how a field says it may be absent.",
+        "A key in the document that no field matches is skipped, the way Go skips one,",
+        "unless the decoder is given `True` for its second argument, which is Go's",
+        "`Decoder.DisallowUnknownFields`. A field that is not in the document is an",
+        "error, because Mojo has no zero value to leave it at. `Optional` is how a field",
+        "says it may be absent.",
         "",
         "The scanner and the writers come from `core.encoding.json`, so what is below is",
         "the codecs and nothing else, and every codec anywhere reads the same JSON that",

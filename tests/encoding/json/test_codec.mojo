@@ -14,7 +14,12 @@ of fixtures, builds it outside this repository and runs it. That one is about
 the code the generator writes. This one is about the code it calls.
 """
 
-from std.testing import assert_equal, assert_raises, assert_true
+from std.testing import (
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+)
 
 from core.encoding.json import (
     MAX_NESTING_DEPTH,
@@ -331,3 +336,105 @@ def test_a_missing_key_says_which_one() raises:
     """
     var e = missing_key("Item", "name")
     assert_equal(String(e), 'json: Item: the document has no "name" key')
+
+
+def test_a_scanner_hands_back_a_value_as_its_bytes() raises:
+    """What a `RawMessage` field is read with, and it reads nothing.
+
+    The bytes are walked far enough to find the end of the value and no
+    further, so whatever is inside comes back as it was written.
+    """
+    var whole = ValueScanner(' { "a" : [ 1 , 2 ] } '.as_bytes())
+    assert_equal(String(whole.read_raw()), '{ "a" : [ 1 , 2 ] }')
+    whole.end()
+
+    var wide = ValueScanner("1e400".as_bytes())
+    assert_equal(String(wide.read_raw()), "1e400")
+
+    var empty = ValueScanner('""'.as_bytes())
+    assert_equal(String(empty.read_raw()), '""')
+
+
+def test_a_raw_value_in_the_middle_of_an_object_stops_where_it_should() raises:
+    """The scanner carries on from the byte after the value, which is what
+    makes a field of them read at all."""
+    var sc = ValueScanner(
+        '{"kind":"x","payload":[1,{"b":null}],"n":1}'.as_bytes()
+    )
+    sc.enter()
+    sc.expect(_LBRACE)
+    assert_equal(sc.read_string(), "kind")
+    sc.expect(_COLON)
+    assert_equal(sc.read_string(), "x")
+    assert_true(sc.accept(_COMMA))
+    assert_equal(sc.read_string(), "payload")
+    sc.expect(_COLON)
+    assert_equal(String(sc.read_raw()), '[1,{"b":null}]')
+    assert_true(sc.accept(_COMMA))
+    assert_equal(sc.read_string(), "n")
+    sc.expect(_COLON)
+    assert_equal(sc.read_signed(64), 1)
+    sc.expect(_RBRACE)
+    sc.leave()
+    sc.end()
+
+
+def test_a_raw_value_that_is_not_a_value_is_still_refused() raises:
+    """Not read is not the same as not checked. The walk is the scanner's own,
+    so a payload that is not one JSON value stops here rather than at whoever
+    reads it later."""
+    var cut = ValueScanner("[1,".as_bytes())
+    with assert_raises():
+        _ = cut.read_raw()
+    var bad = ValueScanner("[,]".as_bytes())
+    with assert_raises():
+        _ = bad.read_raw()
+
+
+def test_an_unknown_key_is_stepped_over_by_default() raises:
+    """Which is how a document written by a newer program still reads."""
+    var sc = ValueScanner('{"a":{"deep":[1,2]},"b":1}'.as_bytes())
+    sc.enter()
+    sc.expect(_LBRACE)
+    assert_equal(sc.read_string(), "a")
+    sc.expect(_COLON)
+    sc.unknown_key("a")
+    assert_true(sc.accept(_COMMA))
+    assert_equal(sc.read_string(), "b")
+    sc.expect(_COLON)
+    assert_equal(sc.read_signed(64), 1)
+    sc.expect(_RBRACE)
+    sc.leave()
+    sc.end()
+
+
+def test_an_unknown_key_is_refused_when_the_caller_asked() raises:
+    """Go's `DisallowUnknownFields`, and Go's message word for word.
+
+    It is not a syntax error and does not carry `ErrJSONSyntax`, because the
+    document is well formed and the disagreement is about what the reader
+    expected. The offset names the value the key introduced, which Go's
+    failure has no room for.
+    """
+    var sc = ValueScanner('{"a":{"deep":[1,2]},"b":1}'.as_bytes(), True)
+    sc.enter()
+    sc.expect(_LBRACE)
+    assert_equal(sc.read_string(), "a")
+    sc.expect(_COLON)
+    var said = Error()
+    try:
+        sc.unknown_key("a")
+    except e:
+        said = e.copy()
+    assert_equal(String(said), 'json: unknown field "a"')
+    assert_true(not matches(said, ErrJSONSyntax))
+    assert_true(not Bool(SyntaxError.of(said)))
+
+
+def test_the_strict_flag_is_off_unless_it_is_asked_for() raises:
+    """A generated decoder takes it as a defaulted argument, so a caller who
+    never heard of it gets Go's default."""
+    var loose = ValueScanner("{}".as_bytes())
+    assert_false(loose.disallow_unknown)
+    var strict = ValueScanner("{}".as_bytes(), True)
+    assert_true(strict.disallow_unknown)

@@ -4,8 +4,9 @@ Nothing here is part of the library. It is a small application package of the
 kind the generator is meant for, with the awkward cases a real one would have:
 a struct nested inside another, a list of them, a dictionary, fields that may
 be absent, a renamed key, a field with no tag at all, a struct that encodes and
-does not decode, and one whose fields are all optional so that the commas
-between them have to be worked out as it goes.
+does not decode, one whose fields are all optional so that the commas between
+them have to be worked out as it goes, and one holding a payload that is left
+as the bytes it arrived as.
 
 `pixi run codec-selftest` copies this somewhere outside the repository,
 generates a codec for it there, builds it and runs `driver.mojo` over it. The
@@ -14,6 +15,7 @@ what that run produces, so the diff of a change to the emitter is reviewable
 rather than invisible.
 """
 
+from .envelopes import Envelope
 from .items import Item, Sparse
 from .summaries import Summary
 from .vendors import Vendor

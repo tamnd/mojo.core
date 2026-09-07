@@ -333,6 +333,18 @@ AfterFunc = "Runs the function on a goroutine. There is no goroutine until M9."
 ErrTrailingComma = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
 "Reader.ReuseRecord" = "A promise that two returned slices share storage. A record here is an owned List[String], so there is nothing to share."
 
+["encoding/json"]
+# A switch with one position, because the other position does not exist here.
+#
+# UseNumber tells Go's decoder to read a number into an `any` as a Number
+# rather than as a float64, which is a choice Go has to offer because its
+# default loses digits. Every number on the token path here is already a
+# Number, and a Document keeps a number as the text the document wrote, so
+# both of the things the flag chooses between are the same thing. Turning it
+# on would change nothing and leaving it off changes nothing either, so the
+# setting would be a field that reads back what was put in it.
+"Decoder.UseNumber" = "A switch between a float64 and a Number. Every number here is already a Number, so there is nothing to switch."
+
 ["encoding/xml"]
 # Two shapes of the same thing: a decoder here is generic over what it reads
 # from, and Go's are interface values chosen at run time.
