@@ -395,3 +395,17 @@ NoPadding = "NO_PADDING"
 # constant.
 StdEncoding = "std_encoding"
 HexEncoding = "hex_encoding"
+
+["encoding/xml"]
+# The declaration every document starts with is a `comptime` value, and a
+# constant is spelled in capitals here, which is the rule the two base64
+# paddings above follow.
+Header = "HEADER"
+# Go's two HTML tables are package variables, so a caller can assign to them
+# and change what every other caller in the program parses. They are functions
+# here, on the reasoning the base64 encodings above give: a value nobody may
+# change is either a constant or a function, and a table of a hundred entities
+# is too big to be a constant. Each call builds its table, which is what a
+# caller setting up an HTML decoder does once.
+HTMLAutoClose = "html_auto_close"
+HTMLEntity = "html_entity"

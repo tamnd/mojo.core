@@ -628,3 +628,67 @@ already been read.
 
 Owned by `core.encoding.csv`. Go has no sentinel for it.
 """
+
+comptime ErrXMLSyntax = Code(61)
+"""A document is not well formed XML. Go has this as a `*SyntaxError` holding a
+message and the line it was on, which a caller reads with a type assertion, and
+there is nothing to assert against here, so the message and the line go on the
+record and `SyntaxError.of` reads them back. One code covers every way a
+document can be malformed, which is Go's arrangement too: an unexpected end of
+input, a tag closed by the wrong name, an unquoted attribute value, an entity
+that is not one, a `]]>` outside a CDATA section, bytes that are not UTF-8, and
+a character the specification does not allow in a document at all. The message
+says which, in Go's words.
+
+Owned by `core.encoding.xml`. Go has no sentinel for it.
+"""
+
+comptime ErrXMLDepth = Code(62)
+"""Elements were nested deeper than the decoder allows. Go caps depth at ten
+thousand inside `Unmarshal`, where the recursion is real and a deep document
+would exhaust the goroutine stack, and does not cap the token path at all
+because that one is a loop over a heap allocated stack. This caps the token
+path as well, at `Decoder.max_depth`, because a decoder handed a hostile
+document should refuse it rather than allocate a stack the size of the input,
+and because the caller who wants Go's behaviour can set the field as high as
+they like.
+
+Owned by `core.encoding.xml`. Go has no sentinel for it.
+"""
+
+comptime ErrXMLEncode = Code(63)
+"""The encoder was handed a token it cannot write. An end element that does not
+match the start element above it, a start element with no name, a comment
+holding `-->`, a processing instruction holding `?>` or with a target that is
+not a name, an `xml` processing instruction that is not the first thing
+written, a directive whose angle brackets do not balance, a write after
+`close`, or a `close` with elements still open. Every one of those would
+produce bytes that do not parse back, so they are refused before anything is
+written rather than after. Go returns an `fmt.Errorf` for each and the messages
+here are the same.
+
+Owned by `core.encoding.xml`. Go has no sentinel for it.
+"""
+
+comptime ErrXMLCharset = Code(64)
+"""A document declared an encoding this cannot read. Go hands the reader to
+`Decoder.CharsetReader` and parses whatever comes back, and that field is not
+here, because it returns an `io.Reader` chosen at run time and there is no
+existential reader type to return; `docs/deviations.md` has the row. So a
+declaration of anything but UTF-8 is refused, which is exactly what Go does
+when `CharsetReader` is nil, and a caller with a document in another encoding
+converts it before parsing rather than during.
+
+Owned by `core.encoding.xml`. Go has no sentinel for it.
+"""
+
+comptime ErrXMLVersion = Code(65)
+"""A document declared an XML version other than 1.0. There is only one version
+this parses and only one version Go parses, and a document that says 1.1 is
+asking for line ending rules and name rules that are not implemented here, so
+it is refused rather than parsed by the wrong rules. A document with no version
+declaration at all is fine and is treated as 1.0, which is what the
+specification says to do.
+
+Owned by `core.encoding.xml`. Go has no sentinel for it.
+"""

@@ -332,3 +332,22 @@ AfterFunc = "Runs the function on a goroutine. There is no goroutine until M9."
 "Reader.TrailingComma" = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package reads it."
 ErrTrailingComma = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
 "Reader.ReuseRecord" = "A promise that two returned slices share storage. A record here is an owned List[String], so there is nothing to share."
+
+["encoding/xml"]
+# Two shapes of the same thing: a decoder here is generic over what it reads
+# from, and Go's are interface values chosen at run time.
+#
+# NewTokenDecoder builds a Decoder whose source is another TokenReader rather
+# than a stream of bytes. That needs a Decoder to hold either kind behind one
+# name, which is an existential value and design.md section 1 says there are
+# none. A filter over a decoder is still writable and still useful: implement
+# TokenReader over the decoder you have, and callers take your type instead.
+#
+# CharsetReader is a function field that turns the bytes of a document in some
+# other encoding into UTF-8, called when the declaration names an encoding this
+# package does not read. A field holding a function that has to be stored and
+# called later is the same problem, section 3. With it gone the decoder does
+# what Go's does when the field is nil, which is refuse the document and say
+# which encoding it asked for.
+NewTokenDecoder = "A decoder over another TokenReader, which needs an existential source. Implement TokenReader over the decoder you have."
+"Decoder.CharsetReader" = "A stored callback for a non UTF-8 document. Without it the decoder refuses one, which is what Go does when the field is nil."
