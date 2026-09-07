@@ -5,11 +5,15 @@ Nothing here decides anything. `plan.py` has already refused everything it is
 going to refuse, so this walks the plan and writes code, and every branch in it
 is about how a thing is spelled rather than about whether it is allowed.
 
-The output is one file per package holding every codec in it, plus a copy of
-the runtime from `runtime.mojo`. One file rather than one per module because
-the alternative is a private module of shared scanning code that every
-generated module imports, which is a second file with a name that has to not
-collide with anything in the user's package, for no gain.
+The output is one file per package holding every codec in it. One file rather
+than one per module because the alternative is a private module of shared code
+that every generated module imports, which is a second file with a name that
+has to not collide with anything in the user's package, for no gain.
+
+The scanner and the writers a codec is made of come from `core.encoding.json`.
+They used to be copied in from a template, because a generated codec has to
+build for somebody who has this library and nothing else of ours and that
+package did not exist. It does now, so the file is the codecs and nothing else.
 
 Two shapes matter and both are forced by the language rather than chosen.
 
@@ -28,6 +32,7 @@ with no default value:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -35,9 +40,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from codec.plan import Codec, Encoding, Member, Plan
 
-RUNTIME = Path(__file__).resolve().parent / "runtime.mojo"
-
 RULE = "# " + "-" * 76
+
+# Everything a generated file can need from the package, and where from. Only
+# the names a file actually uses are imported into it, because an import
+# nothing reads is a warning and this has to build without one.
+RUNTIME = "core.encoding.json"
+BORROWED = (
+    "ValueScanner",
+    "append_bool",
+    "append_float",
+    "append_signed",
+    "append_string",
+    "append_unsigned",
+    "missing_key",
+)
 
 # What `mojo format` wraps at, followed here because a generated file that the
 # formatter would rewrite is a file that cannot be checked for being byte
@@ -51,8 +68,8 @@ WIDTH = 80
 ABSENT = ("optional", "list", "dict")
 
 # What the encoder escapes, which is Go's set and not the JSON grammar's
-# minimum. Kept here as well as in the runtime because a key is escaped once,
-# now, rather than on every call.
+# minimum. The same table is in `append_string`, and it is here as well because
+# a key is escaped once, while this runs, rather than on every call.
 ESCAPES = {
     ord('"'): '\\"',
     ord("\\"): "\\\\",
@@ -113,14 +130,13 @@ def folded(line: str) -> list[str]:
     return [f"{head} import ("] + [f"    {name}," for name in names.split(", ")] + [")"]
 
 
-def runtime() -> tuple[list[str], list[str]]:
-    """The runtime template as its imports and its body."""
-    lines = RUNTIME.read_text().splitlines()
-    imports = [line.split("# IMPORT ", 1)[1] for line in lines if line.startswith("# IMPORT ")]
-    kept = lines[lines.index("# BEGIN") + 1 :]
-    while kept and not kept[0].strip():
-        kept.pop(0)
-    return imports, kept
+def byte(ch: str) -> str:
+    """One byte of punctuation, as the generated code spells it.
+
+    The scanner takes bytes rather than characters, and a name for each of the
+    six that matter would be six more names imported into somebody's package.
+    """
+    return f'Byte(ord("{ch}"))'
 
 
 class Body:
@@ -169,15 +185,15 @@ class Body:
 def encode(body: Body, what: Encoding, expr: str) -> None:
     """Write the value of `expr` onto `out`."""
     if what.kind == "bool":
-        body(f"_write_bool({expr}, out)")
+        body(f"append_bool(out, {expr})")
     elif what.kind == "int":
-        body(f"_write_signed(Int64({expr}), out)")
+        body(f"append_signed(out, Int64({expr}))")
     elif what.kind == "uint":
-        body(f"_write_unsigned(UInt64({expr}), out)")
+        body(f"append_unsigned(out, UInt64({expr}))")
     elif what.kind == "float":
-        body(f"_write_float(Float64({expr}), {what.bits}, out)")
+        body(f"append_float(out, Float64({expr}), {what.bits})")
     elif what.kind == "string":
-        body(f"_write_string({expr}, out)")
+        body(f"append_string(out, {expr})")
     elif what.kind == "struct":
         body(f"_encode_{what.func}({expr}, out)")
     elif what.kind == "optional":
@@ -185,27 +201,27 @@ def encode(body: Body, what: Encoding, expr: str) -> None:
         encode(body, what.args[0], f"{expr}.value()")
         body.close()
         body.block("else:")
-        body('_ = out.write_string("null")')
+        body('out.extend("null".as_bytes())')
         body.close()
     elif what.kind == "list":
         item = body.fresh("item")
         first = body.fresh("first")
-        body("out.write_byte(_LBRACKET)")
+        body(f"out.append({byte('[')})")
         body(f"var {first} = True")
         body.block(f"for {item} in {expr}:")
         body.block(f"if not {first}:")
-        body("out.write_byte(_COMMA)")
+        body(f"out.append({byte(',')})")
         body.close()
         body(f"{first} = False")
         encode(body, what.args[0], item)
         body.close()
-        body("out.write_byte(_RBRACKET)")
+        body(f"out.append({byte(']')})")
     elif what.kind == "dict":
         keys = body.fresh("keys")
         entry = body.fresh("entry")
         key = body.fresh("key")
         first = body.fresh("first")
-        body("out.write_byte(_LBRACE)")
+        body(f"out.append({byte('{')})")
         # Sorted, because Go sorts and because a codec whose output depends on
         # the order a hash table happens to be in cannot be compared with
         # anything, including its own output from the run before.
@@ -217,14 +233,14 @@ def encode(body: Body, what: Encoding, expr: str) -> None:
         body(f"var {first} = True")
         body.block(f"for {key} in {keys}:")
         body.block(f"if not {first}:")
-        body("out.write_byte(_COMMA)")
+        body(f"out.append({byte(',')})")
         body.close()
         body(f"{first} = False")
-        body(f"_write_string({key}, out)")
-        body("out.write_byte(_COLON)")
+        body(f"append_string(out, {key})")
+        body(f"out.append({byte(':')})")
         encode(body, what.args[1], f"{expr}[{key}]")
         body.close()
-        body("out.write_byte(_RBRACE)")
+        body(f"out.append({byte('}')})")
 
 
 def expression(what: Encoding) -> str:
@@ -280,36 +296,36 @@ def fill(body: Body, what: Encoding, target: str) -> None:
     elif what.kind == "list":
         item = body.fresh("item")
         body("sc.enter()")
-        body("sc.expect(_LBRACKET)")
-        body.block("if not sc.accept(_RBRACKET):")
+        body(f"sc.expect({byte('[')})")
+        body.block(f"if not sc.accept({byte(']')}):")
         body.block("while True:")
         value(body, what.args[0], item)
         body(f"{target}.append({moved(what.args[0], item)})")
-        body.block("if sc.accept(_COMMA):")
+        body.block(f"if sc.accept({byte(',')}):")
         body("continue")
         body.close()
         body("break")
         body.close()
-        body("sc.expect(_RBRACKET)")
+        body(f"sc.expect({byte(']')})")
         body.close()
         body("sc.leave()")
     elif what.kind == "dict":
         key = body.fresh("key")
         held = body.fresh("held")
         body("sc.enter()")
-        body("sc.expect(_LBRACE)")
-        body.block("if not sc.accept(_RBRACE):")
+        body(f"sc.expect({byte('{')})")
+        body.block(f"if not sc.accept({byte('}')}):")
         body.block("while True:")
         body(f"var {key} = sc.read_string()")
-        body("sc.expect(_COLON)")
+        body(f"sc.expect({byte(':')})")
         value(body, what.args[1], held)
         body(f"{target}[{key}^] = {moved(what.args[1], held)}")
-        body.block("if sc.accept(_COMMA):")
+        body.block(f"if sc.accept({byte(',')}):")
         body("continue")
         body.close()
         body("break")
         body.close()
-        body("sc.expect(_RBRACE)")
+        body(f"sc.expect({byte('}')})")
         body.close()
         body("sc.leave()")
 
@@ -330,17 +346,19 @@ def encoder(codec: Codec) -> list[str]:
     body = Body()
     body.block(f"def marshal_json(value: {codec.name}) raises -> String:")
     body('"""`value` as a JSON object."""')
-    body("var out = Builder()")
+    body("var out = List[Byte]()")
     body(f"_encode_{codec.func}(value, out)")
-    body("return out.string()")
+    body("return String(from_utf8=Span(out))")
     body.close()
     body()
     body()
 
     members = codec.encoded
-    body.block(f"def _encode_{codec.func}(value: {codec.name}, mut out: Builder) raises:")
+    body.block(
+        f"def _encode_{codec.func}(value: {codec.name}, mut out: List[Byte]) raises:"
+    )
     body('"""One object onto the end of `out`, for a field or for the whole value."""')
-    body("out.write_byte(_LBRACE)")
+    body(f"out.append({byte('{')})")
 
     # Whether a field needs a comma in front of it is worked out here rather
     # than at run time. It is only ever a question across a field that may not
@@ -357,14 +375,15 @@ def encoder(codec: Codec) -> list[str]:
         if member.omitempty:
             body.block(f"if {empty(member.encoding, 'value.' + member.name)}:")
         if comma == "always":
-            body("out.write_byte(_COMMA)")
+            body(f"out.append({byte(',')})")
         elif comma == "test":
             body.block("if wrote:")
-            body("out.write_byte(_COMMA)")
+            body(f"out.append({byte(',')})")
             body.close()
         # The key and its colon are one literal, escaped now rather than on
         # every call, which is most of what a generated encoder is for.
-        body(f"_ = out.write_string({literal(chr(34) + escaped(member.json) + chr(34) + ':')})")
+        key = literal(chr(34) + escaped(member.json) + chr(34) + ":")
+        body(f"out.extend({key}.as_bytes())")
         if member.omitempty and member.encoding.kind == "optional":
             # An `omitempty` optional is only written when it holds something,
             # so the null branch under it would be a test that has already been
@@ -381,7 +400,7 @@ def encoder(codec: Codec) -> list[str]:
                 body("wrote = True")
             maybe = True
         body.close()
-    body("out.write_byte(_RBRACE)")
+    body(f"out.append({byte('}')})")
     body.close()
     return body.lines
 
@@ -394,7 +413,7 @@ def decoder(codec: Codec) -> list[str]:
         "data: Span[Byte, _]) raises:"
     )
     body(f'"""The whole of `data` as one `{codec.name}`."""')
-    body("var sc = _Scanner(data)")
+    body("var sc = ValueScanner(data)")
     body(f"result = _decode_{codec.func}(sc)")
     body("sc.end()")
     body.close()
@@ -402,7 +421,8 @@ def decoder(codec: Codec) -> list[str]:
     body()
 
     body.block(
-        f"def _decode_{codec.func}(out result: {codec.name}, mut sc: _Scanner[_]) raises:"
+        f"def _decode_{codec.func}(out result: {codec.name}, "
+        "mut sc: ValueScanner[_]) raises:"
     )
     body(f'"""One object out of `sc`, wherever in the document it is."""')
     members = codec.members
@@ -412,11 +432,11 @@ def decoder(codec: Codec) -> list[str]:
         else:
             body(f"var v_{member.name} = Optional[{member.encoding.spell}]()")
     body("sc.enter()")
-    body("sc.expect(_LBRACE)")
-    body.block("if not sc.accept(_RBRACE):")
+    body(f"sc.expect({byte('{')})")
+    body.block(f"if not sc.accept({byte('}')}):")
     body.block("while True:")
     body("var key = sc.read_string()")
-    body("sc.expect(_COLON)")
+    body(f"sc.expect({byte(':')})")
     opened = False
     for member in members:
         body.block(f'{"if" if not opened else "elif"} key == {literal(member.json)}:')
@@ -429,12 +449,12 @@ def decoder(codec: Codec) -> list[str]:
         body.close()
     else:
         body("sc.skip_value()")
-    body.block("if sc.accept(_COMMA):")
+    body.block(f"if sc.accept({byte(',')}):")
     body("continue")
     body.close()
     body("break")
     body.close()
-    body("sc.expect(_RBRACE)")
+    body(f"sc.expect({byte('}')})")
     body.close()
     body("sc.leave()")
 
@@ -444,7 +464,7 @@ def decoder(codec: Codec) -> list[str]:
             arguments.append(f"v_{member.name}^")
             continue
         body.block(f"if not v_{member.name}:")
-        body(f'raise _missing({literal(codec.name)}, {literal(member.json)})')
+        body(f"raise missing_key({literal(codec.name)}, {literal(member.json)})")
         body.close()
         arguments.append(f"v_{member.name}.take()")
     body.call(f"result = {codec.name}(", arguments)
@@ -480,9 +500,9 @@ def header(plan: Plan) -> list[str]:
         "A field that is not in the document is an error, because Mojo has no zero value",
         "to leave it at. `Optional` is how a field says it may be absent.",
         "",
-        "The scanner below the imports is a copy rather than an import. A generated",
-        "codec has to build for somebody who has this library and nothing else of ours,",
-        "and `core.encoding.json` does not exist yet.",
+        "The scanner and the writers come from `core.encoding.json`, so what is below is",
+        "the codecs and nothing else, and every codec anywhere reads the same JSON that",
+        "package's own `parse` reads.",
         '"""',
     ]
     return lines
@@ -490,7 +510,6 @@ def header(plan: Plan) -> list[str]:
 
 def emit(plan: Plan) -> str:
     """The whole file."""
-    imports, body = runtime()
     # One line per module the file names, however many structs come from it,
     # which is what somebody would have written by hand.
     within: dict[str, list[str]] = {}
@@ -499,24 +518,32 @@ def emit(plan: Plan) -> str:
     local = [f"from .{module} import {', '.join(sorted(names))}"
              for module, names in sorted(within.items())]
 
-    lines = header(plan) + [""]
-    for line in sorted(imports):
-        lines += folded(line)
-    lines += [""]
-    for line in local:
-        lines += folded(line)
-    lines += ["", ""] + body
-
+    codecs: list[str] = []
     for codec in plan.codecs:
-        lines += ["", "", RULE, f"# {codec.path}", RULE, "", ""]
-        lines += encoder(codec)
+        codecs += ["", "", RULE, f"# {codec.path}", RULE, "", ""]
+        codecs += encoder(codec)
         if codec.decodable:
-            lines += ["", ""] + decoder(codec)
+            codecs += ["", ""] + decoder(codec)
         else:
-            lines += [
+            codecs += [
                 "",
                 "",
                 f"# {codec.name} has a field tagged `-`, which the document does not carry,",
                 "# so there is nothing to construct one from and it encodes only.",
             ]
+
+    # Only what the codecs above actually name, so that a package of structs
+    # with no floats in it does not import the float writer and get a warning
+    # for it. Read off the finished code rather than tracked while it is
+    # written, because the emitter has a dozen places that could reach for one
+    # of these and only one place that can be sure of the answer.
+    written = "\n".join(codecs)
+    used = [name for name in BORROWED if re.search(rf"\b{name}\b", written)]
+
+    lines = header(plan) + [""]
+    lines += folded(f"from {RUNTIME} import {', '.join(used)}")
+    lines += [""]
+    for line in local:
+        lines += folded(line)
+    lines += codecs
     return "\n".join(lines).rstrip() + "\n"
