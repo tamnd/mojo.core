@@ -692,3 +692,19 @@ specification says to do.
 
 Owned by `core.encoding.xml`. Go has no sentinel for it.
 """
+
+comptime ErrJSONSyntax = Code(66)
+"""A document is not valid JSON. Go has this as a `*SyntaxError` holding a message
+and the byte offset the scanner stopped at, which a caller reads with a type
+assertion, and there is nothing to assert against here, so the message and the
+offset go on the record and `SyntaxError.of` reads them back. One code covers
+every way a document can be malformed, which is Go's arrangement too: a
+character where a value should begin, a string that is not closed, a control
+character inside a string, an escape that is not one, a number with no digits
+after its decimal point or its exponent, a literal that is not `true`, `false`
+or `null`, a comma or a colon in the wrong place, anything after the top level
+value, an input that ends in the middle of a value, and nesting deeper than ten
+thousand levels. The message says which, in Go's words.
+
+Owned by `core.encoding.json`. Go has no sentinel for it.
+"""
