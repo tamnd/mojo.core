@@ -23,6 +23,7 @@ The projects those corpora come from, and the licence each is used under:
   Project Wycheproof                   Apache-2.0
   PngSuite                             PngSuite terms, see LICENSE-THIRD-PARTY
   Public Suffix List                   MPL-2.0
+  Mozilla CA Certificate Store         MPL-2.0
 
 A build of this library does not depend on any of the above at run time.
 OpenSSL is a run time dependency of core.crypto and is used under the Apache

@@ -1688,3 +1688,12 @@ licence = "MIT, https://github.com/nst/JSONTestSuite/blob/master/LICENSE"
 url = "https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_structure_whitespace_array.json"
 sha256 = "7e58d2487a2aaa36b6c1f57dbe1b513f1637fce9b58bb771797daa980dcdb3eb"
 licence = "MIT, https://github.com/nst/JSONTestSuite/blob/master/LICENSE"
+
+[corpus."ca/cacert-2026-08-13.pem"]
+url = "https://curl.se/ca/cacert-2026-08-13.pem"
+sha256 = "f66dff1bdf8f96060b8177976f8b7d9254bc89bc4db933d769f7384d28480bc9"
+licence = "MPL-2.0, https://www.mozilla.org/MPL/2.0/"
+# Mozilla's root certificate store, converted to PEM by curl's mk-ca-bundle.pl
+# and served under a dated name so that the digest above stays true. A hundred
+# and twenty one real certificates, which is what `tests/encoding/asn1` reads
+# DER out of and writes back to check that the two halves are inverse.
