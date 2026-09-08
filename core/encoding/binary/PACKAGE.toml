@@ -5,10 +5,12 @@ verdict = "Port"
 tier = 2
 unsafe = false
 # Go's `encoding/binary` imports `math` for `Float32bits` and `Float64bits` and
-# `reflect` for everything else, and both of those belong to the `Read` and
-# `Write` half that is not here yet. What is here reads and writes integers, so
-# it needs somewhere for a refusal to go and a `ByteReader` for the two varint
-# calls that take one, and nothing else.
+# `reflect` to walk a value while the program runs. Neither is needed here. A
+# float's bits are had by `bitcast`, which is in the language, and the walk
+# happens while the program is built because the type is a parameter rather
+# than something to be discovered. What is left is somewhere for a refusal to
+# go and the reader and writer that `Read`, `Write` and the two varint calls
+# that take a `ByteReader` are written against.
 deps = [
   "core.errors",
   "core.io",
