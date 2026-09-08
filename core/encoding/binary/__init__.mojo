@@ -21,12 +21,17 @@ and the three orders Go has, `LittleEndian`, `BigEndian` and `NativeEndian`.
 the unsigned encoding and the zig zag signed one, and the two that read a
 number off a `ByteReader` rather than out of a span.
 
-Go's third half is `Read`, `Write`, `Size`, `Encode`, `Decode` and `Append`,
-which take an `any` and walk its type while the program runs to work out how
-many bytes it is and where each one goes. There is no such walk here, so those
-six arrive as generated code, one encoder per struct, with issue 33.
+`fixed.mojo` is the third: `read`, `write`, `size`, `encode`, `decode` and
+`append`, which move a whole value or a whole run of them and take the width
+from the type rather than from the name of the call. Go works the width out by
+walking the type while the program runs; here the type is a parameter and the
+walk happens while the program is built, which is the same set of values Go's
+own fast path handles without reflection. Structs are the part reflection was
+doing for Go, and a caller with one writes the calls a field at a time or
+generates them, which is the division `core.encoding.json` makes as well.
 """
 
+from .fixed import append, decode, encode, read, size, write
 from .order import (
     AppendByteOrder,
     BigEndian,
