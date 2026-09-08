@@ -8,6 +8,7 @@ deps = [
   "core.errors",
   "core.io",
   "core.math.big",
+  "core.sort",
   "core.time",
   "core.unicode.utf8",
 ]

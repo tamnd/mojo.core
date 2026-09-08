@@ -88,17 +88,22 @@ def _is_numeric(b: Byte) -> Bool:
     return (b >= 0x30 and b <= 0x39) or b == 0x20
 
 
-def _is_printable(b: Byte) -> Bool:
+def _is_printable(b: Byte, asterisk: Bool, ampersand: Bool) -> Bool:
     """Whether `b` is in the PrintableString set, plus two that are not.
 
     Go allows `*` and `&` on top of what X.680 lists, and says why: wildcard
     names in certificates are written into the wrong string type often enough
     that refusing them would refuse working certificates, and there are
     certificate authorities with an ampersand in a name whose certificates do
-    not expire until 2027. Go takes both as parameters and passes them
-    everywhere from this package; there is one caller here, so they are simply
-    allowed and this comment is the record of it.
+    not expire until 2027. Both are parameters, as Go's are, because the three
+    callers want three different answers: reading allows both, writing a string
+    a caller asked to be printable allows the asterisk and not the ampersand,
+    and choosing a type for a string nobody named one for allows neither.
     """
+    if b == 0x2A:  # `*`
+        return asterisk
+    if b == 0x26:  # `&`
+        return ampersand
     return (
         (b >= 0x61 and b <= 0x7A)  # `a` to `z`
         or (b >= 0x41 and b <= 0x5A)  # `A` to `Z`
@@ -109,8 +114,6 @@ def _is_printable(b: Byte) -> Bool:
         or b == 0x3A  # `:`
         or b == 0x3D  # `=`
         or b == 0x3F  # `?`
-        or b == 0x2A  # `*`
-        or b == 0x26  # `&`
     )
 
 
@@ -627,7 +630,7 @@ struct Parser[o: ImmOrigin](Movable):
         """The next PrintableString, which is a subset of ASCII."""
         var bytes = self.read_element(ClassUniversal, TagPrintableString, False)
         for i in range(len(bytes)):
-            if not _is_printable(bytes[i]):
+            if not _is_printable(bytes[i], asterisk=True, ampersand=True):
                 raise _syntax("PrintableString contains invalid character")
         return String(from_utf8=bytes)
 
