@@ -40,6 +40,7 @@ from core.strconv import (
 )
 
 from .document import _unquote_strict
+from .errors import _type_error, _unsupported_value
 from .raw import RawMessage
 from .scan import (
     MAX_NESTING_DEPTH,
@@ -124,6 +125,17 @@ struct ValueScanner[o: ImmOrigin](Movable):
     format that has to survive the other end being upgraded can have.
     """
 
+    var struct_name: String
+    """The struct being read, or empty. What goes on an `UnmarshalTypeError`.
+
+    Go keeps the same two on its decoder, as `errorContext`, and for the same
+    reason: the call that finds the disagreement is several levels below the
+    one that knows whose field it is.
+    """
+
+    var field: String
+    """The key being read, or empty. The other half of `struct_name`."""
+
     def __init__(
         out self, data: Span[Byte, Self.o], disallow_unknown: Bool = False
     ):
@@ -131,6 +143,20 @@ struct ValueScanner[o: ImmOrigin](Movable):
         self.pos = 0
         self.depth = 0
         self.disallow_unknown = disallow_unknown
+        self.struct_name = String()
+        self.field = String()
+
+    def at_field(mut self, struct_name: StaticString, key: String):
+        """Say whose field is about to be read.
+
+        Generated code calls this once per key, so a value that will not go
+        into the field it arrived for names the field rather than only the
+        type. A nested struct overwrites both and does not put them back,
+        which is right rather than sloppy: the innermost call is the one that
+        failed, and the loop above it sets them again before its next read.
+        """
+        self.struct_name = String(struct_name)
+        self.field = key.copy()
 
     def fail(self, what: String) -> Error:
         """A refusal naming the byte it happened at.
@@ -142,6 +168,63 @@ struct ValueScanner[o: ImmOrigin](Movable):
         costs a pass over everything read so far.
         """
         return _syntax_error(what, self.pos + 1)
+
+    def fail_type(self, what: String, type: String) -> Error:
+        """A refusal saying the document held one thing and the field is
+        another.
+
+        Not a syntax error, and it does not carry `ErrJSONSyntax`, because the
+        document is well formed JSON and the disagreement is about what the
+        reader expected rather than about the bytes. Go draws the same line:
+        its scanner never sees this and its decoder never calls it a syntax
+        error.
+        """
+        return _type_error(
+            what, type, self.pos + 1, self.struct_name, self.field
+        )
+
+    def _value_kind(mut self) raises -> String:
+        """What the next value is, named the way Go names it in a type error.
+
+        Empty means the bytes are not the start of any value, and the caller
+        turns that into a syntax error, because a document that is not JSON is
+        refused for being that rather than for disagreeing with a field.
+
+        One byte says which of the six a value is for four of them, since JSON
+        gave every kind a different first character. The two that need more
+        are the ones a byte can only start: `tru` is a broken document and not
+        a bool, and a minus with nothing after it is not a number. Both are
+        looked at in full and neither is read, so the caller's position is
+        where it was.
+        """
+        var c = self.peek()
+        if c == _QUOTE:
+            return "string"
+        if c == _LBRACE:
+            return "object"
+        if c == _LBRACKET:
+            return "array"
+        if c == _LOWER_T:
+            return "bool" if self._spelled("true") else String()
+        if c == _LOWER_F:
+            return "bool" if self._spelled("false") else String()
+        if c == _LOWER_N:
+            return "null" if self._spelled("null") else String()
+        if c >= _ZERO and c <= _NINE:
+            return "number"
+        if c == _MINUS and self.pos + 1 < len(self.data):
+            var next = self.data[self.pos + 1]
+            if next >= _ZERO and next <= _NINE:
+                return "number"
+        return String()
+
+    def _spelled(mut self, word: StaticString) -> Bool:
+        """Whether `word` is written out in full at the position, reading
+        nothing."""
+        var here = self.pos
+        var found = self._word(word)
+        self.pos = here
+        return found
 
     def enter(mut self) raises:
         """Go one level deeper into the input, or refuse to."""
@@ -207,7 +290,10 @@ struct ValueScanner[o: ImmOrigin](Movable):
             return True
         if self._word("false"):
             return False
-        raise self.fail("expected true or false")
+        var kind = self._value_kind()
+        if kind == "":
+            raise self.fail("expected true or false")
+        raise self.fail_type(kind, "Bool")
 
     def _skip_escape(mut self) raises:
         """Step over one escape sequence, the backslash not yet taken.
@@ -250,6 +336,21 @@ struct ValueScanner[o: ImmOrigin](Movable):
             )
         self.pos += 2
 
+    def read_key(mut self) raises -> String:
+        """One string that is an object's key.
+
+        The same bytes `read_string` reads and a different refusal for
+        something else being there, which is Go's split as well: a key that is
+        not a string is a document that is not JSON, and a value that is not a
+        string is a document that disagrees with the struct. Go says `looking
+        for beginning of object key string` for the first and raises an
+        `UnmarshalTypeError` for the second.
+        """
+        self.skip_space()
+        if self.pos >= len(self.data) or self.data[self.pos] != _QUOTE:
+            raise self.fail("expected a string")
+        return self._quoted()
+
     def read_string(mut self) raises -> String:
         """One JSON string, with its escapes resolved.
 
@@ -262,7 +363,15 @@ struct ValueScanner[o: ImmOrigin](Movable):
         """
         self.skip_space()
         if self.pos >= len(self.data) or self.data[self.pos] != _QUOTE:
-            raise self.fail("expected a string")
+            var kind = self._value_kind()
+            if kind == "":
+                raise self.fail("expected a string")
+            raise self.fail_type(kind, "String")
+        return self._quoted()
+
+    def _quoted(mut self) raises -> String:
+        """One JSON string from its opening quote, which the caller has
+        already found."""
         var start = self.pos
         self.pos += 1
         while True:
@@ -293,7 +402,9 @@ struct ValueScanner[o: ImmOrigin](Movable):
             seen += 1
         return seen
 
-    def read_number(mut self, whole: Bool) raises -> String:
+    def read_number(
+        mut self, whole: Bool, type: String = String()
+    ) raises -> String:
         """The text of one JSON number.
 
         The grammar is JSON's and not Go's, so `01`, `.5`, `1.` and `+1` are
@@ -301,6 +412,12 @@ struct ValueScanner[o: ImmOrigin](Movable):
         more generous than the format. With `whole` set a fraction or an
         exponent is refused too, which is what makes a `1.5` in an integer
         field an error instead of a silent 1.
+
+        `type` is the name of what the number is being read into, and naming it
+        is what turns a value of the wrong kind from a complaint about the
+        bytes into an `UnmarshalTypeError`. Left empty, which is what a caller
+        reading a number for its own sake does, every refusal is a syntax
+        error, since there is no field for the document to disagree with.
         """
         self.skip_space()
         var start = self.pos
@@ -308,7 +425,13 @@ struct ValueScanner[o: ImmOrigin](Movable):
         var first = self.pos
         var lead = self._digits()
         if lead == 0:
-            raise self.fail("expected a number")
+            self.pos = start
+            if type == "":
+                raise self.fail("expected a number")
+            var kind = self._value_kind()
+            if kind == "":
+                raise self.fail("expected a number")
+            raise self.fail_type(kind, type)
         if lead > 1 and self.data[first] == _ZERO:
             raise self.fail("a number has a leading zero")
         var fraction = False
@@ -328,22 +451,53 @@ struct ValueScanner[o: ImmOrigin](Movable):
             if self._digits() == 0:
                 raise self.fail("a number has nothing after its exponent")
             fraction = True
+        var text = String(from_utf8=Span(self.data[start : self.pos]))
         if whole and fraction:
             self.pos = start
-            raise self.fail("expected a whole number")
-        return String(from_utf8=Span(self.data[start : self.pos]))
+            if type == "":
+                raise self.fail("expected a whole number")
+            raise self.fail_type("number " + text, type)
+        return text^
+
+    def _fitted(
+        mut self, type: String, whole: Bool
+    ) raises -> Tuple[String, Int]:
+        """The text of one number and where it started, for a read that has to
+        say what it could not fit it into."""
+        self.skip_space()
+        var start = self.pos
+        var text = self.read_number(whole, type)
+        return (text^, start)
 
     def read_signed(mut self, bits: Int) raises -> Int64:
         """A whole number that fits in `bits` bits, sign included."""
-        return parse_int(self.read_number(True), 10, bits)
+        var type = "Int" + String(bits)
+        var read = self._fitted(type, True)
+        try:
+            return parse_int(read[0], 10, bits)
+        except:
+            self.pos = read[1]
+            raise self.fail_type("number " + read[0], type)
 
     def read_unsigned(mut self, bits: Int) raises -> UInt64:
         """A whole number that fits in `bits` bits and is not negative."""
-        return parse_uint(self.read_number(True), 10, bits)
+        var type = "UInt" + String(bits)
+        var read = self._fitted(type, True)
+        try:
+            return parse_uint(read[0], 10, bits)
+        except:
+            self.pos = read[1]
+            raise self.fail_type("number " + read[0], type)
 
     def read_float(mut self, bits: Int) raises -> Float64:
         """A number, read as a float of `bits` bits."""
-        return parse_float(self.read_number(False), bits)
+        var type = "Float" + String(bits)
+        var read = self._fitted(type, False)
+        try:
+            return parse_float(read[0], bits)
+        except:
+            self.pos = read[1]
+            raise self.fail_type("number " + read[0], type)
 
     def skip_value(mut self) raises:
         """Step over one whole value, whatever it is.
@@ -352,41 +506,58 @@ struct ValueScanner[o: ImmOrigin](Movable):
         for its shape and thrown away. Go ignores unknown keys the same way,
         and a decoder that refused them could not read a document written by a
         newer version of the program that wrote it.
+
+        The nesting is a list of the brackets still open rather than a call per
+        level, which is the one place in this package where the shape of the
+        code is decided by the machine underneath it. `MAX_NESTING_DEPTH` is
+        ten thousand, a thread here gets eight megabytes of stack, and a frame
+        holding the locals of a call that reads a string or a number does not
+        fit ten thousand times over. A document of nothing but brackets has to
+        come back as the refusal `enter` makes and not as a dead process, and
+        that is a promise about every input rather than about the ones a
+        compiler happens to leave room for.
         """
-        var c = self.peek()
-        if c == _QUOTE:
-            _ = self.read_string()
-        elif c == _LBRACE:
-            self.enter()
-            self.pos += 1
-            if not self.accept(_RBRACE):
-                while True:
-                    _ = self.read_string()
-                    self.expect(_COLON)
-                    self.skip_value()
-                    if self.accept(_COMMA):
-                        continue
+        var closing = List[Byte]()
+        while True:
+            var c = self.peek()
+            if c == _LBRACE or c == _LBRACKET:
+                self.enter()
+                self.pos += 1
+                closing.append(_RBRACE if c == _LBRACE else _RBRACKET)
+                if not self.accept(closing[len(closing) - 1]):
+                    if c == _LBRACE:
+                        _ = self.read_key()
+                        self.expect(_COLON)
+                    # A member goes next, so start again rather than looking
+                    # for what follows a value that has not been read yet.
+                    continue
+                self.leave()
+                _ = closing.pop()
+            elif c == _QUOTE:
+                _ = self.read_string()
+            elif c == _LOWER_T or c == _LOWER_F:
+                _ = self.read_bool()
+            elif c == _LOWER_N:
+                if not self.accept_null():
+                    raise self.fail("expected a value")
+            else:
+                _ = self.read_number(False)
+
+            # One value is done. It may have been the last member of any
+            # number of the brackets still open, so close them until one has
+            # another member in it.
+            while len(closing) > 0:
+                var closer = closing[len(closing) - 1]
+                if self.accept(_COMMA):
+                    if closer == _RBRACE:
+                        _ = self.read_key()
+                        self.expect(_COLON)
                     break
-                self.expect(_RBRACE)
-            self.leave()
-        elif c == _LBRACKET:
-            self.enter()
-            self.pos += 1
-            if not self.accept(_RBRACKET):
-                while True:
-                    self.skip_value()
-                    if self.accept(_COMMA):
-                        continue
-                    break
-                self.expect(_RBRACKET)
-            self.leave()
-        elif c == _LOWER_T or c == _LOWER_F:
-            _ = self.read_bool()
-        elif c == _LOWER_N:
-            if not self.accept_null():
-                raise self.fail("expected a value")
-        else:
-            _ = self.read_number(False)
+                self.expect(closer)
+                self.leave()
+                _ = closing.pop()
+            if len(closing) == 0:
+                return
 
     def read_raw(mut self) raises -> RawMessage:
         """One whole value, kept as the bytes it was written with.
@@ -562,11 +733,16 @@ def append_float(mut dst: List[Byte], f: Float64, bits: Int) raises:
     where the plain one is readable, and the exponent itself written without a
     leading zero. Go does the last of those by hand after formatting and so
     does this, for the same reason: nobody else spells it that way.
+
+    Raises an `UnsupportedValueError` for a float that is infinite or is not a
+    number, in Go's words, since JSON has no way to spell either.
     """
     # Infinity times zero is not a number and neither is a number that already
     # was not one, which is both of the cases JSON cannot hold in one test.
     if f * 0.0 != 0.0:
-        raise new("json: " + String(f) + " has no JSON representation")
+        if f != f:
+            raise _unsupported_value("NaN")
+        raise _unsupported_value("+Inf" if f > 0 else "-Inf")
     var magnitude = f if f >= 0 else -f
     var form = _LOWER_F
     if magnitude != 0.0 and (magnitude < 1e-6 or magnitude >= 1e21):

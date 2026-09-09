@@ -345,6 +345,60 @@ ErrTrailingComma = "Deprecated in Go. Go's own documentation says it is no longe
 # setting would be a field that reads back what was put in it.
 "Decoder.UseNumber" = "A switch between a float64 and a Number. Every number here is already a Number, so there is nothing to switch."
 
+# Five of Go's eight error types, for three different reasons. Every one of
+# them holds a reflect.Type, which is what a walk over an unknown value has to
+# carry to say anything at all about what it met, and the two that are here
+# are the two that do not need one: `UnmarshalTypeError` is handed the name by
+# the call that failed, and `UnsupportedValueError` names a value rather than a
+# type.
+#
+# Two are deprecated in Go's own documentation and nothing in Go returns
+# either. InvalidUTF8Error says a string held bytes that are not UTF-8, which
+# Go's encoder stopped refusing years ago and now writes as U+FFFD.
+# UnmarshalFieldError says a document had a key no field matched, which Go's
+# decoder stopped treating as an error before that.
+InvalidUTF8Error = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+"InvalidUTF8Error.S" = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+"InvalidUTF8Error.Error" = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+UnmarshalFieldError = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+"UnmarshalFieldError.Key" = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+"UnmarshalFieldError.Type" = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+"UnmarshalFieldError.Field" = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+"UnmarshalFieldError.Error" = "Deprecated in Go. Go's own documentation says it is no longer used, and nothing in Go's package returns it."
+
+# Two are what Go returns when a program hands its walk something the walk
+# cannot deal with, and both of those mistakes are a compile error here rather
+# than a value that comes back. InvalidUnmarshalError is a nil or a value that
+# is not a pointer, and there is no nil and nothing to point with: `unmarshal`
+# takes a `mut` value of a type implementing `Unmarshaler`. UnsupportedTypeError
+# is a channel or a function met while walking, and a type that cannot write
+# itself does not implement `Marshaler`, which the call site says it needs.
+InvalidUnmarshalError = "What Go returns when Unmarshal is handed a nil or a non pointer. `unmarshal` takes a mut Unmarshaler, so both are compile errors."
+"InvalidUnmarshalError.Type" = "What Go returns when Unmarshal is handed a nil or a non pointer. `unmarshal` takes a mut Unmarshaler, so both are compile errors."
+"InvalidUnmarshalError.Error" = "What Go returns when Unmarshal is handed a nil or a non pointer. `unmarshal` takes a mut Unmarshaler, so both are compile errors."
+UnsupportedTypeError = "What Go's reflection returns on meeting a channel or a function. A type that cannot write itself is a compile error at the call to marshal."
+"UnsupportedTypeError.Type" = "What Go's reflection returns on meeting a channel or a function. A type that cannot write itself is a compile error at the call to marshal."
+"UnsupportedTypeError.Error" = "What Go's reflection returns on meeting a channel or a function. A type that cannot write itself is a compile error at the call to marshal."
+
+# The last one is a wrapper whose only content is a name Mojo cannot produce.
+# MarshalerError puts the type and the calling method in front of whatever a
+# MarshalJSON returned, and Unwrap is how a caller gets back to the error
+# underneath. There is no way to name a type while a program runs here, which
+# is the same absence that leaves `fmt` without `%T`, so the prefix would be a
+# sentence with a hole in it. What a `marshal_json` raises comes back out of
+# `marshal` unchanged instead, which is what Unwrap was for.
+MarshalerError = "Go's wrapper around what a MarshalJSON returned, naming the type. Mojo cannot name a type at run time, and the raise comes back unchanged."
+"MarshalerError.Type" = "Go's wrapper around what a MarshalJSON returned, naming the type. Mojo cannot name a type at run time, and the raise comes back unchanged."
+"MarshalerError.Err" = "Go's wrapper around what a MarshalJSON returned, naming the type. Mojo cannot name a type at run time, and the raise comes back unchanged."
+"MarshalerError.Error" = "Go's wrapper around what a MarshalJSON returned, naming the type. Mojo cannot name a type at run time, and the raise comes back unchanged."
+"MarshalerError.Unwrap" = "Go's wrapper around what a MarshalJSON returned, naming the type. Mojo cannot name a type at run time, and the raise comes back unchanged."
+
+# And one field of a type that is here. Go's UnsupportedValueError carries the
+# reflect.Value the encoder was looking at beside the text naming it, and the
+# text is that value already formatted, so a second copy of it would answer
+# nothing that `str` does not.
+"UnsupportedValueError.Value" = "The reflect.Value beside the text. The text is that value already formatted, and there is no reflect.Value to hold."
+
 ["encoding/xml"]
 # Two shapes of the same thing: a decoder here is generic over what it reads
 # from, and Go's are interface values chosen at run time.

@@ -419,6 +419,13 @@ HexEncoding = "hex_encoding"
 # this library.
 "ObjectIdentifier.String" = "ObjectIdentifier.write_to"
 
+["encoding/json"]
+# `struct` is a Mojo keyword, the same problem `RawValue.Class` has one section
+# up and with the same way out: the field says what it holds rather than being
+# a name somebody has to quote every time they read it. It holds the name of
+# the struct the field was found in.
+"UnmarshalTypeError.Struct" = "UnmarshalTypeError.struct_name"
+
 ["encoding/xml"]
 # The declaration every document starts with is a `comptime` value, and a
 # constant is spelled in capitals here, which is the rule the two base64

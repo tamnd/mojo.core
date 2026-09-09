@@ -98,8 +98,9 @@ def _decode_envelope(out result: Envelope, mut sc: ValueScanner[_]) raises:
     sc.expect(Byte(ord("{")))
     if not sc.accept(Byte(ord("}"))):
         while True:
-            var key = sc.read_string()
+            var key = sc.read_key()
             sc.expect(Byte(ord(":")))
+            sc.at_field("Envelope", key)
             if key == "kind":
                 v_kind = sc.read_string()
             elif key == "payload":
@@ -229,8 +230,9 @@ def _decode_item(out result: Item, mut sc: ValueScanner[_]) raises:
     sc.expect(Byte(ord("{")))
     if not sc.accept(Byte(ord("}"))):
         while True:
-            var key = sc.read_string()
+            var key = sc.read_key()
             sc.expect(Byte(ord(":")))
+            sc.at_field("Item", key)
             if key == "name":
                 v_name = sc.read_string()
             elif key == "id":
@@ -261,7 +263,7 @@ def _decode_item(out result: Item, mut sc: ValueScanner[_]) raises:
                 sc.expect(Byte(ord("{")))
                 if not sc.accept(Byte(ord("}"))):
                     while True:
-                        var key4 = sc.read_string()
+                        var key4 = sc.read_key()
                         sc.expect(Byte(ord(":")))
                         var held5 = Int64(sc.read_signed(64))
                         held3[key4^] = held5
@@ -393,8 +395,9 @@ def _decode_sparse(out result: Sparse, mut sc: ValueScanner[_]) raises:
     sc.expect(Byte(ord("{")))
     if not sc.accept(Byte(ord("}"))):
         while True:
-            var key = sc.read_string()
+            var key = sc.read_key()
             sc.expect(Byte(ord(":")))
+            sc.at_field("Sparse", key)
             if key == "first":
                 var held1 = Optional[Int]()
                 if not sc.accept_null():
@@ -507,8 +510,9 @@ def _decode_vendor(out result: Vendor, mut sc: ValueScanner[_]) raises:
     sc.expect(Byte(ord("{")))
     if not sc.accept(Byte(ord("}"))):
         while True:
-            var key = sc.read_string()
+            var key = sc.read_key()
             sc.expect(Byte(ord(":")))
+            sc.at_field("Vendor", key)
             if key == "name":
                 v_name = sc.read_string()
             elif key == "rating":

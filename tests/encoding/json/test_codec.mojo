@@ -104,9 +104,14 @@ def test_a_number_too_wide_for_its_field_is_refused() raises:
 
 
 def test_a_fraction_where_a_whole_number_goes_is_refused() raises:
-    """Not rounded, not truncated. Go refuses the same document."""
+    """Not rounded, not truncated. Go refuses the same document.
+
+    Go puts the digits in the message and so does this, because a document
+    with one bad number in it is easier to find with the number in hand than
+    with an offset alone.
+    """
     var sc = ValueScanner("7.5".as_bytes())
-    with assert_raises(contains="expected a whole number"):
+    with assert_raises(contains="cannot unmarshal number 7.5"):
         _ = sc.read_signed(64)
 
 
@@ -318,12 +323,13 @@ def test_a_number_json_cannot_hold_is_refused() raises:
 
     Go refuses both from `Marshal` as an `UnsupportedValueError`, and writing
     the bare word either of them formats as would produce a document nothing
-    can read back.
+    can read back. The message is Go's word for word, and `test_errors.mojo`
+    reads the record back off the raise.
     """
     var infinity = Float64(1.0) / Float64(0.0)
-    with assert_raises(contains="no JSON representation"):
+    with assert_raises(contains="json: unsupported value: +Inf"):
         _ = _float(infinity, 64)
-    with assert_raises(contains="no JSON representation"):
+    with assert_raises(contains="json: unsupported value: NaN"):
         _ = _float(infinity - infinity, 64)
 
 
