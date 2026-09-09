@@ -301,6 +301,146 @@ def _parse_bmp_string[o: ImmOrigin](bytes: Span[Byte, o]) raises -> String:
     return String(from_utf8=Span(out))
 
 
+def _parse_bool[o: ImmOrigin](bytes: Span[Byte, o]) raises -> Bool:
+    """`bytes` as a BOOLEAN. Go's `parseBool`.
+
+    DER says true is all eight bits set, so only zero and 255 are values a
+    BOOLEAN can hold and anything else is refused. BER allows any nonzero
+    byte, which is the ambiguity DER exists to remove.
+    """
+    if len(bytes) != 1:
+        raise _syntax("invalid boolean")
+    if bytes[0] == 0:
+        return False
+    if bytes[0] == 0xFF:
+        return True
+    raise _syntax("invalid boolean")
+
+
+def _parse_object_identifier[
+    o: ImmOrigin
+](bytes: Span[Byte, o]) raises -> ObjectIdentifier:
+    """`bytes` as an OBJECT IDENTIFIER. Go's `parseObjectIdentifier`.
+
+    The first byte holds two numbers, because the first can only be 0, 1 or 2
+    and the second is under 40 whenever the first is 0 or 1, so the pair is
+    packed as forty times one plus the other. Everything after it is one base
+    128 integer each.
+    """
+    if len(bytes) == 0:
+        raise _syntax("zero length OBJECT IDENTIFIER")
+
+    var values = List[Int]()
+    var first = _parse_base128(bytes, 0)
+    if first[0] < 80:
+        values.append(first[0] // 40)
+        values.append(first[0] % 40)
+    else:
+        values.append(2)
+        values.append(first[0] - 80)
+
+    var offset = first[1]
+    while offset < len(bytes):
+        var next = _parse_base128(bytes, offset)
+        values.append(next[0])
+        offset = next[1]
+    return ObjectIdentifier(values^)
+
+
+def _parse_utf8_string[o: ImmOrigin](bytes: Span[Byte, o]) raises -> String:
+    """`bytes` as a UTF8String, refused if they are not UTF-8. Go's
+    `parseUTF8String`."""
+    if not valid(bytes):
+        raise _syntax("invalid UTF-8 string")
+    return String(from_utf8=bytes)
+
+
+def _parse_printable_string[
+    o: ImmOrigin
+](bytes: Span[Byte, o]) raises -> String:
+    """`bytes` as a PrintableString, which is a subset of ASCII. Go's
+    `parsePrintableString`."""
+    for i in range(len(bytes)):
+        if not _is_printable(bytes[i], asterisk=True, ampersand=True):
+            raise _syntax("PrintableString contains invalid character")
+    return String(from_utf8=bytes)
+
+
+def _parse_numeric_string[o: ImmOrigin](bytes: Span[Byte, o]) raises -> String:
+    """`bytes` as a NumericString, which is digits and the space. Go's
+    `parseNumericString`."""
+    for i in range(len(bytes)):
+        if not _is_numeric(bytes[i]):
+            raise _syntax("NumericString contains invalid character")
+    return String(from_utf8=bytes)
+
+
+def _parse_ia5_string[o: ImmOrigin](bytes: Span[Byte, o]) raises -> String:
+    """`bytes` as an IA5String, which is seven bit ASCII. Go's
+    `parseIA5String`."""
+    for i in range(len(bytes)):
+        if bytes[i] >= 0x80:
+            raise _syntax("IA5String contains invalid character")
+    return String(from_utf8=bytes)
+
+
+def _parse_t61_string[o: ImmOrigin](bytes: Span[Byte, o]) raises -> String:
+    """`bytes` as a T61String, read as Latin-1. Go's `parseT61String`.
+
+    T.61 is a defunct encoding whose code page almost matches Latin-1, the
+    difference being characters T.61 does not have at all. Nothing maps those,
+    here or in Go or in BoringSSL: the bytes are read as Latin-1, which is what
+    everybody does and what makes the certificates in the world readable.
+    """
+    var out = List[Byte](capacity=len(bytes))
+    for i in range(len(bytes)):
+        _ = append_rune(out, Int32(Int(bytes[i])))
+    return String(from_utf8=Span(out))
+
+
+def _check_string_tag(tag: Int) raises:
+    """Refuse a tag that no string can be read out of.
+
+    GeneralString is the one Go refuses and this refuses too, because nothing
+    says which of its several registered character sets a given string is in,
+    so there is no way to read one that is right more often than it is wrong.
+    """
+    if tag == TagGeneralString:
+        raise _structural("GeneralString is not supported")
+    if (
+        tag != TagUTF8String
+        and tag != TagPrintableString
+        and tag != TagIA5String
+        and tag != TagNumericString
+        and tag != TagT61String
+        and tag != TagBMPString
+    ):
+        raise _structural("tag " + String(tag) + " is not a string type")
+
+
+def _parse_string[
+    o: ImmOrigin
+](bytes: Span[Byte, o], tag: Int) raises -> String:
+    """`bytes` as whichever string type `tag` names.
+
+    The six tags a string arrives under, in one place, so that the reader with
+    a universal header in hand and the reader with an implicit tag in hand
+    agree about what each one means.
+    """
+    _check_string_tag(tag)
+    if tag == TagUTF8String:
+        return _parse_utf8_string(bytes)
+    if tag == TagPrintableString:
+        return _parse_printable_string(bytes)
+    if tag == TagIA5String:
+        return _parse_ia5_string(bytes)
+    if tag == TagNumericString:
+        return _parse_numeric_string(bytes)
+    if tag == TagT61String:
+        return _parse_t61_string(bytes)
+    return _parse_bmp_string(bytes)
+
+
 struct Parser[o: ImmOrigin](Movable):
     """A cursor over DER, reading one value at a time.
 
@@ -529,14 +669,7 @@ struct Parser[o: ImmOrigin](Movable):
         BOOLEAN can hold and anything else is refused. BER allows any nonzero
         byte, which is the ambiguity DER exists to remove.
         """
-        var bytes = self.read_element(ClassUniversal, TagBoolean, False)
-        if len(bytes) != 1:
-            raise _syntax("invalid boolean")
-        if bytes[0] == 0:
-            return False
-        if bytes[0] == 0xFF:
-            return True
-        raise _syntax("invalid boolean")
+        return _parse_bool(self.read_element(ClassUniversal, TagBoolean, False))
 
     def read_int64(mut self) raises -> Int64:
         """The next INTEGER, as far as sixty four bits reach."""
@@ -599,56 +732,33 @@ struct Parser[o: ImmOrigin](Movable):
         pair is packed as forty times one plus the other. Everything after it
         is one base 128 integer each.
         """
-        var bytes = self.read_element(ClassUniversal, TagOID, False)
-        if len(bytes) == 0:
-            raise _syntax("zero length OBJECT IDENTIFIER")
-
-        var values = List[Int]()
-        var first = _parse_base128(bytes, 0)
-        if first[0] < 80:
-            values.append(first[0] // 40)
-            values.append(first[0] % 40)
-        else:
-            values.append(2)
-            values.append(first[0] - 80)
-
-        var offset = first[1]
-        while offset < len(bytes):
-            var next = _parse_base128(bytes, offset)
-            values.append(next[0])
-            offset = next[1]
-        return ObjectIdentifier(values^)
+        return _parse_object_identifier(
+            self.read_element(ClassUniversal, TagOID, False)
+        )
 
     def read_utf8_string(mut self) raises -> String:
         """The next UTF8String, refused if it is not UTF-8."""
-        var bytes = self.read_element(ClassUniversal, TagUTF8String, False)
-        if not valid(bytes):
-            raise _syntax("invalid UTF-8 string")
-        return String(from_utf8=bytes)
+        return _parse_utf8_string(
+            self.read_element(ClassUniversal, TagUTF8String, False)
+        )
 
     def read_printable_string(mut self) raises -> String:
         """The next PrintableString, which is a subset of ASCII."""
-        var bytes = self.read_element(ClassUniversal, TagPrintableString, False)
-        for i in range(len(bytes)):
-            if not _is_printable(bytes[i], asterisk=True, ampersand=True):
-                raise _syntax("PrintableString contains invalid character")
-        return String(from_utf8=bytes)
+        return _parse_printable_string(
+            self.read_element(ClassUniversal, TagPrintableString, False)
+        )
 
     def read_numeric_string(mut self) raises -> String:
         """The next NumericString, which is digits and the space."""
-        var bytes = self.read_element(ClassUniversal, TagNumericString, False)
-        for i in range(len(bytes)):
-            if not _is_numeric(bytes[i]):
-                raise _syntax("NumericString contains invalid character")
-        return String(from_utf8=bytes)
+        return _parse_numeric_string(
+            self.read_element(ClassUniversal, TagNumericString, False)
+        )
 
     def read_ia5_string(mut self) raises -> String:
         """The next IA5String, which is seven bit ASCII."""
-        var bytes = self.read_element(ClassUniversal, TagIA5String, False)
-        for i in range(len(bytes)):
-            if bytes[i] >= 0x80:
-                raise _syntax("IA5String contains invalid character")
-        return String(from_utf8=bytes)
+        return _parse_ia5_string(
+            self.read_element(ClassUniversal, TagIA5String, False)
+        )
 
     def read_t61_string(mut self) raises -> String:
         """The next T61String, read as Latin-1.
@@ -659,11 +769,9 @@ struct Parser[o: ImmOrigin](Movable):
         which is what everybody does and what makes the certificates in the
         world readable.
         """
-        var bytes = self.read_element(ClassUniversal, TagT61String, False)
-        var out = List[Byte](capacity=len(bytes))
-        for i in range(len(bytes)):
-            _ = append_rune(out, Int32(Int(bytes[i])))
-        return String(from_utf8=Span(out))
+        return _parse_t61_string(
+            self.read_element(ClassUniversal, TagT61String, False)
+        )
 
     def read_bmp_string(mut self) raises -> String:
         """The next BMPString, which is UCS-2."""
@@ -704,18 +812,7 @@ struct Parser[o: ImmOrigin](Movable):
         that is right more often than it is wrong.
         """
         var header = self.peek_header()
-        if header.tag == TagUTF8String:
-            return self.read_utf8_string()
-        if header.tag == TagPrintableString:
-            return self.read_printable_string()
-        if header.tag == TagIA5String:
-            return self.read_ia5_string()
-        if header.tag == TagNumericString:
-            return self.read_numeric_string()
-        if header.tag == TagT61String:
-            return self.read_t61_string()
-        if header.tag == TagBMPString:
-            return self.read_bmp_string()
-        if header.tag == TagGeneralString:
-            raise _structural("GeneralString is not supported")
-        raise _structural("tag " + String(header.tag) + " is not a string type")
+        _check_string_tag(header.tag)
+        return _parse_string(
+            self.read_element(ClassUniversal, header.tag, False), header.tag
+        )
