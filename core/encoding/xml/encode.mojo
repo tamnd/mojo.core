@@ -12,9 +12,12 @@ reach the writer. `close` is the one to prefer: it flushes and then says
 whether anything was left open, and an encoder that is never closed can produce
 a truncated document without complaining.
 
-Go's other half, `Encode` and `EncodeElement`, turns a struct into elements by
-reflecting over its fields. That is not here yet; `docs/packages.md` says which
-symbols are outstanding and what they are waiting on.
+Go's other half, `Encode` and `EncodeElement`, turns a value into elements by
+reflecting over its fields. Here it turns a value into elements by calling the
+`marshal_xml` the value wrote, which is the same door Go takes for a type
+implementing `Marshaler` and is the only door there is now that the walk is
+gone. `Marshaler` and `MarshalerAttr` are in this file because they take an
+`Encoder`; `marshal` and `marshal_indent` are in `marshal.mojo`.
 """
 
 from core.bufio import Writer as BufWriter
@@ -36,6 +39,7 @@ from .token import (
     Name,
     PROC_INST,
     START_ELEMENT,
+    StartElement,
     Token,
     _is_name,
     _is_name_string,
@@ -106,6 +110,74 @@ def _is_valid_directive[o: Origin](dir: Span[Byte, o]) -> Bool:
 def _encode_error(msg: StringSlice) -> Error:
     """The raise for a stream of tokens that cannot be written."""
     return Report(String(msg)).with_code(ErrXMLEncode).error()
+
+
+trait Marshaler:
+    """A type that can write itself out as an element. Go's `Marshaler`.
+
+    ```mojo
+    from core.encoding.xml import Attr, CharData, Encoder, Marshaler
+    from core.encoding.xml import Name, StartElement, Token
+    from core.io import Writer
+
+
+    struct Greeting(Marshaler):
+        var who: String
+
+        def marshal_xml[
+            W: Writer & Deinitable & Movable
+        ](self, mut e: Encoder[W], start: StartElement) raises:
+            var open = start.copy()
+            if not open.name.local:
+                open.name = Name("", "greeting")
+            e.encode_token(Token(open.copy()))
+            e.encode_token(Token(CharData(self.who)))
+            e.encode_token(Token(open.end()))
+    ```
+
+    Go finds this with a type assertion while the program runs and this is a
+    constraint checked while it is compiled, which is the difference every trait
+    in this library has from the interface it answers for. Go falls back on
+    reflection for a type that implements nothing and there is nothing to fall
+    back on here, so a type that cannot write itself is a compile error at the
+    call rather than a `Marshal` that fails on some inputs and not others.
+    """
+
+    def marshal_xml[
+        W: IoWriter & Deinitable & Movable
+    ](self, mut e: Encoder[W], start: StartElement) raises:
+        """Write this value out as one element, using `start` to open it.
+
+        Exactly one element, opened and closed, which is Go's contract and is
+        checked: `encode` puts a marker on the encoder's stack of open tags
+        before the call and refuses the result if anything is left open
+        afterwards, and `encode_token` refuses an end tag that would close
+        something this call did not open.
+
+        `start.name.local` is empty when the caller had no name to give, and
+        then the name is this value's to choose. Go always has one, because it
+        takes the name off the Go type through reflection, and there is no type
+        name to take here. `docs/deviations.md` has the row.
+        """
+        ...
+
+
+trait MarshalerAttr:
+    """A type that can write itself out as one attribute. Go's `MarshalerAttr`.
+
+    Go reaches this for a struct field tagged `attr` and reaches it through a
+    type assertion. There are no tags being read while the program runs here, so
+    it is reached by the `marshal_xml` that wants an attribute out of a value
+    rather than an element.
+    """
+
+    def marshal_xml_attr(self, name: Name) raises -> Attr:
+        """This value as the attribute called `name`.
+
+        An attribute whose name is empty is left out of the element, which is
+        Go's rule and is how a value says it has nothing to write this time.
+        """
+        ...
 
 
 struct Encoder[W: IoWriter & Deinitable & Movable](Movable):
@@ -273,6 +345,48 @@ struct Encoder[W: IoWriter & Deinitable & Movable](Movable):
             self._out(">")
         else:
             raise _encode_error("xml: EncodeToken of invalid token type")
+
+    def encode[T: Marshaler](mut self, value: T) raises:
+        """Write `value` as one element and flush. Go's `Encode`.
+
+        The element names itself, because there is no name to hand it: Go takes
+        one off the Go type through reflection and this hands `marshal_xml` a
+        start element with an empty name, which is the agreed way of saying so.
+        `encode_element` is the call for a caller who does have a name.
+
+        Flushes, which `encode_token` does not. Go's two calls split the same
+        way and for the same reason: a token is one of many and a value is a
+        whole thing.
+        """
+        self.encode_element(value, StartElement(Name("", ""), List[Attr]()))
+
+    def encode_element[
+        T: Marshaler
+    ](mut self, value: T, start: StartElement) raises:
+        """Write `value` as one element called `start`, and flush.
+        Go's `EncodeElement`.
+
+        The element `value` writes is opened and closed by `value`, and this
+        checks that it did both. A marker goes on the stack of open tags first,
+        so an implementation that closes more elements than it opened is
+        refused by `encode_token` at the tag that would have closed the caller's
+        element, and one that opens more than it closed is refused here.
+        Between them a `marshal_xml` cannot damage the document around it,
+        which is what Go's own marker is for.
+        """
+        if self._closed:
+            raise _encode_error("xml: use of closed Encoder")
+        self._tags.append(Name("", ""))
+        var marked = len(self._tags)
+        value.marshal_xml(self, start)
+        if len(self._tags) > marked:
+            raise _encode_error(
+                "xml: marshal_xml wrote invalid XML: <"
+                + self._tags[len(self._tags) - 1].local
+                + "> not closed"
+            )
+        _ = self._tags.pop()
+        self.w.flush()
 
     def _write_proc_inst(mut self, t: Token) raises:
         """`<?target inst?>`, with the three things that can be wrong with it.

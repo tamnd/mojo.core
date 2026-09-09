@@ -682,7 +682,23 @@ converts it before parsing rather than during.
 Owned by `core.encoding.xml`. Go has no sentinel for it.
 """
 
-comptime ErrXMLVersion = Code(65)
+comptime ErrXMLUnmarshal = Code(65)
+"""An element is not the one a value was expecting to read itself out of. Go has
+this as an `UnmarshalError`, which is a string with an `Error` method on it,
+and its reflection walk returns one in exactly two places: an element whose
+local name is not the name the destination's `XMLName` field was tagged with,
+and one whose name space is not. The walk is not here, so the check moves to
+the `unmarshal_xml` an implementation writes, and the code is what makes the
+raise readable back as an `UnmarshalError` rather than as an unlabelled
+failure. It is separate from `ErrXMLSyntax` because the document is well formed
+and the disagreement is about which element arrived, which is Go's split as
+well: its parser never produces this and its walk never calls it a syntax
+error.
+
+Owned by `core.encoding.xml`. Go has no sentinel for it.
+"""
+
+comptime ErrXMLVersion = Code(66)
 """A document declared an XML version other than 1.0. There is only one version
 this parses and only one version Go parses, and a document that says 1.1 is
 asking for line ending rules and name rules that are not implemented here, so
@@ -693,7 +709,7 @@ specification says to do.
 Owned by `core.encoding.xml`. Go has no sentinel for it.
 """
 
-comptime ErrJSONSyntax = Code(66)
+comptime ErrJSONSyntax = Code(67)
 """A document is not valid JSON. Go has this as a `*SyntaxError` holding a message
 and the byte offset the scanner stopped at, which a caller reads with a type
 assertion, and there is nothing to assert against here, so the message and the
@@ -709,7 +725,7 @@ thousand levels. The message says which, in Go's words.
 Owned by `core.encoding.json`. Go has no sentinel for it.
 """
 
-comptime ErrJSONText = Code(67)
+comptime ErrJSONText = Code(68)
 """A string in a document held bytes that are not UTF-8, or an escape naming half
 of a surrogate pair with no other half. Go turns both into U+FFFD and carries
 on, because a Go `string` is arbitrary bytes and the substitution is the only
@@ -724,7 +740,7 @@ leaves to the implementation.
 Owned by `core.encoding.json`. Go has no sentinel for it.
 """
 
-comptime ErrJSONType = Code(68)
+comptime ErrJSONType = Code(69)
 """A document held a value the destination cannot take. Go has this as an
 `*UnmarshalTypeError` naming the JSON value, the type it could not go into, the
 byte offset, and the struct and the field it was found under, which a caller
@@ -741,7 +757,7 @@ value to leave it at.
 Owned by `core.encoding.json`. Go has no sentinel for it.
 """
 
-comptime ErrJSONUnsupported = Code(69)
+comptime ErrJSONUnsupported = Code(70)
 """A value cannot be written as JSON. Go has this as an `*UnsupportedValueError`
 carrying the value and the text naming it, and the only values either package
 raises it for are a float that is infinite and one that is not a number, since
@@ -753,7 +769,7 @@ compile error at the call here rather than a failure while the program runs.
 Owned by `core.encoding.json`. Go has no sentinel for it.
 """
 
-comptime ErrJSONStale = Code(70)
+comptime ErrJSONStale = Code(71)
 """A handle was used after the document it came from was parsed into again. A
 `Value` is an index into an arena rather than a pointer at a node, because a
 struct cannot hold itself, so nothing about the index says whether the node it
@@ -768,7 +784,7 @@ a method that would break it.
 Owned by `core.encoding.json`. Go has no sentinel for it.
 """
 
-comptime ErrVarintOverflow = Code(71)
+comptime ErrVarintOverflow = Code(72)
 """A varint named a number that does not fit in sixty four bits. Ten bytes is the
 whole of what the encoding gives a sixty four bit number, seven bits to a byte
 with the tenth carrying a single one, so an eleventh byte and a tenth byte
@@ -783,7 +799,7 @@ number of bytes fixes this one.
 Owned by `core.encoding.binary`. Go has no sentinel for it.
 """
 
-comptime ErrASN1Syntax = Code(72)
+comptime ErrASN1Syntax = Code(73)
 """Bytes are not valid DER. Go has this as a `SyntaxError` holding a message,
 which a caller reads with a type assertion, and there is nothing to assert
 against here, so the message goes on the record and `SyntaxError.of` reads it
@@ -798,7 +814,7 @@ did. The message says which, in Go's words.
 Owned by `core.encoding.asn1`. Go has no sentinel for it.
 """
 
-comptime ErrASN1Structural = Code(73)
+comptime ErrASN1Structural = Code(74)
 """An encoding is well formed DER but does not say what the reader was asked to
 read. Go has this as a `StructuralError`, and it is the split Go makes as well:
 a syntax error means the bytes are not DER at all, and this means they are DER

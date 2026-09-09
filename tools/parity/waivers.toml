@@ -417,3 +417,32 @@ MarshalerError = "Go's wrapper around what a MarshalJSON returned, naming the ty
 # which encoding it asked for.
 NewTokenDecoder = "A decoder over another TokenReader, which needs an existential source. Implement TokenReader over the decoder you have."
 "Decoder.CharsetReader" = "A stored callback for a non UTF-8 document. Without it the decoder refuses one, which is what Go does when the field is nil."
+
+# Two of Go's four error types, for two different reasons. The other two are
+# here: SyntaxError says a document is not XML, and UnmarshalError says an
+# element is not the one a value reads itself out of.
+#
+# TagPathError is what Go's walk returns when two fields of one struct are
+# tagged with paths that disagree, `a>b` on one and `a` on another, so that
+# there is no arrangement of elements that satisfies both. It is a mistake in
+# the source rather than in the document, and Go can only find it while the
+# program runs, because that is when it first reads the tags. There are no tags
+# being read while a program runs here, so there is nothing left to find and no
+# value to return for it.
+TagPathError = "What Go returns when two struct tags in one struct disagree about a path. No tags are read while a program runs here."
+"TagPathError.Struct" = "What Go returns when two struct tags in one struct disagree about a path. No tags are read while a program runs here."
+"TagPathError.Field1" = "What Go returns when two struct tags in one struct disagree about a path. No tags are read while a program runs here."
+"TagPathError.Field2" = "What Go returns when two struct tags in one struct disagree about a path. No tags are read while a program runs here."
+"TagPathError.Tag1" = "What Go returns when two struct tags in one struct disagree about a path. No tags are read while a program runs here."
+"TagPathError.Tag2" = "What Go returns when two struct tags in one struct disagree about a path. No tags are read while a program runs here."
+"TagPathError.Error" = "What Go returns when two struct tags in one struct disagree about a path. No tags are read while a program runs here."
+
+# UnsupportedTypeError is what Go's walk returns on meeting a channel, a
+# function or a map, which are the three kinds of value it does not know how to
+# write. A type that cannot write itself does not implement Marshaler here, and
+# `marshal` says at the call site that it needs one, so the same mistake is a
+# compile error rather than a value that comes back. `encoding/json` waives its
+# own UnsupportedTypeError for the same reason and in the same words.
+UnsupportedTypeError = "What Go returns on meeting a channel or a function while walking. A type that cannot write itself does not implement Marshaler, which the call site says it needs."
+"UnsupportedTypeError.Type" = "The reflect.Type of the value the walk met. There is no walk and no reflect.Type."
+"UnsupportedTypeError.Error" = "What Go returns on meeting a channel or a function while walking. A type that cannot write itself does not implement Marshaler, which the call site says it needs."
