@@ -16,6 +16,11 @@ reads one value at a time and `Builder` writes one at a time, and `BitString`,
 and comes back as. The second path is generated code, one reader and one writer
 per struct, built out of the fields and the ASN.1 struct tags.
 
+`marshal` and `unmarshal` are the pair either path is made of. Each is an
+overload per type rather than a reflection walk, and each reads Go's struct tag
+grammar out of a string, so `"optional,explicit,tag:0"` puts a value under the
+same header here that it does there.
+
 Nothing here recurses. A SEQUENCE hands back a second `Parser` over its
 contents rather than calling into itself, and a `Builder` keeps its open values
 on a list rather than on the stack, so there is no depth to cap and a document
@@ -27,6 +32,12 @@ are outstanding.
 
 from .build import Builder
 from .errors import StructuralError, SyntaxError
+from .marshal import (
+    marshal,
+    marshal_with_params,
+    unmarshal,
+    unmarshal_with_params,
+)
 from .parse import Parser
 from .tags import (
     ClassApplication,
