@@ -327,7 +327,7 @@ def fill(body: Body, what: Encoding, target: str) -> None:
         body(f"sc.expect({byte('{')})")
         body.block(f"if not sc.accept({byte('}')}):")
         body.block("while True:")
-        body(f"var {key} = sc.read_string()")
+        body(f"var {key} = sc.read_key()")
         body(f"sc.expect({byte(':')})")
         value(body, what.args[1], held)
         body(f"{target}[{key}^] = {moved(what.args[1], held)}")
@@ -455,8 +455,9 @@ def decoder(codec: Codec) -> list[str]:
     body(f"sc.expect({byte('{')})")
     body.block(f"if not sc.accept({byte('}')}):")
     body.block("while True:")
-    body("var key = sc.read_string()")
+    body("var key = sc.read_key()")
     body(f"sc.expect({byte(':')})")
+    body(f"sc.at_field({literal(codec.name)}, key)")
     opened = False
     for member in members:
         body.block(f'{"if" if not opened else "elif"} key == {literal(member.json)}:')

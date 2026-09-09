@@ -10,7 +10,7 @@ and it is copied out of this repository along with the package before it is
 built, so that nothing here can quietly depend on being inside the library.
 """
 
-from core.encoding.json import RawMessage
+from core.encoding.json import RawMessage, UnmarshalTypeError
 
 from inventory.envelopes import Envelope
 from inventory.items import Item, Sparse
@@ -227,6 +227,55 @@ def refusing(mut c: Checks) raises:
     c.equal("and the document itself", fails(whole), False)
 
 
+def naming(mut c: Checks) raises:
+    """Which field the document disagreed with, which is Go's
+    `UnmarshalTypeError` and is what the generated `at_field` call is for."""
+
+    def named(document: String) -> String:
+        try:
+            _ = unmarshal_json_item(document.as_bytes())
+        except e:
+            var failure = UnmarshalTypeError.of(e)
+            if not failure:
+                return String(e)
+            var held = failure.value().copy()
+            return (
+                held.struct_name
+                + "."
+                + held.field
+                + " "
+                + held.value
+                + " "
+                + held.type
+            )
+        return String("the document was read")
+
+    def message(document: String) -> String:
+        try:
+            _ = unmarshal_json_item(document.as_bytes())
+        except e:
+            return String(e)
+        return String("the document was read")
+
+    var whole = String(FULL)
+    c.equal("a string where a number goes", named(whole.replace('"id":7', '"id":"7"')),
+            "Item.id string Int64")
+    c.equal("a number that does not fit", named(whole.replace('"code":3', '"code":300')),
+            "Item.code number 300 UInt8")
+    c.equal("an object where a string goes", named(whole.replace('"name":"bolt"', '"name":{}')),
+            "Item.name object String")
+
+    # A nested struct names itself and its own field rather than the route
+    # taken to reach it, which is the one place this and Go read differently.
+    c.equal("a field of a nested struct",
+            named(whole.replace('"rating":4.5', '"rating":"high"')),
+            "Vendor.rating string Float64")
+
+    c.equal("the message it all comes out as",
+            message(whole.replace('"id":7', '"id":"7"')),
+            "json: cannot unmarshal string into struct field Item.id of type Int64")
+
+
 def deferring(mut c: Checks) raises:
     """A payload nobody has read yet, which is what `RawMessage` is for."""
     var carried = RawMessage('{ "a" : [ 1 , 2 ] }'.as_bytes())
@@ -305,6 +354,7 @@ def main() raises:
     encoding(c)
     decoding(c)
     refusing(c)
+    naming(c)
     deferring(c)
     strictness(c)
     print("the generated codec passed", c.ran, "checks")

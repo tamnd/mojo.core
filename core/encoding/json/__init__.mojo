@@ -25,6 +25,13 @@ knows its own JSON, `marshal`, `marshal_indent` and `unmarshal` are the calls
 that take one, and `new_encoder` writes a stream of them with the newline Go
 writes after each.
 
+Two of Go's error types are here as well. `UnmarshalTypeError` is what a
+decoder raises when the document is well formed and says one thing and the
+field wants another, and `UnsupportedValueError` is the same disagreement going
+the other way, a float that is infinite or is not a number and so has no
+spelling in JSON. Go's other five are waived, and `tools/parity/waivers.toml`
+carries the reason for each.
+
 `docs/design.md` section 8 has the reasoning, and `docs/packages.md` says which
 symbols are outstanding.
 """
@@ -41,6 +48,7 @@ from .codec import (
 )
 from .decode import Decoder, Tokens, new_decoder
 from .document import ARRAY, Document, OBJECT, Value, new_document, parse
+from .errors import UnmarshalTypeError, UnsupportedValueError
 from .indent import compact, html_escape, indent
 from .marshal import (
     Encoder,
