@@ -19,6 +19,12 @@ that is the same for every struct is here as well: `ValueScanner` and the six
 `append_` writers are what a generated codec is made of, and are the whole of
 what it needs from this package.
 
+Between the two sits the interface Go asks a value for before it walks it.
+`Marshaler` and `Unmarshaler` are the two traits a type implements to say it
+knows its own JSON, `marshal`, `marshal_indent` and `unmarshal` are the calls
+that take one, and `new_encoder` writes a stream of them with the newline Go
+writes after each.
+
 `docs/design.md` section 8 has the reasoning, and `docs/packages.md` says which
 symbols are outstanding.
 """
@@ -36,6 +42,15 @@ from .codec import (
 from .decode import Decoder, Tokens, new_decoder
 from .document import ARRAY, Document, OBJECT, Value, new_document, parse
 from .indent import compact, html_escape, indent
+from .marshal import (
+    Encoder,
+    Marshaler,
+    Unmarshaler,
+    marshal,
+    marshal_indent,
+    new_encoder,
+    unmarshal,
+)
 from .number import Number
 from .raw import RawMessage
 from .scan import MAX_NESTING_DEPTH, SyntaxError, valid, valid_or_raise

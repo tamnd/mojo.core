@@ -19,10 +19,13 @@ zero value of a struct field encode to something a decoder will read back.
 
 from core.io import Byte
 
+from .marshal import Marshaler, Unmarshaler
 from .scan import valid_or_raise
 
 
-struct RawMessage(Copyable, Equatable, Movable, Sized, Writable):
+struct RawMessage(
+    Copyable, Equatable, Marshaler, Movable, Sized, Unmarshaler, Writable
+):
     """One JSON value, not yet read. Go's `RawMessage`.
 
     ```mojo
@@ -105,7 +108,7 @@ struct RawMessage(Copyable, Equatable, Movable, Sized, Writable):
             return List[Byte]("null".as_bytes())
         return self.bytes.copy()
 
-    def unmarshal_json(mut self, data: Span[Byte, _]) raises:
+    def unmarshal_json[o: ImmOrigin](mut self, data: Span[Byte, o]) raises:
         """Keep `data` as the value. Go's `UnmarshalJSON`.
 
         Go copies without looking, on the reasoning that the only caller is its
