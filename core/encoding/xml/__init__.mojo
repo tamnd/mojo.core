@@ -23,11 +23,19 @@ def main() raises:
 
 ## What is here and what is not
 
-Go's package has two halves. The token half is this one. The other half turns a
-document into a struct and back, driven by reflection over struct tags, and
-that is not here yet: it belongs with the generated codec work the JSON package
-is waiting on, and `docs/packages.md` says which symbols are outstanding.
-`marshal`, `unmarshal` and the four codec traits are the ones to look for.
+Go's package has two halves. The token half is the one above. The other half
+turns a whole value into a document and back, and in Go it is a walk over the
+value with reflection, reading struct tags as it goes. There is no walk here.
+`Marshaler` and `Unmarshaler` are the traits Go's walk asks a value about
+before it starts guessing, and here they are the whole path: a type says how it
+writes itself and how it reads itself back, and `marshal` and `unmarshal` call
+what it said. `MarshalerAttr` and `UnmarshalerAttr` are the same pair for one
+attribute rather than a whole element.
+
+The one thing lost with the walk is the name Go gives an element by default,
+which it reads off the Go type. There is no type name to read here, so
+`marshal` hands the value a start element with an empty name and the value
+names itself. `docs/deviations.md` has the row.
 
 ## Reading a document you did not write
 
@@ -66,9 +74,17 @@ same things: a missing end tag, an entity that is not one, an attribute with no
 value and a value with no quotes.
 """
 
-from .decode import Decoder, Tokens, new_decoder
-from .encode import HEADER, Encoder, new_encoder
+from .decode import (
+    Decoder,
+    Tokens,
+    Unmarshaler,
+    UnmarshalerAttr,
+    new_decoder,
+)
+from .encode import HEADER, Encoder, Marshaler, MarshalerAttr, new_encoder
+from .errors import UnmarshalError, unmarshal_error
 from .escape import escape, escape_text, is_in_character_range
+from .marshal import marshal, marshal_indent, unmarshal
 from .syntax import SyntaxError
 from .tables import html_auto_close, html_entity, is_name_first, is_name_rune
 from .token import (

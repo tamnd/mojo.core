@@ -220,6 +220,74 @@ struct _Frame(Copyable, Movable):
         self.ok = ok
 
 
+trait Unmarshaler:
+    """A type that can read itself back out of an element. Go's `Unmarshaler`.
+
+    ```mojo
+    from core.encoding.xml import CHAR_DATA, Decoder, END_ELEMENT
+    from core.encoding.xml import StartElement, Unmarshaler
+    from core.io import Reader
+
+
+    struct Greeting(Unmarshaler):
+        var who: String
+
+        def unmarshal_xml[
+            R: Reader & Deinitable & Movable
+        ](mut self, mut d: Decoder[R], start: StartElement) raises:
+            var text = String()
+            while True:
+                var t = d.token()
+                if t.kind == CHAR_DATA:
+                    text += t.text()
+                elif t.kind == END_ELEMENT:
+                    break
+            self.who = text^
+    ```
+
+    Go asks for exactly one element to be read, opening tag to closing tag, and
+    so does this. The opening tag has already been read when the call starts,
+    which is why it arrives as `start`, and the closing one has to be read
+    before the call returns or the decoder is left in the middle of an element
+    nobody is reading.
+
+    Go's contract has one more line: an implementation may not use `raw_token`,
+    because the name spaces the caller resolved would go unresolved from there
+    on. That holds here for the same reason and cannot be enforced, in Go or
+    here.
+    """
+
+    def unmarshal_xml[
+        R: IoReader & Deinitable & Movable
+    ](mut self, mut d: Decoder[R], start: StartElement) raises:
+        """Set this value from the element `start` opens.
+
+        The library's rule for a failure is stricter than Go's: nothing should
+        be written unless the whole element is accepted, so a value handed to a
+        call that refuses it is the value it was rather than a half read one.
+        `Decoder.skip` reads to the end of an element that is being given up on.
+
+        Raise `unmarshal_error` when the element that arrived is not the one
+        this value reads, which is the one thing Go's own walk raises here.
+        """
+        ...
+
+
+trait UnmarshalerAttr:
+    """A type that can read itself back out of one attribute.
+    Go's `UnmarshalerAttr`.
+
+    Go reaches this for a struct field tagged `attr` and reaches it through a
+    type assertion. There are no tags being read while the program runs here, so
+    it is reached by the `unmarshal_xml` that has an attribute in hand and wants
+    a value out of it.
+    """
+
+    def unmarshal_xml_attr(mut self, attr: Attr) raises:
+        """Set this value from `attr`."""
+        ...
+
+
 struct Decoder[R: IoReader & Deinitable & Movable](Movable):
     """A parser reading one document. Go's `Decoder`.
 
@@ -1354,6 +1422,36 @@ struct Decoder[R: IoReader & Deinitable & Movable](Movable):
                 if depth == 0:
                     return
                 depth -= 1
+
+    def decode[T: Unmarshaler](mut self, mut value: T) raises:
+        """Read the next element into `value`. Go's `Decode`.
+
+        Everything before the next start element is read and thrown away, which
+        is what Go does with a nil start: a document beginning with a
+        declaration, a comment and some whitespace is read into the first real
+        element rather than refused. Raises `EOF` if there is no element left.
+        """
+        while True:
+            var t = self.token()
+            if t.kind == START_ELEMENT:
+                self.decode_element(value, t.start_element())
+                return
+
+    def decode_element[
+        T: Unmarshaler
+    ](mut self, mut value: T, start: StartElement) raises:
+        """Read the element `start` opens into `value`. Go's `DecodeElement`.
+
+        The call for a program that read the opening tag itself and wants to
+        hand the rest of the element over, which is what Go's own documentation
+        gives as the reason for having two calls.
+
+        Go refuses a destination that is nil or is not a pointer, which is a
+        run time check on something the caller wrote. The destination is a `mut`
+        argument here, so there is nothing to pass that would fail that check
+        and no error to return for it.
+        """
+        value.unmarshal_xml(self, start)
 
     def tokens(mut self) -> Tokens[Self.R, origin_of(self)]:
         """The tokens left, as a `core.iter.Cursor`. Go has no counterpart.
