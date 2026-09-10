@@ -446,3 +446,28 @@ TagPathError = "What Go returns when two struct tags in one struct disagree abou
 UnsupportedTypeError = "What Go returns on meeting a channel or a function while walking. A type that cannot write itself does not implement Marshaler, which the call site says it needs."
 "UnsupportedTypeError.Type" = "The reflect.Type of the value the walk met. There is no walk and no reflect.Type."
 "UnsupportedTypeError.Error" = "What Go returns on meeting a channel or a function while walking. A type that cannot write itself does not implement Marshaler, which the call site says it needs."
+
+["compress/flate"]
+# Two error types Go's own documentation marks deprecated, with the note "No
+# longer returned". Nothing in Go's package constructs either one any more, so
+# nothing here could hand one back either, and a type nobody can receive is not
+# a type anybody can match on.
+ReadError = "Deprecated in Go, with the note that it is no longer returned. Nothing in Go's package builds one."
+"ReadError.Offset" = "Deprecated in Go, with the note that it is no longer returned. Nothing in Go's package builds one."
+"ReadError.Err" = "Deprecated in Go, with the note that it is no longer returned. Nothing in Go's package builds one."
+"ReadError.Error" = "Deprecated in Go, with the note that it is no longer returned. Nothing in Go's package builds one."
+WriteError = "Deprecated in Go, with the note that it is no longer returned. Nothing in Go's package builds one."
+"WriteError.Offset" = "Deprecated in Go, with the note that it is no longer returned. Nothing in Go's package builds one."
+"WriteError.Err" = "Deprecated in Go, with the note that it is no longer returned. Nothing in Go's package builds one."
+"WriteError.Error" = "Deprecated in Go, with the note that it is no longer returned. Nothing in Go's package builds one."
+
+# Resetter is the interface a caller uses to point a decompressor at a new
+# stream, and it cannot be written here. Its one method takes an arbitrary
+# io.Reader, so an interface holding it has to accept any reader at all, while
+# a Decompressor[R] can only accept a reader of its own R. Expressing that
+# needs a trait with a parameter, `trait Resetter[R]`, and there is no such
+# thing in the language. The operation itself is here as Decompressor.reset,
+# which is the same two arguments and the same effect; what is gone is the
+# ability to name it through an interface. docs/deviations.md has the row.
+Resetter = "An interface whose one method takes an arbitrary reader, which a Decompressor[R] cannot satisfy. The operation is Decompressor.reset."
+"Resetter.Reset" = "An interface whose one method takes an arbitrary reader, which a Decompressor[R] cannot satisfy. The operation is Decompressor.reset."
