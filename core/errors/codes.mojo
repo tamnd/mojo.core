@@ -827,3 +827,35 @@ the reader disagree about what a field holds.
 
 Owned by `core.encoding.asn1`. Go has no sentinel for it.
 """
+
+comptime ErrFlateCorruptInput = Code(75)
+"""A DEFLATE stream is not a DEFLATE stream. Go declares `type CorruptInputError
+int64`, so the byte offset the decompressor had reached is the error value
+itself and a caller reads it with a type assertion, and there is nothing to
+assert against here, so the offset goes on the record and
+`CorruptInputError.of` reads it back. One code covers every way a stream can be
+malformed, which is Go's arrangement as well: a block type of three, which RFC
+1951 reserves and never assigns, a stored block whose length and its ones
+complement disagree, a dynamic block claiming more than 286 literal codes or
+more than 30 distance codes, a code length table that repeats a length before
+there is one to repeat or that runs past the end of the table it is filling, a
+Huffman table that is over subscribed or under subscribed, a symbol that
+decodes to nothing, a length symbol above 285, a distance symbol of 30 or 31,
+and a distance pointing further back than the window holds. The offset says
+where the decompressor was when it found out.
+
+Owned by `core.compress.flate`. Go has no sentinel for it.
+"""
+
+comptime ErrFlateInternal = Code(76)
+"""The decompressor reached a state it has no branch for. Go declares `type
+InternalError string` and raises it in exactly one place, a length code outside
+16, 17 and 18 after the range check that makes those the only three possible,
+which means it fires only if the code above it has been changed wrongly. It is
+a separate code from `ErrFlateCorruptInput` for the reason Go keeps it
+separate: corrupt input is the sender's fault and this is the library's, and a
+caller triaging a failure needs to know which of the two they are looking at
+before they go looking for the bug.
+
+Owned by `core.compress.flate`. Go has no sentinel for it.
+"""

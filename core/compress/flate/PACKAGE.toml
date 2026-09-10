@@ -2,15 +2,22 @@
 name = "core.compress.flate"
 go = "compress/flate"
 verdict = "Port"
-tier = 3
+tier = 2
 unsafe = false
+# Go's import list and this one differ in three places, and all three are
+# about the half of the package that is here. `bufio` goes: Go imports it to
+# wrap a reader that cannot hand over a single byte, and `new_reader` asks for
+# one that can instead, so the wrapping is the caller's and so is the
+# dependency. `sync` goes with it, since it is there for the `sync.Once` that
+# builds the fixed Huffman table once per process and that table is built per
+# decompressor here. `strconv` goes too, because the one call is `FormatInt`
+# putting an offset into a message and `String(Int64)` does that. What is left
+# is `core.errors` for the two error types, `core.io` for the reader and the
+# closer, and `core.math.bits` for the two bit reversals a Huffman table is
+# built and read with. Go's `fmt`, `math` and `sort` are all used by the
+# writer, so they arrive with it rather than being declared ahead of it.
 deps = [
-  "core.bufio",
   "core.errors",
-  "core.fmt",
   "core.io",
-  "core.math",
   "core.math.bits",
-  "core.sort",
-  "core.strconv",
 ]
